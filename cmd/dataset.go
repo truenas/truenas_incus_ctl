@@ -1,32 +1,53 @@
 package cmd
 
 import (
-	"github.com/spf13/cobra"
+    "fmt"
+    //"flag"
+    "truenas/admin-tool/core"
+    "github.com/spf13/cobra"
 )
 
 // datasetCmd represents the dataset command
 var datasetCmd = &cobra.Command{
-	Use:   "dataset",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
+    Use:   "dataset",
+    Short: "A brief description of your command",
+    Long: `A longer description that spans multiple lines and likely contains examples
 and usage of using your command. For example:
 
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
-	//Run: datasetFunc
+    Run: func (cmd *cobra.Command, args []string) {
+        //fmt.Println("dataset")
+        if len(args) == 0 {
+            cmd.HelpFunc()(cmd, args)
+            return
+        }
+    },
 }
 
 var datasetCreateCmd = &cobra.Command{
-	Use:   "create",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
+    Use:   "create",
+    Short: "A brief description of your command",
+    Long: `A longer description that spans multiple lines and likely contains examples
 and usage of using your command. For example:
 
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
-	//Run: datasetCreateFunc
+    Run: func (cmd *cobra.Command, args []string) {
+        //fmt.Println("dataset create")
+        if len(args) == 0 {
+            cmd.HelpFunc()(cmd, args)
+            return
+        }
+        s, err := core.Login()
+        if err != nil {
+            fmt.Println("Failed to log in")
+            return
+        }
+        fmt.Println(s)
+    },
 }
 
 func init() {
@@ -63,5 +84,5 @@ func init() {
     datasetCmd.PersistentFlags().StringP("snapdev", "", "", "")
 
     datasetCmd.AddCommand(datasetCreateCmd)
-	rootCmd.AddCommand(datasetCmd)
+    rootCmd.AddCommand(datasetCmd)
 }
