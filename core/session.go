@@ -10,6 +10,7 @@ import (
 type Session struct {
     hostUrl string
     apiKey string
+    client *truenas_api.Client
 }
 
 func Login() (*Session, error) {
@@ -20,7 +21,7 @@ func Login() (*Session, error) {
         return nil, err
     }
 
-    client, err := truenas_api.NewClient(s.hostUrl, true)
+    client, err := truenas_api.NewClient(s.hostUrl, strings.HasPrefix(s.hostUrl, "wss://"))
     if err != nil {
         fmt.Println("Failed to create client:", err)
         return nil, err
@@ -28,12 +29,16 @@ func Login() (*Session, error) {
 
     err = client.Login("", "", s.apiKey)
     if err != nil {
+        client.Close()
         fmt.Println("client.Login failed:", err)
         return nil, err
     }
 
+    s.client = client;
     return &s, nil
 }
+
+
 
 func loadHostAndKey() (string, string, error) {
     fileName := "key.txt"

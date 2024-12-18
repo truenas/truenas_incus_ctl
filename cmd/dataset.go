@@ -7,7 +7,6 @@ import (
     "github.com/spf13/cobra"
 )
 
-// datasetCmd represents the dataset command
 var datasetCmd = &cobra.Command{
     Use:   "dataset",
     Short: "A brief description of your command",
