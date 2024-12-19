@@ -3,7 +3,10 @@ package core
 import (
     "os"
     "fmt"
+    "time"
+    "errors"
     "strings"
+    "encoding/json"
     "truenas/admin-tool/truenas_api"
 )
 
@@ -14,6 +17,10 @@ type RealSession struct {
 }
 
 func (s *RealSession) Login() error {
+    if s.client != nil {
+        _ = s.Close()
+    }
+
     var err error
     s.hostUrl, s.apiKey, err = loadHostAndKey()
     if err != nil {
@@ -35,6 +42,23 @@ func (s *RealSession) Login() error {
 
     s.client = client;
     return nil
+}
+
+func (s *RealSession) Call(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
+    timeout, err := time.ParseDuration(timeoutStr)
+    if err != nil || timeout < 0 {
+        return nil, errors.New("Invalid timeout was given: " + timeoutStr)
+    }
+    return s.client.Call(method, timeout, params)
+}
+
+func (s *RealSession) Close() error {
+    var err error
+    if s.client != nil {
+        err = s.client.Close()
+        s.client = nil
+    }
+    return err
 }
 
 func loadHostAndKey() (string, string, error) {

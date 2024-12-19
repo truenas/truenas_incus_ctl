@@ -1,6 +1,7 @@
 package cmd
 
 import (
+    "os"
     "fmt"
     //"flag"
     "truenas/admin-tool/core"
@@ -35,18 +36,21 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
     Run: func (cmd *cobra.Command, args []string) {
-        //fmt.Println("dataset create")
-        if len(args) == 0 {
-            cmd.HelpFunc()(cmd, args)
-            return
-        }
-        api := core.GetApi()
-        err := api.Login()
-        if err != nil {
-            fmt.Println("Failed to log in")
-            return
-        }
-        fmt.Println(api)
+        createDataset(validateAndLogin(cmd, args), args)
+    },
+}
+
+var datasetDeleteCmd = &cobra.Command{
+    Use:   "delete",
+    Short: "A brief description of your command",
+    Long: `A longer description that spans multiple lines and likely contains examples
+and usage of using your command. For example:
+
+Cobra is a CLI library for Go that empowers applications.
+This application is a tool to generate the needed files
+to quickly create a Cobra application.`,
+    Run: func (cmd *cobra.Command, args []string) {
+        deleteDataset(validateAndLogin(cmd, args), args)
     },
 }
 
@@ -60,22 +64,59 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
     Run: func (cmd *cobra.Command, args []string) {
-        //fmt.Println("dataset create")
-        if len(args) == 0 {
-            cmd.HelpFunc()(cmd, args)
-            return
-        }
-        api := core.GetApi()
-        err := api.Login()
-        if err != nil {
-            fmt.Println("Failed to log in")
-            return
-        }
-        fmt.Println(api)
+        listDataset(validateAndLogin(cmd, args), args)
     },
 }
 
 func init() {
     datasetCmd.AddCommand(datasetCreateCmd)
+    datasetCmd.AddCommand(datasetDeleteCmd)
+    datasetCmd.AddCommand(datasetListCmd)
     rootCmd.AddCommand(datasetCmd)
+}
+
+func validateAndLogin(cmd *cobra.Command, args []string) core.Session {
+    if len(args) == 0 {
+        cmd.HelpFunc()(cmd, args)
+        return nil
+    }
+
+    api := core.GetApi()
+    err := api.Login()
+    if err != nil {
+        fmt.Println("Failed to log in")
+        api.Close()
+        return nil
+    }
+
+    return api
+}
+
+func createDataset(api core.Session, args []string) {
+    if api == nil {
+        return
+    }
+    defer api.Close()
+    //api.Call("pool.dataset.create", "10s", args)
+}
+
+func deleteDataset(api core.Session, args []string) {
+    if api == nil {
+        return
+    }
+    defer api.Close()
+    //api.Call("pool.dataset.delete", "10s", args)
+}
+
+func listDataset(api core.Session, args []string) {
+    if api == nil {
+        return
+    }
+    defer api.Close()
+    data, err := api.Call("pool.dataset.query", "10s", args)
+    if err != nil {
+        fmt.Println("API error:", err)
+        return
+    }
+    os.Stdout.Write(data)
 }
