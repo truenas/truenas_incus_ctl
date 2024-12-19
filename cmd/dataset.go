@@ -113,7 +113,7 @@ func listDataset(api core.Session, args []string) {
         return
     }
     defer api.Close()
-    data, err := api.Call("pool.dataset.query", "10s", args)
+    data, err := api.Call("pool.dataset.query", "60s", []interface{}{})
     if err != nil {
         fmt.Println("API error:", err)
         return
