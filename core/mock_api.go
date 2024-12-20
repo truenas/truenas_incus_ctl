@@ -1,7 +1,9 @@
 package core
 
 import (
+    "fmt"
     "errors"
+    "strings"
     "encoding/json"
 )
 
@@ -33,6 +35,14 @@ func (s *MockSession) Call(method string, timeoutStr string, params interface{})
         default:
             return nil, errors.New("Unrecognised command " + method)
     }
+}
+
+func (s *MockSession) CallStrings(method string, timeoutStr string, params []string) (json.RawMessage, error) {
+    var paramsUnmarsalled interface{}
+    if err := json.Unmarshal([]byte("[" + strings.Join(params, ",") + "]"), &paramsUnmarsalled); err != nil {
+		return nil, fmt.Errorf("failed to parse params string: %w", err)
+	}
+	return s.Call(method, timeoutStr, paramsUnmarsalled)
 }
 
 func mockDatasetCreate(params interface{}) (json.RawMessage, error) {

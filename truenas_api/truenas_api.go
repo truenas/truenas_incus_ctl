@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"io"
 	"sync"
 	"time"
+	"strconv"
+	"strings"
 
 	"github.com/gorilla/websocket"
 )
@@ -219,6 +222,53 @@ func (c *Client) Call(method string, timeoutStr string, params interface{}) (jso
 
 	// Send the request to the WebSocket server
 	if err := c.conn.WriteJSON(request); err != nil {
+		return nil, fmt.Errorf("failed to send call: %w", err)
+	}
+
+	// Wait for the response or timeout
+	select {
+	case res := <-responseChan:
+		return res, nil
+	case <-time.After(timeout):
+		return nil, errors.New("call timed out")
+	}
+}
+
+// Call sends an RPC call to the server and waits for a response.
+func (c *Client) CallStrings(method string, timeoutStr string, params []string) (json.RawMessage, error) {
+    timeout, err := time.ParseDuration(timeoutStr)
+    if err != nil || timeout < 0 {
+        return nil, errors.New("Invalid timeout was given: " + timeoutStr)
+    }
+
+	c.mu.Lock()
+	c.callID++ // Increment callID for each call
+	callID := c.callID
+	responseChan := make(chan json.RawMessage, 1) // Create channel to receive the response
+	c.pending[callID] = responseChan              // Store the callID and response channel
+	c.mu.Unlock()
+
+	defer func() {
+		c.mu.Lock()
+		delete(c.pending, callID) // Clean up the pending map after response is received
+		c.mu.Unlock()
+	}()
+
+	// Create the RPC request payload
+    request := "{\"jsonrpc\": \"2.0\", \"method\": \"" + method + "\", \"id\": " + strconv.Itoa(callID) + ", \"params\": [" + strings.Join(params, ",") + "] }"
+
+	w, err := c.conn.NextWriter(websocket.TextMessage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send call: %w", err)
+	}
+	_, err1 := io.WriteString(w, request)
+	err2 := w.Close()
+	if err1 != nil || err2 != nil {
+	    if err1 != nil {
+	        err = err1
+        } else {
+            err = err2
+        }
 		return nil, fmt.Errorf("failed to send call: %w", err)
 	}
 
