@@ -120,8 +120,8 @@ func listDataset(api core.Session, args []string) {
     params = append(params, idParams[:])
     */
 
-    params := [...]string{"[[\"id\", \"=\", \"dozer/jacks-incus\"]]", "{\"extra\": {\"flat\": false,\"retrieve_children\":false,\"properties\":[],\"user_properties\":false}}"}
-    data, err := api.CallStrings("pool.dataset.query", "10s", params[:])
+    params := "[ [[\"id\", \"=\", \"dozer/jacks-incus\"]], {\"extra\": {\"flat\": true, \"retrieve_children\":false, \"properties\":[\"clones\"], \"user_properties\":false}} ]"
+    data, err := api.CallString("pool.dataset.query", "10s", params)
     if err != nil {
         fmt.Println("API error:", err)
         return

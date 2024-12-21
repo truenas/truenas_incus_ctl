@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 	"strconv"
-	"strings"
 
 	"github.com/gorilla/websocket"
 )
@@ -235,7 +234,7 @@ func (c *Client) Call(method string, timeoutStr string, params interface{}) (jso
 }
 
 // Call sends an RPC call to the server and waits for a response.
-func (c *Client) CallStrings(method string, timeoutStr string, params []string) (json.RawMessage, error) {
+func (c *Client) CallString(method string, timeoutStr string, paramsStr string) (json.RawMessage, error) {
     timeout, err := time.ParseDuration(timeoutStr)
     if err != nil || timeout < 0 {
         return nil, errors.New("Invalid timeout was given: " + timeoutStr)
@@ -255,7 +254,7 @@ func (c *Client) CallStrings(method string, timeoutStr string, params []string) 
 	}()
 
 	// Create the RPC request payload
-    request := "{\"jsonrpc\": \"2.0\", \"method\": \"" + method + "\", \"id\": " + strconv.Itoa(callID) + ", \"params\": [" + strings.Join(params, ",") + "] }"
+    request := "{\"jsonrpc\": \"2.0\", \"method\": \"" + method + "\", \"id\": " + strconv.Itoa(callID) + ", \"params\": " + paramsStr + " }"
 
 	w, err := c.conn.NextWriter(websocket.TextMessage)
 	if err != nil {

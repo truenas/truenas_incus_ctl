@@ -46,8 +46,8 @@ func (s *RealSession) Call(method string, timeoutStr string, params interface{})
     return s.client.Call(method, timeoutStr, params)
 }
 
-func (s *RealSession) CallStrings(method string, timeoutStr string, params []string) (json.RawMessage, error) {
-    return s.client.CallStrings(method, timeoutStr, params)
+func (s *RealSession) CallString(method string, timeoutStr string, paramsStr string) (json.RawMessage, error) {
+    return s.client.CallString(method, timeoutStr, paramsStr)
 }
 
 func (s *RealSession) Close() error {
