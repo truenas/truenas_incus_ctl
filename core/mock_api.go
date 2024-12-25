@@ -3,12 +3,19 @@ package core
 import (
     "fmt"
     "errors"
-    //"strings"
+    "strings"
     "encoding/json"
 )
 
+type MockDataset struct {
+    name string
+    poolName string
+    properties map[string]string
+}
+
 type MockSession struct {
     closed bool
+    datasets map[string]MockDataset
 }
 
 func (s *MockSession) Login() error {
@@ -35,31 +42,23 @@ func (s *MockSession) Call(method string, timeoutStr string, params interface{})
     }
     switch (method) {
         case "pool.dataset.create":
-            return mockDatasetCreate(params)
+            return s.mockDatasetCreate(params)
         case "zfs.dataset.create":
-            return mockDatasetCreate(params)
+            return s.mockDatasetCreate(params)
         case "pool.dataset.delete":
-            return mockDatasetDelete(params)
+            return s.mockDatasetDelete(params)
         case "zfs.dataset.delete":
-            return mockDatasetDelete(params)
+            return s.mockDatasetDelete(params)
         case "pool.dataset.query":
-            return mockDatasetQuery(params)
+            return s.mockDatasetQuery(params)
         case "zfs.dataset.query":
-            return mockDatasetQuery(params)
+            return s.mockDatasetQuery(params)
         default:
             return nil, errors.New("Unrecognised command " + method)
     }
 }
 
-func mockDatasetCreate(params interface{}) (json.RawMessage, error) {
-    return nil, errors.New("mockDatasetCreate() not yet implemented")
-}
-
-func mockDatasetDelete(params interface{}) (json.RawMessage, error) {
-    return nil, errors.New("mockDatasetDelete() not yet implemented")
-}
-
-type typeQueryParams struct {
+type typeDatasetParams struct {
     datasetName string
     properties []string
     isFlat bool
@@ -67,34 +66,34 @@ type typeQueryParams struct {
     withUser bool
 }
 
-func getQueryParams(paramsList []interface{}) (typeQueryParams, error) {
-    q := typeQueryParams{}
+func getDatasetParams(paramsList []interface{}) (typeDatasetParams, error) {
+    dp := typeDatasetParams{}
     cur := 0
     if cur >= len(paramsList) {
-        return q, nil
+        return dp, nil
     }
     if filterParamOuter, ok := paramsList[cur].([]interface{}); ok {
         if len(filterParamOuter) < 1 {
-            return q, errors.New("Could not find dataset name in name filter")
+            return dp, errors.New("Could not find dataset name in name filter")
         }
         if filterParam, ok := filterParamOuter[0].([]interface{}); ok {
             if len(filterParam) >= 3 {
                 if idString, ok := filterParam[2].(string); ok {
-                    q.datasetName = idString
+                    dp.datasetName = idString
                 } else if idArray, ok := filterParam[2].([]interface{}); ok {
                     if idString, ok := idArray[0].(string); ok {
-                        q.datasetName = idString
+                        dp.datasetName = idString
                     }
                 }
             }
-            if q.datasetName == "" {
-                return q, errors.New("Could not find dataset name in name filter")
+            if dp.datasetName == "" {
+                return dp, errors.New("Could not find dataset name in name filter")
             }
             cur++
         }
     }
     if cur >= len(paramsList) {
-        return q, nil
+        return dp, nil
     }
     if propsParam, ok := paramsList[cur].(map[string]interface{}); ok {
         var extraMap map[string]interface{}
@@ -102,16 +101,16 @@ func getQueryParams(paramsList []interface{}) (typeQueryParams, error) {
             extraMap, ok = extra.(map[string]interface{})
         }
         if extraMap == nil {
-            return q, errors.New("Could not find query options in query filter")
+            return dp, errors.New("Could not find dataset options in the parameters")
         }
         if value, ok := extraMap["flat"]; ok {
-            q.isFlat, ok = value.(bool)
+            dp.isFlat, ok = value.(bool)
         }
         if value, ok := extraMap["retrieve_children"]; ok {
-            q.withChildren, ok = value.(bool)
+            dp.withChildren, ok = value.(bool)
         }
         if value, ok := extraMap["user_properties"]; ok {
-            q.withUser, ok = value.(bool)
+            dp.withUser, ok = value.(bool)
         }
         if value, ok := extraMap["properties"]; ok {
             if props, ok := value.([]interface{}); ok {
@@ -120,29 +119,125 @@ func getQueryParams(paramsList []interface{}) (typeQueryParams, error) {
                     if str, ok = elem.(string); !ok {
                         str = fmt.Sprint(elem)
                     }
-                    q.properties = append(q.properties, str)
+                    dp.properties = append(dp.properties, str)
                 }
             }
         }
     }
-    return q, nil
+    return dp, nil
 }
 
-func mockDatasetQuery(params interface{}) (json.RawMessage, error) {
-    q := typeQueryParams{}
+func (s *MockSession) mockDatasetCreate(params interface{}) (json.RawMessage, error) {
+    dp := typeDatasetParams{}
     if paramsList, ok := params.([]interface{}); ok {
         var err error
-        q, err = getQueryParams(paramsList)
+        dp, err = getDatasetParams(paramsList)
         if err != nil {
             return nil, err
         }
     }
 
-    fmt.Println("datasetName:", q.datasetName)
-    fmt.Println("properties:", q.properties)
-    fmt.Println("isFlat:", q.isFlat)
-    fmt.Println("withChildren:", q.withChildren)
-    fmt.Println("withUser:", q.withUser)
+    if dp.datasetName == "" {
+        return nil, errors.New("No dataset name was provided")
+    }
+    if _, exists := s.datasets[dp.datasetName]; exists {
+        return nil, errors.New("Dataset already exists")
+    }
 
-    return nil, errors.New("yep")
+    newDataset := MockDataset{}
+    newDataset.properties = make(map[string]string)
+    newDataset.name = dp.datasetName
+    newDataset.poolName = "foo"
+
+    s.datasets[dp.datasetName] = newDataset
+
+    var output strings.Builder
+    writeDatasetInfo(&output, &newDataset, &dp)
+    outStr := output.String()
+    fmt.Println(outStr)
+    return []byte(outStr), nil
+}
+
+func (s *MockSession) mockDatasetDelete(params interface{}) (json.RawMessage, error) {
+    return nil, errors.New("mockDatasetDelete() not yet implemented")
+}
+
+func writeDatasetInfo(output *strings.Builder, dataset *MockDataset, dp *typeDatasetParams) {
+    output.WriteString("{ \"id\": \"")
+    output.WriteString(dataset.name)
+    output.WriteString("\", \"type\": \"FILESYSTEM\", \"name\": \"")
+    output.WriteString(dataset.name)
+    output.WriteString("\", \"pool\": \"")
+    output.WriteString(dataset.poolName)
+    output.WriteString("\", ")
+    if len(dp.properties) > 0 {
+        output.WriteString("\"properties\": {")
+        for idx, prop := range(dp.properties) {
+            if idx > 0 {
+                output.WriteString(",\n")
+            }
+            value, _ := dataset.properties[prop]
+            output.WriteString("\"")
+            output.WriteString(prop)
+            output.WriteString("\": {\"value\": \"")
+            output.WriteString(value)
+            output.WriteString("\", \"rawvalue\": \"")
+            output.WriteString(value)
+            output.WriteString("\", \"source\": \"LOCAL\", \"parsed\": \"")
+            output.WriteString(value)
+            output.WriteString("\"}")
+        }
+        output.WriteString("},\n")
+    }
+    output.WriteString("\"comments\": { \"value\": \"\", \"rawvalue\": \"\", \"source\": \"LOCAL\", \"parsed\": \"\" }, \"user_properties\": {} }")
+}
+
+func (s *MockSession) mockDatasetQuery(params interface{}) (json.RawMessage, error) {
+    dp := typeDatasetParams{}
+    if paramsList, ok := params.([]interface{}); ok {
+        var err error
+        dp, err = getDatasetParams(paramsList)
+        if err != nil {
+            return nil, err
+        }
+    }
+
+    /*
+    {
+        "jsonrpc": "2.0",
+        "result": [
+            
+        ],
+        "id": 2
+    }
+    */
+
+    var output strings.Builder
+    output.WriteString("{\"jsonrpc\": \"2.0\", \"result\": [")
+
+    if dp.datasetName != "" {
+        if dataset, exists := s.datasets[dp.datasetName]; exists {
+            writeDatasetInfo(&output, &dataset, &dp)
+        }
+    } else {
+        idx := 0
+        for _, dataset := range(s.datasets) {
+            if idx > 0 {
+                output.WriteString(", ")
+            }
+            writeDatasetInfo(&output, &dataset, &dp)
+            idx++
+        }
+    }
+
+    fmt.Println("datasetName:", dp.datasetName)
+    fmt.Println("properties:", dp.properties)
+    fmt.Println("isFlat:", dp.isFlat)
+    fmt.Println("withChildren:", dp.withChildren)
+    fmt.Println("withUser:", dp.withUser)
+
+    output.WriteString("], \"id\": 2}")
+    outStr := output.String()
+    fmt.Println(outStr)
+    return []byte(outStr), nil
 }
