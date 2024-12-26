@@ -97,7 +97,14 @@ func createDataset(api core.Session, args []string) {
         return
     }
     defer api.Close()
-    //api.Call("pool.dataset.create", "10s", args)
+
+    params := "[ [[\"id\", \"=\", \"dozer/jacks-incus\"]], {\"extra\": {\"flat\": false,\"retrieve_children\":false,\"properties\":[\"compression\"],\"user_properties\":false }} ]"
+    data, err := api.CallString("zfs.dataset.create", "10s", params)
+    if err != nil {
+        fmt.Println("API error:", err)
+        return
+    }
+    os.Stdout.Write(data)
 }
 
 func deleteDataset(api core.Session, args []string) {
@@ -105,7 +112,7 @@ func deleteDataset(api core.Session, args []string) {
         return
     }
     defer api.Close()
-    //api.Call("pool.dataset.delete", "10s", args)
+    api.Call("pool.dataset.delete", "10s", args)
 }
 
 func listDataset(api core.Session, args []string) {
