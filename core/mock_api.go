@@ -147,6 +147,9 @@ func getCreateDatasetParams(params interface{}) (typeCreateDatasetParams, error)
         if cdp.datasetName, ok = value.(string); !ok {
             return cdp, errors.New("Name was not a string")
         }
+        if strings.Index(cdp.datasetName, "/") <= 0 {
+            return cdp, errors.New("Dataset name must contain its pool name before a slash, eg. puddle/example")
+        }
     }
     if value, ok := paramsMap["comments"]; ok {
         if cdp.comments, ok = value.(string); !ok {
@@ -245,7 +248,24 @@ func (s *MockSession) mockDatasetCreate(params interface{}) (json.RawMessage, er
 }
 
 func (s *MockSession) mockDatasetDelete(params interface{}) (json.RawMessage, error) {
-    return nil, errors.New("mockDatasetDelete() not yet implemented")
+    datasetName, ok := params.(string)
+    if !ok {
+        return nil, errors.New("dataset delete requires a string, representing the name of the dataset to delete")
+    }
+
+    datasets := loadMockDatasets()
+
+    if datasets == nil {
+        return nil, errors.New("Dataset does not exist")
+    }
+    if _, exists := datasets[datasetName]; !exists {
+        return nil, errors.New("Dataset does not exist")
+    }
+
+    delete(datasets, datasetName)
+    saveMockDatasets(&datasets)
+
+    return []byte("True"), nil
 }
 
 type typeQueryDatasetParams struct {

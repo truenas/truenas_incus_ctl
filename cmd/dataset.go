@@ -3,7 +3,8 @@ package cmd
 import (
     "os"
     "fmt"
-    //"flag"
+    "log"
+    "strings"
     "truenas/admin-tool/core"
     "github.com/spf13/cobra"
 )
@@ -98,8 +99,24 @@ func createDataset(api core.Session, args []string) {
     }
     defer api.Close()
 
-    params := "[ [[\"id\", \"=\", \"dozer/jacks-incus\"]], {\"extra\": {\"flat\": false,\"retrieve_children\":false,\"properties\":[\"compression\"],\"user_properties\":false }} ]"
-    data, err := api.CallString("zfs.dataset.create", "10s", params)
+    name, err := core.EncloseWith(args[0], "\"")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    var builder strings.Builder
+    builder.WriteString("{\"name\":")
+    builder.WriteString(name)
+    if len(args) >= 2 {
+        builder.WriteString(", \"properties\": {")
+        for i := 1; i < len(args); i++ {
+            
+        }
+        builder.WriteString("}")
+    }
+    builder.WriteString("}")
+
+    data, err := api.CallString("zfs.dataset.create", "10s", builder.String())
     if err != nil {
         fmt.Println("API error:", err)
         return
@@ -112,7 +129,12 @@ func deleteDataset(api core.Session, args []string) {
         return
     }
     defer api.Close()
-    api.Call("pool.dataset.delete", "10s", args)
+
+    name, err := core.EncloseWith(args[0], "\"")
+    if err != nil {
+        log.Fatal(err)
+    }
+    api.Call("pool.dataset.delete", "10s", name)
 }
 
 func listDataset(api core.Session, args []string) {
@@ -121,14 +143,32 @@ func listDataset(api core.Session, args []string) {
     }
     defer api.Close()
 
-    /*
-    idParams := [...]string{ "id", "=", "dozer/jacks-incus" }
-    var params [][]string
-    params = append(params, idParams[:])
-    */
+    var builder strings.Builder
+    builder.WriteString("[ ")
+    if len(args) > 0 {
+        name, err := core.EncloseWith(args[0], "\"")
+        if err != nil {
+            log.Fatal(err)
+        }
+        builder.WriteString("[[\"id\", \"=\", ")
+        builder.WriteString(name)
+        builder.WriteString("]], ")
+    }
 
-    params := "[ [[\"id\", \"=\", \"dozer/jacks-incus\"]], {\"extra\": {\"flat\": false,\"retrieve_children\":false,\"properties\":[\"compression\"],\"user_properties\":false }} ]"
-    data, err := api.CallString("zfs.dataset.query", "20s", params)
+    builder.WriteString("{\"extra\": {\"flat\": false, \"retrieve_children\":false, \"properties\":[")
+    for i := 1; i < len(args); i++ {
+        prop, err := core.EncloseWith(args[i], "\"")
+        if err != nil {
+            log.Fatal(err)
+        }
+        if i >= 2 {
+            builder.WriteString(",")
+        }
+        builder.WriteString(prop)
+    }
+    builder.WriteString("], \"user_properties\":false }} ]")
+
+    data, err := api.CallString("zfs.dataset.query", "20s", builder.String())
     if err != nil {
         fmt.Println("API error:", err)
         return
