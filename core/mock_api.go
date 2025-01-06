@@ -97,6 +97,9 @@ func loadMockDatasets() map[string]MockDataset {
                 d.properties[key] = value
             }
         }
+        if datasets == nil {
+            datasets = make(map[string]MockDataset)
+        }
         datasets[d.name] = d
     }
 
@@ -339,15 +342,15 @@ func getQueryDatasetParams(paramsList []interface{}) (typeQueryDatasetParams, er
 
 func writeDatasetInfo(output *strings.Builder, dataset *MockDataset, propertiesKeys []string, userPropsKeys []string) {
     poolName := getPoolNameFromDataset(dataset.name)
-    output.WriteString("{ \"id\": \"")
+    output.WriteString("{ \"id\":\"")
     output.WriteString(dataset.name)
-    output.WriteString("\", \"type\": \"FILESYSTEM\", \"name\": \"")
+    output.WriteString("\", \"type\":\"FILESYSTEM\", \"name\":\"")
     output.WriteString(dataset.name)
-    output.WriteString("\", \"pool\": \"")
+    output.WriteString("\", \"pool\":\"")
     output.WriteString(poolName)
     output.WriteString("\", ")
     if propertiesKeys != nil {
-        output.WriteString("\"properties\": {")
+        output.WriteString("\"properties\":{")
         for idx, prop := range(propertiesKeys) {
             if idx > 0 {
                 output.WriteString(",\n")
@@ -355,17 +358,17 @@ func writeDatasetInfo(output *strings.Builder, dataset *MockDataset, propertiesK
             value, _ := dataset.properties[prop]
             output.WriteString("\"")
             output.WriteString(prop)
-            output.WriteString("\": {\"value\": \"")
+            output.WriteString("\":{\"value\":\"")
             output.WriteString(value)
-            output.WriteString("\", \"rawvalue\": \"")
+            output.WriteString("\", \"rawvalue\":\"")
             output.WriteString(value)
-            output.WriteString("\", \"source\": \"LOCAL\", \"parsed\": \"")
+            output.WriteString("\", \"source\":\"LOCAL\", \"parsed\":\"")
             output.WriteString(value)
             output.WriteString("\"}")
         }
         output.WriteString("},\n")
     }
-    output.WriteString("\"comments\": { \"value\": \"\", \"rawvalue\": \"\", \"source\": \"LOCAL\", \"parsed\": \"\" }, \"user_properties\": {} }")
+    output.WriteString("\"comments\":{ \"value\":\"\", \"rawvalue\":\"\", \"source\":\"LOCAL\", \"parsed\":\"\" }, \"user_properties\":{} }")
 }
 
 func (s *MockSession) mockDatasetQuery(params interface{}) (json.RawMessage, error) {
@@ -381,7 +384,7 @@ func (s *MockSession) mockDatasetQuery(params interface{}) (json.RawMessage, err
     datasets := loadMockDatasets()
 
     var output strings.Builder
-    output.WriteString("{\"jsonrpc\": \"2.0\", \"result\": [")
+    output.WriteString("{\"jsonrpc\":\"2.0\", \"result\":[")
 
     if datasets != nil {
         if qdp.datasetName != "" {
@@ -400,13 +403,7 @@ func (s *MockSession) mockDatasetQuery(params interface{}) (json.RawMessage, err
         }
     }
 
-    fmt.Println("datasetName:", qdp.datasetName)
-    fmt.Println("properties:", qdp.properties)
-    fmt.Println("isFlat:", qdp.isFlat)
-    fmt.Println("withChildren:", qdp.withChildren)
-    fmt.Println("withUser:", qdp.withUser)
-
-    output.WriteString("], \"id\": 2}")
+    output.WriteString("], \"id\":2}")
     outStr := output.String()
     return []byte(outStr), nil
 }
