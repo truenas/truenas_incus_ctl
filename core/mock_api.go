@@ -167,7 +167,7 @@ func getCreateDatasetParams(params interface{}) (typeCreateDatasetParams, error)
         for key, pv := range(inMap) {
             pvStr, ok := pv.(string)
             if !ok {
-                return cdp, errors.New("Property '" + key + "' was not a string")
+                pvStr = fmt.Sprintf("%v", pv)
             }
             if cdp.properties == nil {
                 cdp.properties = make(map[string]string)
