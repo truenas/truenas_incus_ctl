@@ -166,7 +166,9 @@ func getCreateDatasetParams(params interface{}) (typeCreateDatasetParams, error)
         }
         for key, pv := range(inMap) {
             pvStr, ok := pv.(string)
-            if !ok {
+            if ok {
+                pvStr = "\"" + pvStr + "\""
+            } else {
                 pvStr = fmt.Sprintf("%v", pv)
             }
             if cdp.properties == nil {
@@ -201,7 +203,9 @@ func getCreateDatasetParams(params interface{}) (typeCreateDatasetParams, error)
                 return cdp, errors.New("User Property '" + uKeyStr + "' did not contain a value")
             }
             if uValueStr, ok = uValue.(string); !ok {
-                return cdp, errors.New("User Property '" + uKeyStr + "' value was not a string")
+                uValueStr = "\"" + uValueStr + "\""
+            } else {
+                uValueStr = fmt.Sprintf("%v", uValue)
             }
 
             if cdp.userProps == nil {
@@ -237,13 +241,14 @@ func (s *MockSession) mockDatasetCreate(params interface{}) (json.RawMessage, er
     newDataset.properties = make(map[string]string)
     newDataset.name = cdp.datasetName
 
-    datasets[cdp.datasetName] = newDataset
-    saveMockDatasets(&datasets)
-
     propertyKeys := make([]string, 0, len(cdp.properties))
-    for key, _ := range(cdp.properties) {
+    for key, value := range(cdp.properties) {
+        newDataset.properties[key] = value
         propertyKeys = append(propertyKeys, key)
     }
+
+    datasets[cdp.datasetName] = newDataset
+    saveMockDatasets(&datasets)
 
     var output strings.Builder
     writeDatasetInfo(&output, &newDataset, propertyKeys, nil)
@@ -358,17 +363,35 @@ func writeDatasetInfo(output *strings.Builder, dataset *MockDataset, propertiesK
             value, _ := dataset.properties[prop]
             output.WriteString("\"")
             output.WriteString(prop)
-            output.WriteString("\":{\"value\":\"")
+            output.WriteString("\":{\"value\":")
             output.WriteString(value)
-            output.WriteString("\", \"rawvalue\":\"")
+            output.WriteString(", \"rawvalue\":")
             output.WriteString(value)
-            output.WriteString("\", \"source\":\"LOCAL\", \"parsed\":\"")
+            output.WriteString(", \"source\":\"LOCAL\", \"parsed\":")
             output.WriteString(value)
-            output.WriteString("\"}")
+            output.WriteString("}")
         }
         output.WriteString("},\n")
     }
-    output.WriteString("\"comments\":{ \"value\":\"\", \"rawvalue\":\"\", \"source\":\"LOCAL\", \"parsed\":\"\" }, \"user_properties\":{} }")
+    output.WriteString("\"comments\":{ \"value\":\"\", \"rawvalue\":\"\", \"source\":\"LOCAL\", \"parsed\":\"\" }, \"user_properties\":{")
+    if userPropsKeys != nil {
+        for idx, prop := range(userPropsKeys) {
+            if idx > 0 {
+                output.WriteString(",\n")
+            }
+            value, _ := dataset.userProps[prop]
+            output.WriteString("\"")
+            output.WriteString(prop)
+            output.WriteString("\":{\"value\":")
+            output.WriteString(value)
+            output.WriteString(", \"rawvalue\":\"")
+            output.WriteString(value)
+            output.WriteString(", \"source\":\"LOCAL\", \"parsed\":")
+            output.WriteString(value)
+            output.WriteString("}")
+        }
+    }
+    output.WriteString("} }")
 }
 
 func (s *MockSession) mockDatasetQuery(params interface{}) (json.RawMessage, error) {

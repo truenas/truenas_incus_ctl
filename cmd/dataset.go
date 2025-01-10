@@ -249,7 +249,7 @@ func createDataset(api core.Session, args []string) {
     var builder strings.Builder
     builder.WriteString("{\"name\":")
     builder.WriteString(name)
-    builder.WriteString(", \"properties\": {")
+    builder.WriteString(", \"properties\":{")
     nProps := 0
     for i := 0; i < len(g_parameters); i++ {
         if (!g_parameters[i].isDefault()) {
@@ -258,7 +258,7 @@ func createDataset(api core.Session, args []string) {
             }
             builder.WriteString("\"")
             builder.WriteString(g_parameters[i].name)
-            builder.WriteString("\": ")
+            builder.WriteString("\":")
             builder.WriteString(g_parameters[i].getJsonValue())
             nProps++
         }
@@ -313,7 +313,7 @@ func listDataset(api core.Session, args []string) {
         builder.WriteString("]], ")
     }
 
-    builder.WriteString("{\"extra\": {\"flat\": false, \"retrieve_children\":false, \"properties\":[")
+    builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":false, \"properties\":[")
     for i := 1; i < len(args); i++ {
         prop, err := core.EncloseWith(args[i], "\"")
         if err != nil {
