@@ -132,6 +132,18 @@ func saveMockDatasets(datasets *map[string]MockDataset) {
     }
 }
 
+func getKeys(properties map[string]string) []string {
+    var keys []string
+    size := len(properties)
+    if size > 0 {
+        keys = make([]string, 0, size)
+        for k, _ := range(properties) {
+            keys = append(keys, k)
+        }
+    }
+    return keys
+}
+
 type typeCreateDatasetParams struct {
     datasetName string
     comments string
@@ -282,6 +294,7 @@ type typeQueryDatasetParams struct {
     isFlat bool
     withChildren bool
     withUser bool
+    shouldGetAllProps bool
 }
 
 func getQueryDatasetParams(paramsList []interface{}) (typeQueryDatasetParams, error) {
@@ -339,6 +352,8 @@ func getQueryDatasetParams(paramsList []interface{}) (typeQueryDatasetParams, er
                     }
                     qdp.properties = append(qdp.properties, str)
                 }
+            } else if value == nil {
+                qdp.shouldGetAllProps = true
             }
         }
     }
@@ -356,11 +371,15 @@ func writeDatasetInfo(output *strings.Builder, dataset *MockDataset, propertiesK
     output.WriteString("\", ")
     if propertiesKeys != nil {
         output.WriteString("\"properties\":{")
-        for idx, prop := range(propertiesKeys) {
-            if idx > 0 {
+        isFirstProp := true
+        for _, prop := range(propertiesKeys) {
+            value, exists := dataset.properties[prop]
+            if !exists {
+                continue
+            }
+            if !isFirstProp {
                 output.WriteString(",\n")
             }
-            value, _ := dataset.properties[prop]
             output.WriteString("\"")
             output.WriteString(prop)
             output.WriteString("\":{\"value\":")
@@ -370,16 +389,21 @@ func writeDatasetInfo(output *strings.Builder, dataset *MockDataset, propertiesK
             output.WriteString(", \"source\":\"LOCAL\", \"parsed\":")
             output.WriteString(value)
             output.WriteString("}")
+            isFirstProp = false
         }
         output.WriteString("},\n")
     }
-    output.WriteString("\"comments\":{ \"value\":\"\", \"rawvalue\":\"\", \"source\":\"LOCAL\", \"parsed\":\"\" }, \"user_properties\":{")
+    output.WriteString("\"comments\":{\"value\":\"\", \"rawvalue\":\"\", \"source\":\"LOCAL\", \"parsed\":\"\"}, \"user_properties\":{")
     if userPropsKeys != nil {
-        for idx, prop := range(userPropsKeys) {
-            if idx > 0 {
+        isFirstProp := true
+        for _, prop := range(userPropsKeys) {
+            value, exists := dataset.userProps[prop]
+            if !exists {
+                continue
+            }
+            if !isFirstProp {
                 output.WriteString(",\n")
             }
-            value, _ := dataset.userProps[prop]
             output.WriteString("\"")
             output.WriteString(prop)
             output.WriteString("\":{\"value\":")
@@ -389,6 +413,7 @@ func writeDatasetInfo(output *strings.Builder, dataset *MockDataset, propertiesK
             output.WriteString(", \"source\":\"LOCAL\", \"parsed\":")
             output.WriteString(value)
             output.WriteString("}")
+            isFirstProp = false
         }
     }
     output.WriteString("} }")
@@ -412,7 +437,13 @@ func (s *MockSession) mockDatasetQuery(params interface{}) (json.RawMessage, err
     if datasets != nil {
         if qdp.datasetName != "" {
             if dataset, exists := datasets[qdp.datasetName]; exists {
-                writeDatasetInfo(&output, &dataset, qdp.properties, nil)
+                var properties []string
+                if qdp.shouldGetAllProps {
+                    properties = getKeys(dataset.properties)
+                } else {
+                    properties = qdp.properties
+                }
+                writeDatasetInfo(&output, &dataset, properties, nil)
             }
         } else {
             idx := 0
@@ -420,7 +451,13 @@ func (s *MockSession) mockDatasetQuery(params interface{}) (json.RawMessage, err
                 if idx > 0 {
                     output.WriteString(", ")
                 }
-                writeDatasetInfo(&output, &dataset, qdp.properties, nil)
+                var properties []string
+                if qdp.shouldGetAllProps {
+                    properties = getKeys(dataset.properties)
+                } else {
+                    properties = qdp.properties
+                }
+                writeDatasetInfo(&output, &dataset, properties, nil)
                 idx++
             }
         }

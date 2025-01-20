@@ -4,6 +4,7 @@ import (
     "os"
     "fmt"
     "log"
+    "slices"
     "errors"
     "reflect"
     "strings"
@@ -61,6 +62,7 @@ var datasetListCmd = &cobra.Command{
 var datasetInspectCmd = &cobra.Command{
     Use:   "inspect",
     Short: "Prints properties of a dataset/zvol.",
+    Args: cobra.ExactArgs(1),
     Aliases: []string{"get"},
     Run: func (cmd *cobra.Command, args []string) {
         inspectDataset(validateAndLogin(cmd, args, 0), args)
@@ -231,10 +233,15 @@ var g_parametersRename = []Parameter{
 
 func addParameter(cmdFlags interface{}, inputs []reflect.Value, paramList []Parameter, idx int) {
     shortcutInc := 0
+    var methodSuffix string
     if len(paramList[idx].shortcut) > 0 {
         inputs[2] = reflect.ValueOf(paramList[idx].shortcut)
         shortcutInc = 1
+        methodSuffix = "VarP"
+    } else {
+        methodSuffix = "Var"
     }
+
     typeName := paramList[idx].typeStr
     switch typeName {
         case "String":
@@ -251,7 +258,9 @@ func addParameter(cmdFlags interface{}, inputs []reflect.Value, paramList []Para
     }
     inputs[1] = reflect.ValueOf(paramList[idx].name)
     inputs[3 + shortcutInc] = reflect.ValueOf(paramList[idx].description)
-    reflect.ValueOf(cmdFlags).MethodByName(typeName + "Var").Call(inputs[0:len(inputs)-shortcutInc])
+
+    nParams := len(inputs) - 1 + shortcutInc
+    reflect.ValueOf(cmdFlags).MethodByName(typeName + methodSuffix).Call(inputs[0:nParams])
 }
 
 func init() {
@@ -335,13 +344,11 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
     }
     builder.WriteString("} }")
 
-    data, err := api.CallString("zfs.dataset." + cmdType, "10s", builder.String())
+    _, err = api.CallString("zfs.dataset." + cmdType, "10s", builder.String())
     if err != nil {
         fmt.Fprintln(os.Stderr, "API error:", err)
         return
     }
-
-    data = data
 }
 
 func deleteDataset(api core.Session, args []string) {
@@ -355,13 +362,11 @@ func deleteDataset(api core.Session, args []string) {
         log.Fatal(err)
     }
 
-    data, err := api.CallString("pool.dataset.delete", "10s", name)
+    _, err = api.CallString("pool.dataset.delete", "10s", name)
     if err != nil {
         fmt.Fprintln(os.Stderr, "API error:", err)
         return
     }
-
-    data = data
 }
 
 func listDataset(api core.Session, args []string) {
@@ -370,13 +375,53 @@ func listDataset(api core.Session, args []string) {
     }
     defer api.Close()
 
-    data, err := retrieveDatasetInfos(api, args)
+    var datasetName string
+    if len(args) > 0 {
+        datasetName = args[0]
+    }
+
+    properties := enumerateDatasetProperties()
+    datasets, err := retrieveDatasetInfos(api, datasetName, properties, false)
     if err != nil {
         fmt.Fprintln(os.Stderr, "API error:", err)
         return
     }
 
-    data = data
+    format := g_parametersListInspect[findParameter(g_parametersListInspect, "format")].value.vStr
+    if format == "table" {
+        columnsList := getUsedPropertyColumns(datasets)
+        var builder strings.Builder
+        for i := -1; i < len(datasets); i++ {
+            isFirstCol := true
+            if i < 0 {
+                for _, c := range(columnsList) {
+                    if !isFirstCol {
+                        builder.WriteString("\t")
+                    }
+                    builder.WriteString(c)
+                    isFirstCol = false
+                }
+            } else {
+                for _, c := range(columnsList) {
+                    if !isFirstCol {
+                        builder.WriteString("\t")
+                    }
+                    if value, ok := datasets[i][c]; ok {
+                        if valueStr, ok := value.(string); ok {
+                            builder.WriteString(valueStr)
+                        } else {
+                            builder.WriteString(fmt.Sprintf("%v", value))
+                        }
+                    } else {
+                        builder.WriteString("\t")
+                    }
+                    isFirstCol = false
+                }
+            }
+            builder.WriteString("\n")
+        }
+        os.Stdout.WriteString(builder.String())
+    }
 }
 
 func inspectDataset(api core.Session, args []string) {
@@ -385,13 +430,14 @@ func inspectDataset(api core.Session, args []string) {
     }
     defer api.Close()
 
-    data, err := retrieveDatasetInfos(api, args)
+    properties := enumerateDatasetProperties()
+    datasets, err := retrieveDatasetInfos(api, args[0], properties, len(properties) == 0)
     if err != nil {
         fmt.Fprintln(os.Stderr, "API error:", err)
         return
     }
 
-    data = data
+    datasets = datasets
 }
 
 func promoteDataset(api core.Session, args []string) {
@@ -408,11 +454,30 @@ func renameDataset(api core.Session, args []string) {
     defer api.Close()
 }
 
-func retrieveDatasetInfos(api core.Session, args []string) (json.RawMessage, error) {
+func enumerateDatasetProperties() []string {
+    option := findParameter(g_parametersListInspect, "output")
+    if option < 0 {
+        return nil
+    }
+
+    var propsList []string
+    propsStr := g_parametersListInspect[option].value.vStr
+    if len(propsStr) > 0 {
+        propsList = strings.Split(propsStr, ",")
+        /*
+        for j := 0; j < len(propsList); j++ {
+            propsList[j] = strings.Trim(propsList[j], " \t\r\n")
+        }
+        */
+    }
+    return propsList
+}
+
+func retrieveDatasetInfos(api core.Session, datasetName string, propsList []string, shouldGetAllProps bool) ([]map[string]interface{}, error) {
     var builder strings.Builder
     builder.WriteString("[ ")
-    if len(args) > 0 {
-        name, err := core.EncloseWith(args[0], "\"")
+    if len(datasetName) >= 1 {
+        name, err := core.EncloseWith(datasetName, "\"")
         if err != nil {
             log.Fatal(err)
         }
@@ -421,18 +486,107 @@ func retrieveDatasetInfos(api core.Session, args []string) (json.RawMessage, err
         builder.WriteString("]], ")
     }
 
-    builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":false, \"properties\":[")
-    for i := 1; i < len(args); i++ {
-        prop, err := core.EncloseWith(args[i], "\"")
-        if err != nil {
-            log.Fatal(err)
+    builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":false, \"properties\":")
+    if shouldGetAllProps {
+        builder.WriteString("null")
+    } else {
+        builder.WriteString("[")
+        for i := 0; i < len(propsList); i++ {
+            prop, err := core.EncloseWith(propsList[i], "\"")
+            if err != nil {
+                log.Fatal(err)
+            }
+            if i >= 2 {
+                builder.WriteString(",")
+            }
+            builder.WriteString(prop)
         }
-        if i >= 2 {
-            builder.WriteString(",")
-        }
-        builder.WriteString(prop)
-    }
-    builder.WriteString("], \"user_properties\":false }} ]")
 
-    return api.CallString("zfs.dataset.query", "20s", builder.String())
+        builder.WriteString("]")
+    }
+    builder.WriteString(", \"user_properties\":false }} ]")
+
+    data, err := api.CallString("zfs.dataset.query", "20s", builder.String())
+    if err != nil {
+        return nil, err
+    }
+
+    var response interface{}
+    if err = json.Unmarshal(data, &response); err != nil {
+		return nil, errors.New(fmt.Sprintf("response error: %v", err))
+	}
+
+    responseMap, ok := response.(map[string]interface{})
+    if !ok {
+        return nil, errors.New("API response was not a JSON object")
+    }
+
+    var resultsList []map[string]interface{}
+    if results, ok := responseMap["result"]; ok {
+        if resultsArray, ok := results.([]interface{}); ok {
+            resultsList = make([]map[string]interface{}, 0)
+            for i := 0; i < len(resultsArray); i++ {
+                if elem, ok := resultsArray[i].(map[string]interface{}); ok {
+                    resultsList = append(resultsList, elem)
+                } else {
+                    fmt.Println("Failed to cast at", i, "lol")
+                }
+            }
+        } else {
+            fmt.Println("Failed to cast lol")
+        }
+    }
+    if len(resultsList) == 0 {
+        return nil, errors.New("API response did not contain a list of results")
+    }
+
+    datasetList := make([]map[string]interface{}, 0, len(resultsList))
+    for i := 0; i < len(resultsList); i++ {
+        dict := make(map[string]interface{})
+        if name, ok := resultsList[i]["name"]; ok {
+            dict["name"] = name
+        }
+        var propsMap map[string]interface{}
+        if props, ok := resultsList[i]["properties"]; ok {
+            propsMap, ok = props.(map[string]interface{})
+        }
+        for key, value := range(propsMap) {
+            if valueMap, ok := value.(map[string]interface{}); ok {
+                if actualValue, ok := valueMap["parsed"]; ok {
+                    dict[key] = actualValue
+                } else if actualValue, ok := valueMap["value"]; ok {
+                    dict[key] = actualValue
+                }
+            }
+        }
+        datasetList = append(datasetList, dict)
+    }
+
+    return datasetList, nil
+}
+
+func getUsedPropertyColumns(datasets []map[string]interface{}) []string {
+    columnsMap := make(map[string]bool)
+    columnsList := make([]string, 0)
+    columnsMap["name"] = true
+    for _, d := range(datasets) {
+        for key, _ := range(d) {
+            if _, exists := columnsMap[key]; !exists {
+                columnsMap[key] = true
+                columnsList = append(columnsList, key)
+            }
+        }
+    }
+
+    slices.Sort(columnsList)
+    return append([]string{"name"}, columnsList...)
+}
+
+func findParameter(list []Parameter, name string) int {
+    for i := 0; i < len(list); i++ {
+        if list[i].name == name {
+            return i
+        }
+    }
+    return -1
 }
