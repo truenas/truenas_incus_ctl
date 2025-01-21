@@ -4,8 +4,8 @@ import (
     "os"
     "fmt"
     "log"
-    "slices"
     "errors"
+    "slices"
     "reflect"
     "strings"
     "encoding/json"
@@ -388,12 +388,14 @@ func listDataset(api core.Session, args []string) {
     }
 
     var builder strings.Builder
+    columnsList := getUsedPropertyColumns(datasets)
     format := g_parametersListInspect[findParameter(g_parametersListInspect, "format")].value.vStr
+
     switch format {
         case "csv":
-            writeDatasetInfosListCsv(&builder, datasets, true)
+            core.WriteListCsv(&builder, datasets, columnsList, true)
         case "table":
-            writeDatasetInfosListTable(&builder, datasets, true)
+            core.WriteListTable(&builder, datasets, columnsList, true)
     }
 
     os.Stdout.WriteString(builder.String())
@@ -413,12 +415,14 @@ func inspectDataset(api core.Session, args []string) {
     }
 
     var builder strings.Builder
+    columnsList := getUsedPropertyColumns(datasets)
     format := g_parametersListInspect[findParameter(g_parametersListInspect, "format")].value.vStr
+
     switch format {
         case "csv":
-            writeDatasetInfosInspectCsv(&builder, datasets, true)
+            core.WriteInspectCsv(&builder, datasets, columnsList, true)
         case "table":
-            writeDatasetInfosInspectTable(&builder, datasets, true)
+            core.WriteInspectTable(&builder, datasets, columnsList, true)
     }
 
     os.Stdout.WriteString(builder.String())
@@ -588,191 +592,6 @@ func getUsedPropertyColumns(datasets []map[string]interface{}) []string {
 
     slices.Sort(columnsList)
     return append([]string{"name"}, columnsList...)
-}
-
-func writeDatasetInfosListTable(builder *strings.Builder, datasets []map[string]interface{}, useHeaders bool) {
-    headerInc := 0
-    if useHeaders {
-        headerInc = 1
-    }
-
-    columnsList := getUsedPropertyColumns(datasets)
-    allStrings := make([]string, 0, len(columnsList) * (headerInc + len(datasets)))
-    if useHeaders {
-        for i := 0; i < len(columnsList); i++ {
-            allStrings = append(allStrings, columnsList[i])
-        }
-    }
-    for i := 0; i < len(datasets); i++ {
-        for _, c := range(columnsList) {
-            var str string
-            if value, ok := datasets[i][c]; ok {
-                if valueStr, ok := value.(string); ok {
-                    str = valueStr
-                } else {
-                    str = fmt.Sprintf("%v", value)
-                }
-            }
-            allStrings = append(allStrings, str)
-        }
-    }
-
-    writeTable(builder, allStrings, headerInc + len(datasets), len(columnsList), useHeaders)
-}
-
-func writeDatasetInfosInspectTable(builder *strings.Builder, datasets []map[string]interface{}, useHeaders bool) {
-    headerInc := 0
-    if useHeaders {
-        headerInc = 1
-    }
-
-    columnsList := getUsedPropertyColumns(datasets)
-    nRows := len(columnsList)
-    nCols := headerInc + len(datasets)
-    nStrings := nRows * nCols
-    allStrings := make([]string, nStrings, nStrings)
-
-    for i := 0; i < len(columnsList); i++ {
-        if useHeaders {
-            allStrings[i * nCols] = columnsList[i]
-        }
-        for j := 0; j < len(datasets); j++ {
-            var str string
-            if value, ok := datasets[j][columnsList[i]]; ok {
-                if valueStr, ok := value.(string); ok {
-                    str = valueStr
-                } else {
-                    str = fmt.Sprintf("%v", value)
-                }
-            }
-            allStrings[i * nCols + (headerInc + j)] = str
-        }
-    }
-
-    writeTable(builder, allStrings, len(columnsList), headerInc + len(datasets), false)
-}
-
-func writeTable(builder *strings.Builder, allStrings []string, nRows int, nCols int, useHeaders bool) {
-    columnWidths := make([]int, nCols, nCols)
-    for i := 0; i < nRows; i++ {
-        for j := 0; j < nCols; j++ {
-            size := len(allStrings[i*nCols+j])
-            if size > columnWidths[j] {
-                columnWidths[j] = size
-            }
-        }
-    }
-
-    widestCol := columnWidths[0]
-    for i := 1; i < nCols; i++ {
-        if columnWidths[i] > widestCol {
-            widestCol = columnWidths[i]
-        }
-    }
-
-    bufSpaces  := make([]byte, widestCol+2, widestCol+2)
-    bufHyphens := make([]byte, widestCol+2, widestCol+2)
-    for i := 0; i < widestCol+2; i++ {
-        bufSpaces[i]  = 0x20; // space
-        bufHyphens[i] = 0x2d; // -
-    }
-
-    isFirstCol := true
-    for i := 0; i < nRows; i++ {
-        isFirstCol = true
-        for j := 0; j < nCols; j++ {
-            idx := i * nCols + j
-            sp := columnWidths[j] - len(allStrings[idx])
-
-            if !isFirstCol {
-                builder.WriteString("|")
-            }
-            builder.WriteString(" ")
-            if useHeaders && i == 0 {
-                builder.Write(bufSpaces[0:sp/2])
-                builder.WriteString(allStrings[idx])
-                builder.Write(bufSpaces[0:sp/2+(sp%2)])
-            } else {
-                builder.WriteString(allStrings[idx])
-                builder.Write(bufSpaces[0:sp])
-            }
-            builder.WriteString(" ")
-
-            isFirstCol = false
-        }
-        if useHeaders && i == 0 {
-            builder.WriteString("\n")
-
-            isFirstCol = true
-            for i := 0; i < nCols; i++ {
-                if !isFirstCol {
-                    builder.WriteString("+")
-                }
-                builder.Write(bufHyphens[0:columnWidths[i]+2])
-                isFirstCol = false
-            }
-        }
-        builder.WriteString("\n")
-    }
-}
-
-func writeDatasetInfosListCsv(builder *strings.Builder, datasets []map[string]interface{}, useHeaders bool) {
-    columnsList := getUsedPropertyColumns(datasets)
-    isFirstCol := true
-    if useHeaders {
-        for _, c := range(columnsList) {
-            if !isFirstCol {
-                builder.WriteString("\t")
-            }
-            builder.WriteString(c)
-            isFirstCol = false
-        }
-        builder.WriteString("\n")
-    }
-    for i := 0; i < len(datasets); i++ {
-        isFirstCol = true
-        for _, c := range(columnsList) {
-            if !isFirstCol {
-                builder.WriteString("\t")
-            }
-            if value, ok := datasets[i][c]; ok {
-                if valueStr, ok := value.(string); ok {
-                    builder.WriteString(valueStr)
-                } else {
-                    builder.WriteString(fmt.Sprintf("%v", value))
-                }
-            } else {
-                builder.WriteString("-")
-            }
-            isFirstCol = false
-        }
-        builder.WriteString("\n")
-    }
-}
-
-func writeDatasetInfosInspectCsv(builder *strings.Builder, datasets []map[string]interface{}, useHeaders bool) {
-    columnsList := getUsedPropertyColumns(datasets)
-    for _, c := range(columnsList) {
-        if useHeaders {
-            builder.WriteString(c)
-            builder.WriteString("\t")
-        }
-        for j := 0; j < len(datasets); j++ {
-            if j > 0 {
-                builder.WriteString("\t")
-            }
-            if value, ok := datasets[j][c]; ok {
-                if valueStr, ok := value.(string); ok {
-                    builder.WriteString(valueStr)
-                } else {
-                    builder.WriteString(fmt.Sprintf("%v", value))
-                }
-            } else {
-                builder.WriteString("-")
-            }
-        }
-        builder.WriteString("\n")
-    }
 }
 
 func findParameter(list []Parameter, name string) int {
