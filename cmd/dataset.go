@@ -218,7 +218,7 @@ var g_parametersListInspect = []Parameter{
     makeParameter("Bool", "u", "user-properties", false, "Include user-properties"),
     makeParameter("Bool", "j", "json", false, "Equivalent to --format=json"),
     makeParameter("Bool", "H",  "no-headers", false, "Equivalent to --format=compact. More easily parsed by scripts"),
-    makeParameter("String", "", "format", "table", "Format (csv|json|table|yaml|compact) (default \"table\")"),
+    makeParameter("String", "", "format", "table", "Format (csv|json|table|compact) (default \"table\")"),
     makeParameter("String", "o", "output", "", "Output property list"),
     //makeParameter("Bool", "p", "parseable", false, ""),
     makeParameter("String", "s", "source", "default", "A comma-separated list of sources to display.\n" +
@@ -380,8 +380,14 @@ func listDataset(api core.Session, args []string) {
         datasetNames = []string{args[0]}
     }
 
+    format, err := getTableFormat()
+    if err != nil {
+        fmt.Fprintln(os.Stderr, err)
+        return
+    }
+
     properties := enumerateDatasetProperties()
-    datasets, err := retrieveDatasetInfos(api, datasetNames, properties, false)
+    datasets, err := retrieveDatasetInfos(api, datasetNames, properties, format == "json")
     if err != nil {
         fmt.Fprintln(os.Stderr, "API error:", err)
         return
@@ -389,13 +395,21 @@ func listDataset(api core.Session, args []string) {
 
     var builder strings.Builder
     columnsList := getUsedPropertyColumns(datasets)
-    format := g_parametersListInspect[findParameter(g_parametersListInspect, "format")].value.vStr
 
     switch format {
+        case "compact":
+            core.WriteListCsv(&builder, datasets, columnsList, false)
         case "csv":
             core.WriteListCsv(&builder, datasets, columnsList, true)
+        case "json":
+            builder.WriteString("{\"datasets\":")
+            core.WriteJson(&builder, datasets)
+            builder.WriteString("}\n")
         case "table":
             core.WriteListTable(&builder, datasets, columnsList, true)
+        default:
+            fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
+            return
     }
 
     os.Stdout.WriteString(builder.String())
@@ -407,8 +421,14 @@ func inspectDataset(api core.Session, args []string) {
     }
     defer api.Close()
 
+    format, err := getTableFormat()
+    if err != nil {
+        fmt.Fprintln(os.Stderr, err)
+        return
+    }
+
     properties := enumerateDatasetProperties()
-    datasets, err := retrieveDatasetInfos(api, args, properties, len(properties) == 0)
+    datasets, err := retrieveDatasetInfos(api, args, properties, format == "json" || len(properties) == 0)
     if err != nil {
         fmt.Fprintln(os.Stderr, "API error:", err)
         return
@@ -416,13 +436,21 @@ func inspectDataset(api core.Session, args []string) {
 
     var builder strings.Builder
     columnsList := getUsedPropertyColumns(datasets)
-    format := g_parametersListInspect[findParameter(g_parametersListInspect, "format")].value.vStr
 
     switch format {
+        case "compact":
+            core.WriteInspectCsv(&builder, datasets, columnsList, false)
         case "csv":
             core.WriteInspectCsv(&builder, datasets, columnsList, true)
+        case "json":
+            builder.WriteString("{\"datasets\":")
+            core.WriteJson(&builder, datasets)
+            builder.WriteString("}\n")
         case "table":
             core.WriteInspectTable(&builder, datasets, columnsList, true)
+        default:
+            fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
+            return
     }
 
     os.Stdout.WriteString(builder.String())
@@ -592,6 +620,20 @@ func getUsedPropertyColumns(datasets []map[string]interface{}) []string {
 
     slices.Sort(columnsList)
     return append([]string{"name"}, columnsList...)
+}
+
+func getTableFormat() (string, error) {
+    isJson := g_parametersListInspect[findParameter(g_parametersListInspect, "json")].value.vBool
+    isCompact := g_parametersListInspect[findParameter(g_parametersListInspect, "no-headers")].value.vBool
+    if isJson && isCompact {
+        return "", errors.New("--json and --no-headers cannot be used together")
+    } else if isJson {
+        return "json", nil
+    } else if isCompact {
+        return "compact", nil
+    }
+
+    return g_parametersListInspect[findParameter(g_parametersListInspect, "format")].value.vStr, nil
 }
 
 func findParameter(list []Parameter, name string) int {

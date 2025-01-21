@@ -62,6 +62,36 @@ func WriteInspectCsv(builder *strings.Builder, propsArray []map[string]interface
     }
 }
 
+func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}) {
+    builder.WriteString("{")
+    for i, p := range(propsArray) {
+        if i > 0 {
+            builder.WriteString(",")
+        }
+        name, _ := EncloseWith(p["name"].(string), "\"")
+        builder.WriteString(name)
+        builder.WriteString(":{\"name\":")
+        builder.WriteString(name)
+        for key, value := range(p) {
+            if key == "name" {
+                continue
+            }
+            builder.WriteString(",")
+            _ = WriteEncloseWith(builder, key, "\"")
+            builder.WriteString(":")
+            if value == nil {
+                builder.WriteString("null")
+            } else if valueStr, ok := value.(string); ok {
+                _ = WriteEncloseWith(builder, valueStr, "\"")
+            } else {
+                builder.WriteString(fmt.Sprintf("%v", value))
+            }
+        }
+        builder.WriteString("}")
+    }
+    builder.WriteString("}")
+}
+
 func WriteListTable(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
     headerInc := 0
     if useHeaders {
