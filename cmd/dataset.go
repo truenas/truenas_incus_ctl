@@ -456,27 +456,24 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 		return nil, errors.New("API response was not a JSON object")
 	}
 
-	var resultsList []map[string]interface{}
-	if results, ok := responseMap["result"]; ok {
-		if resultsArray, ok := results.([]interface{}); ok {
-			resultsList = make([]map[string]interface{}, 0)
-			for i := 0; i < len(resultsArray); i++ {
-				if elem, ok := resultsArray[i].(map[string]interface{}); ok {
-					resultsList = append(resultsList, elem)
-				} else {
-					return nil, errors.New("API response results contained a non-object entry")
-				}
-			}
-		} else {
-			return nil, errors.New("API response results was not an array")
-		}
+	resultsList, errMsg := extractJsonArrayOfMaps(responseMap, "result")
+	if errMsg != "" {
+		return nil, errors.New("API response results: " + errMsg)
 	}
 	if len(resultsList) == 0 {
-		return nil, errors.New("API response did not contain a list of results")
+		return nil, nil
 	}
 
 	datasetList := make([]map[string]interface{}, 0)
+
+	// Do not refactor this loop condition into a range!
+	// This loop modifies the size of resultsList as it iterates.
 	for i := 0; i < len(resultsList); i++ {
+		children, _ := extractJsonArrayOfMaps(resultsList[i], "children")
+		if len(children) > 0 {
+			resultsList = append(append(resultsList[0:i+1], children...), resultsList[i+1:]...)
+		}
+
 		var name string
 		if nameValue, ok := resultsList[i]["name"]; ok {
 			if nameStr, ok := nameValue.(string); ok {
@@ -522,6 +519,27 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 	}
 
 	return datasetList, nil
+}
+
+func extractJsonArrayOfMaps(obj map[string]interface{}, key string) ([]map[string]interface{}, string) {
+	if value, ok := obj[key]; ok {
+		if array, ok := value.([]interface{}); ok {
+			if len(array) == 0 {
+				return nil, ""
+			}
+			list := make([]map[string]interface{}, 0)
+			for i := 0; i < len(array); i++ {
+				if elem, ok := array[i].(map[string]interface{}); ok {
+					list = append(list, elem)
+				} else {
+					return nil, "contained a non-object entry"
+				}
+			}
+			return list, ""
+		}
+		return nil, "was not an array"
+	}
+	return nil, "did not contain a list"
 }
 
 func getUsedPropertyColumns(datasets []map[string]interface{}) []string {
