@@ -34,6 +34,13 @@ func (s *MockSession) Call(method string, timeoutStr string, params interface{})
 	if s.closed {
 		return nil, errors.New("API connection closed")
 	}
+
+	// se: I think this is a valid assertion, and should help catch logic issues.
+	_, ok := params.([]interface{})
+	if !ok {
+		return nil, errors.New("params for Call must be in the form of an array")
+	}
+
 	switch method {
 	case "pool.dataset.create":
 		return s.mockDatasetCreate(params)
@@ -151,30 +158,51 @@ type typeCreateDatasetParams struct {
 	userProps   map[string]string
 }
 
+func getParamArray(params interface{}, minArgs int) ([]interface{}, error) {
+	paramArray, ok := params.([]interface{})
+
+	if !ok {
+		return nil, errors.New("params must be supplied as an array")
+	}
+
+	if len(paramArray) < minArgs {
+		formatted := fmt.Sprintf("params array must contain least %d entries", minArgs)
+		return nil, errors.New(formatted)
+	}
+
+	return paramArray, nil
+}
+
 func getCreateDatasetParams(params interface{}) (typeCreateDatasetParams, error) {
 	cdp := typeCreateDatasetParams{}
-	paramsMap, ok := params.(map[string]interface{})
+
+	paramArray, err := getParamArray(params, 1)
+	if err != nil {
+		return cdp, err
+	}
+
+	paramsMap, ok := paramArray[0].(map[string]interface{})
 	if !ok {
-		return cdp, errors.New("Parameters for 'create' must be in the form of a map")
+		return cdp, errors.New("parameters for 'create' must be in the form of a map")
 	}
 
 	if value, ok := paramsMap["name"]; ok {
 		if cdp.datasetName, ok = value.(string); !ok {
-			return cdp, errors.New("Name was not a string")
+			return cdp, errors.New("name was not a string")
 		}
 		if strings.Index(cdp.datasetName, "/") <= 0 {
-			return cdp, errors.New("Dataset name must contain its pool name before a slash, eg. puddle/example")
+			return cdp, errors.New("dataset name must contain its pool name before a slash, eg. puddle/example")
 		}
 	}
 	if value, ok := paramsMap["comments"]; ok {
 		if cdp.comments, ok = value.(string); !ok {
-			return cdp, errors.New("Comments was not a string")
+			return cdp, errors.New("comments was not a string")
 		}
 	}
 	if value, ok := paramsMap["properties"]; ok {
 		var inMap map[string]interface{}
 		if inMap, ok = value.(map[string]interface{}); !ok {
-			return cdp, errors.New("Properties was not a map/dictionary")
+			return cdp, errors.New("properties was not a map/dictionary")
 		}
 		for key, pv := range inMap {
 			pvStr, ok := pv.(string)
@@ -192,27 +220,27 @@ func getCreateDatasetParams(params interface{}) (typeCreateDatasetParams, error)
 	if value, ok := paramsMap["user_properties"]; ok {
 		var inMapList []interface{}
 		if inMapList, ok = value.([]interface{}); !ok {
-			return cdp, errors.New("User Properties was not an array of map/dictionary")
+			return cdp, errors.New("user properties was not an array of map/dictionary")
 		}
 		for _, elem := range inMapList {
 			inMap, ok := elem.(map[string]interface{})
 			if !ok {
-				return cdp, errors.New("User Properties was not entirely an array of map/dictionary")
+				return cdp, errors.New("user properties was not entirely an array of map/dictionary")
 			}
 
 			var uKeyStr string
 			uKey, keyExists := inMap["key"]
 			if !keyExists {
-				return cdp, errors.New("User Property did not contain a 'key'")
+				return cdp, errors.New("user property did not contain a 'key'")
 			}
 			if uKeyStr, ok = uKey.(string); !ok {
-				return cdp, errors.New("User Property key was not a string")
+				return cdp, errors.New("user property key was not a string")
 			}
 
 			var uValueStr string
 			uValue, valueExists := inMap["value"]
 			if !valueExists {
-				return cdp, errors.New("User Property '" + uKeyStr + "' did not contain a value")
+				return cdp, errors.New("user property '" + uKeyStr + "' did not contain a value")
 			}
 			if uValueStr, ok = uValue.(string); !ok {
 				uValueStr = "\"" + uValueStr + "\""
@@ -268,7 +296,12 @@ func (s *MockSession) mockDatasetCreate(params interface{}) (json.RawMessage, er
 }
 
 func (s *MockSession) mockDatasetDelete(params interface{}) (json.RawMessage, error) {
-	datasetName, ok := params.(string)
+	paramArray, err := getParamArray(params, 1)
+	if err != nil {
+		return nil, err
+	}
+
+	datasetName, ok := paramArray[0].(string)
 	if !ok {
 		return nil, errors.New("dataset delete requires a string, representing the name of the dataset to delete")
 	}
@@ -276,10 +309,10 @@ func (s *MockSession) mockDatasetDelete(params interface{}) (json.RawMessage, er
 	datasets := loadMockDatasets()
 
 	if datasets == nil {
-		return nil, errors.New("Dataset does not exist")
+		return nil, errors.New("dataset does not exist")
 	}
 	if _, exists := datasets[datasetName]; !exists {
-		return nil, errors.New("Dataset does not exist")
+		return nil, errors.New("dataset does not exist")
 	}
 
 	delete(datasets, datasetName)
