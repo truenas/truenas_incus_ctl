@@ -484,21 +484,6 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 			continue
 		}
 
-		shouldAdd := true
-		// if len(datasetNames) == 0 {
-		// 	shouldAdd = true
-		// } else {
-		// 	for j := 0; j < len(datasetNames); j++ {
-		// 		if name == datasetNames[j] {
-		// 			shouldAdd = true
-		// 			break
-		// 		}
-		// 	}
-		// }
-		if !shouldAdd {
-			continue
-		}
-
 		dict := make(map[string]interface{})
 		dict["name"] = name
 
