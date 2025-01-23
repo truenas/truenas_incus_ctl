@@ -295,7 +295,8 @@ func listDataset(api core.Session, args []string) {
 
 	extras := typeRetrieveParams{}
 	extras.shouldGetAllProps = format == "json"
-	extras.shouldRecurse = core.FindParameterValue(g_parametersListInspect, "recursive").VBool
+	// `zfs list` will "recurse" if no names are specified.
+	extras.shouldRecurse = len(datasetNames) == 0 || core.FindParameterValue(g_parametersListInspect, "recursive").VBool
 
 	datasets, err := retrieveDatasetInfos(api, datasetNames, properties, extras)
 	if err != nil {
