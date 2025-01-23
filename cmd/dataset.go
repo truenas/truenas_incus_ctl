@@ -92,193 +92,86 @@ Renamed file systems can inherit new mount points, in which case they are unmoun
 	},
 }
 
-type ParamValue struct {
-	vStr   string
-	vInt64 int64
-	vBool  bool
-}
+var g_useMock bool
 
-type Parameter struct {
-	typeStr      string
-	shortcut     string
-	name         string
-	value        ParamValue
-	defaultValue ParamValue
-	description  string
-}
-
-func (p *Parameter) isDefault() bool {
-	if p.typeStr == "String" {
-		return p.value.vStr == p.defaultValue.vStr
-	}
-	if p.typeStr == "Int64" {
-		return p.value.vInt64 == p.defaultValue.vInt64
-	}
-	if p.typeStr == "Bool" {
-		return p.value.vBool == p.defaultValue.vBool
-	}
-	return false
-}
-
-func (p *Parameter) getJsonValue() string {
-	if p.typeStr == "String" {
-		return "\"" + p.value.vStr + "\""
-	}
-	if p.typeStr == "Int64" {
-		return fmt.Sprintf("%d", p.value.vInt64)
-	}
-	if p.typeStr == "Bool" {
-		if p.value.vBool {
-			return "true"
-		} else {
-			return "false"
-		}
-	}
-	return "null"
-}
-
-func makeParameter(typeStr string, shortcut string, name string, value interface{}, description string) Parameter {
-	p := Parameter{}
-	givenType := ""
-	switch value.(type) {
-	case string:
-		givenType = "String"
-		p.value.vStr = value.(string)
-		p.defaultValue.vStr = p.value.vStr
-	case int64:
-		givenType = "Int64"
-		p.value.vInt64 = value.(int64)
-		p.defaultValue.vInt64 = p.value.vInt64
-	case int:
-		givenType = "Int64"
-		p.value.vInt64 = int64(value.(int))
-		p.defaultValue.vInt64 = p.value.vInt64
-	case bool:
-		givenType = "Bool"
-		p.value.vBool = value.(bool)
-		p.defaultValue.vBool = p.value.vBool
-	default:
-		log.Fatal(errors.New("Unsupported parameter type " + reflect.TypeOf(value).Name()))
-	}
-	if typeStr != givenType {
-		log.Fatal(errors.New("Type mismatch: given type is " + typeStr + ", given value is a " + givenType))
-	}
-
-	p.typeStr = typeStr
-	p.shortcut = shortcut
-	p.name = name
-	p.description = description
-	return p
-}
-
-var g_parametersCreateUpdate = []Parameter{
-	makeParameter("String", "", "comments", "", "User defined comments"),
-	makeParameter("String", "", "sync", "standard", "Controls the behavior of synchronous requests (\"standard\",\"always\",\"disabled\")"),
-	makeParameter("String", "", "snapdir", "hidden", "Controls whether the .zfs directory is disabled, hidden or visible  (\"hidden\", \"visible\")"),
-	makeParameter("String", "", "compression", "off", "Controls the compression algorithm used for this dataset\n(\"on\",\"off\",\"gzip\","+
+var g_parametersCreateUpdate = []core.Parameter{
+	core.MakeParameter("String", "", "comments", "", "User defined comments"),
+	core.MakeParameter("String", "", "sync", "standard", "Controls the behavior of synchronous requests (\"standard\",\"always\",\"disabled\")"),
+	core.MakeParameter("String", "", "snapdir", "hidden", "Controls whether the .zfs directory is disabled, hidden or visible  (\"hidden\", \"visible\")"),
+	core.MakeParameter("String", "", "compression", "off", "Controls the compression algorithm used for this dataset\n(\"on\",\"off\",\"gzip\","+
 		"\"gzip-{n}\",\"lz4\",\"lzjb\",\"zle\",\"zstd\",\"zstd-{n}\",\"zstd-fast\",\"zstd-fast-{n}\")"),
-	makeParameter("String", "", "atime", "off", "Controls whether the access time for files is updated when they are read (\"on\",\"off\")"),
-	makeParameter("String", "", "exec", "off", "Controls whether processes can be executed from within this file system (\"on\",\"off\")"),
-	makeParameter("String", "", "managedby", "truenas-admin", "Manager of this dataset, must not be empty"),
-	makeParameter("Bool", "", "quota", false, ""),
-	//makeParameter("Bool", "", "quota_warning", false, ""),
-	//makeParameter("Bool", "", "quota_critical", false, ""),
-	makeParameter("Bool", "", "refquota", false, ""),
-	//makeParameter("Bool", "", "refquota_warning", false, ""),
-	//makeParameter("Bool", "", "refquota_critical", false, ""),
-	makeParameter("Bool", "", "reservation", false, ""),
-	makeParameter("Bool", "", "refreservation", false, ""),
-	makeParameter("Bool", "", "special_small_block_size", false, ""),
-	makeParameter("Bool", "", "copies", false, ""),
-	makeParameter("Bool", "", "deduplication", false, ""),
-	makeParameter("Bool", "", "checksum", false, ""),
-	makeParameter("Bool", "", "readonly", false, ""),
-	makeParameter("Bool", "", "recordsize", false, ""),
-	makeParameter("Bool", "", "casesensitivity", false, ""),
-	makeParameter("Bool", "", "aclmode", false, ""),
-	makeParameter("Bool", "", "acltype", false, ""),
-	makeParameter("Bool", "", "share_type", false, ""),
-	makeParameter("Bool", "p", "create_parents", true, "Creates all the non-existing parent datasets"),
-	makeParameter("String", "", "user_props", "", "Sets the specified properties"),
-	makeParameter("String", "o", "option", "", "Specify property=value,..."),
-	makeParameter("Int64", "V", "volume", 0, "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size."),
-	makeParameter("String", "b", "volblocksize", "512", "Volume block size (\"512\",\"1K\",\"2K\",\"4K\",\"8K\",\"16K\",\"32K\",\"64K\",\"128K\")"),
-	makeParameter("Bool", "s", "sparse", false, "Creates a sparse volume with no reservation"),
-	makeParameter("Bool", "", "force_size", false, ""),
-	makeParameter("String", "", "snapdev", "hidden", "Controls whether the volume snapshot devices are hidden or visible (\"hidden\",\"visible\")"),
+	core.MakeParameter("String", "", "atime", "off", "Controls whether the access time for files is updated when they are read (\"on\",\"off\")"),
+	core.MakeParameter("String", "", "exec", "off", "Controls whether processes can be executed from within this file system (\"on\",\"off\")"),
+	core.MakeParameter("String", "", "managedby", "truenas-admin", "Manager of this dataset, must not be empty"),
+	core.MakeParameter("Bool", "", "quota", false, ""),
+	//core.MakeParameter("Bool", "", "quota_warning", false, ""),
+	//core.MakeParameter("Bool", "", "quota_critical", false, ""),
+	core.MakeParameter("Bool", "", "refquota", false, ""),
+	//core.MakeParameter("Bool", "", "refquota_warning", false, ""),
+	//core.MakeParameter("Bool", "", "refquota_critical", false, ""),
+	core.MakeParameter("Bool", "", "reservation", false, ""),
+	core.MakeParameter("Bool", "", "refreservation", false, ""),
+	core.MakeParameter("Bool", "", "special_small_block_size", false, ""),
+	core.MakeParameter("Bool", "", "copies", false, ""),
+	core.MakeParameter("Bool", "", "deduplication", false, ""),
+	core.MakeParameter("Bool", "", "checksum", false, ""),
+	core.MakeParameter("Bool", "", "readonly", false, ""),
+	core.MakeParameter("Bool", "", "recordsize", false, ""),
+	core.MakeParameter("Bool", "", "casesensitivity", false, ""),
+	core.MakeParameter("Bool", "", "aclmode", false, ""),
+	core.MakeParameter("Bool", "", "acltype", false, ""),
+	core.MakeParameter("Bool", "", "share_type", false, ""),
+	core.MakeParameter("Bool", "p", "create_parents", true, "Creates all the non-existing parent datasets"),
+	core.MakeParameter("String", "", "user_props", "", "Sets the specified properties"),
+	core.MakeParameter("String", "o", "option", "", "Specify property=value,..."),
+	core.MakeParameter("Int64", "V", "volume", 0, "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size."),
+	core.MakeParameter("String", "b", "volblocksize", "512", "Volume block size (\"512\",\"1K\",\"2K\",\"4K\",\"8K\",\"16K\",\"32K\",\"64K\",\"128K\")"),
+	core.MakeParameter("Bool", "s", "sparse", false, "Creates a sparse volume with no reservation"),
+	core.MakeParameter("Bool", "", "force_size", false, ""),
+	core.MakeParameter("String", "", "snapdev", "hidden", "Controls whether the volume snapshot devices are hidden or visible (\"hidden\",\"visible\")"),
 }
 
-var g_parametersDelete = []Parameter{
-	makeParameter("Bool", "r", "recursive", false, "Also delete/destroy all children datasets. When the root dataset is specified,\n"+
+var g_parametersDelete = []core.Parameter{
+	core.MakeParameter("Bool", "r", "recursive", false, "Also delete/destroy all children datasets. When the root dataset is specified,\n"+
 		"it will destroy all the children of the root dataset present leaving root dataset intact"),
-	makeParameter("Bool", "f", "force", false, "Force delete busy datasets"),
+	core.MakeParameter("Bool", "f", "force", false, "Force delete busy datasets"),
 }
 
-var g_parametersListInspect = []Parameter{
-	makeParameter("Bool", "r", "recursive", false, "Retrieves properties for children"),
-	makeParameter("Bool", "u", "user-properties", false, "Include user-properties"),
-	makeParameter("Bool", "j", "json", false, "Equivalent to --format=json"),
-	makeParameter("Bool", "H", "no-headers", false, "Equivalent to --format=compact. More easily parsed by scripts"),
-	makeParameter("String", "", "format", "table", "Format (csv|json|table|compact) (default \"table\")"),
-	makeParameter("String", "o", "output", "", "Output property list"),
-	//makeParameter("Bool", "p", "parseable", false, ""),
-	makeParameter("String", "s", "source", "default", "A comma-separated list of sources to display.\n"+
+var g_parametersListInspect = []core.Parameter{
+	core.MakeParameter("Bool", "r", "recursive", false, "Retrieves properties for children"),
+	core.MakeParameter("Bool", "u", "user-properties", false, "Include user-properties"),
+	core.MakeParameter("Bool", "j", "json", false, "Equivalent to --format=json"),
+	core.MakeParameter("Bool", "H", "no-headers", false, "Equivalent to --format=compact. More easily parsed by scripts"),
+	core.MakeParameter("String", "", "format", "table", "Format (csv|json|table|compact) (default \"table\")"),
+	core.MakeParameter("String", "o", "output", "", "Output property list"),
+	//core.MakeParameter("Bool", "p", "parseable", false, ""),
+	core.MakeParameter("String", "s", "source", "default", "A comma-separated list of sources to display.\n"+
 		"Those properties coming from a source other than those in this list are ignored.\n"+
 		"Each source must be one of the following: local, default, inherited, temporary, received, or none.\n"+
 		"The default value is all sources."),
 }
 
-var g_parametersRename = []Parameter{
-	makeParameter("Bool", "s", "update-shares", false, "Will update any shares as part of rename"),
-}
-
-func addParameter(cmdFlags interface{}, inputs []reflect.Value, paramList []Parameter, idx int) {
-	shortcutInc := 0
-	var methodSuffix string
-	if len(paramList[idx].shortcut) > 0 {
-		inputs[2] = reflect.ValueOf(paramList[idx].shortcut)
-		shortcutInc = 1
-		methodSuffix = "VarP"
-	} else {
-		methodSuffix = "Var"
-	}
-
-	typeName := paramList[idx].typeStr
-	switch typeName {
-	case "String":
-		inputs[0] = reflect.ValueOf(&paramList[idx].value.vStr)
-		inputs[2+shortcutInc] = reflect.ValueOf(paramList[idx].value.vStr)
-	case "Int64":
-		inputs[0] = reflect.ValueOf(&paramList[idx].value.vInt64)
-		inputs[2+shortcutInc] = reflect.ValueOf(paramList[idx].value.vInt64)
-	case "Bool":
-		inputs[0] = reflect.ValueOf(&paramList[idx].value.vBool)
-		inputs[2+shortcutInc] = reflect.ValueOf(paramList[idx].value.vBool)
-	default:
-		log.Fatal(errors.New("Unrecognised type " + typeName))
-	}
-	inputs[1] = reflect.ValueOf(paramList[idx].name)
-	inputs[3+shortcutInc] = reflect.ValueOf(paramList[idx].description)
-
-	nParams := len(inputs) - 1 + shortcutInc
-	reflect.ValueOf(cmdFlags).MethodByName(typeName + methodSuffix).Call(inputs[0:nParams])
+var g_parametersRename = []core.Parameter{
+	core.MakeParameter("Bool", "s", "update-shares", false, "Will update any shares as part of rename"),
 }
 
 func init() {
+	rootCmd.PersistentFlags().BoolVar(&g_useMock, "mock", false, "Use the mock API instead of a TrueNAS server")
+
 	inputs := make([]reflect.Value, 5)
 	for i := 0; i < len(g_parametersCreateUpdate); i++ {
-		addParameter(datasetCreateCmd.Flags(), inputs, g_parametersCreateUpdate, i)
-		addParameter(datasetUpdateCmd.Flags(), inputs, g_parametersCreateUpdate, i)
+		core.AddParameterToFlags(datasetCreateCmd.Flags(), inputs, g_parametersCreateUpdate, i)
+		core.AddParameterToFlags(datasetUpdateCmd.Flags(), inputs, g_parametersCreateUpdate, i)
 	}
 	for i := 0; i < len(g_parametersDelete); i++ {
-		addParameter(datasetDeleteCmd.Flags(), inputs, g_parametersDelete, i)
+		core.AddParameterToFlags(datasetDeleteCmd.Flags(), inputs, g_parametersDelete, i)
 	}
 	for i := 0; i < len(g_parametersListInspect); i++ {
-		addParameter(datasetListCmd.Flags(), inputs, g_parametersListInspect, i)
-		addParameter(datasetInspectCmd.Flags(), inputs, g_parametersListInspect, i)
+		core.AddParameterToFlags(datasetListCmd.Flags(), inputs, g_parametersListInspect, i)
+		core.AddParameterToFlags(datasetInspectCmd.Flags(), inputs, g_parametersListInspect, i)
 	}
 	for i := 0; i < len(g_parametersRename); i++ {
-		addParameter(datasetRenameCmd.Flags(), inputs, g_parametersRename, i)
+		core.AddParameterToFlags(datasetRenameCmd.Flags(), inputs, g_parametersRename, i)
 	}
 
 	datasetCmd.AddCommand(datasetCreateCmd)
@@ -291,13 +184,24 @@ func init() {
 	rootCmd.AddCommand(datasetCmd)
 }
 
+type typeRetrieveParams struct {
+	shouldGetAllProps bool
+	shouldRecurse bool
+}
+
 func validateAndLogin(cmd *cobra.Command, args []string, minArgs int) core.Session {
 	if len(args) < minArgs {
 		cmd.HelpFunc()(cmd, args)
 		return nil
 	}
 
-	api := core.GetApi()
+	var api core.Session
+	if g_useMock {
+		api = &core.MockSession{}
+	} else {
+		api = &core.RealSession{}
+	}
+
 	err := api.Login()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Failed to log in")
@@ -329,17 +233,17 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 	builder.WriteString(", \"properties\":{")
 	nProps := 0
 	for i := 0; i < len(g_parametersCreateUpdate); i++ {
-		if !g_parametersCreateUpdate[i].isDefault() {
+		if !g_parametersCreateUpdate[i].IsDefault() {
 			if nProps > 0 {
 				builder.WriteString(", ")
 			}
-			prop, err := core.EncloseWith(g_parametersCreateUpdate[i].name, "\"")
+			prop, err := core.EncloseWith(g_parametersCreateUpdate[i].Name, "\"")
 			if err != nil {
 				log.Fatal(err)
 			}
 			builder.WriteString(prop)
 			builder.WriteString(":")
-			builder.WriteString(g_parametersCreateUpdate[i].getJsonValue())
+			builder.WriteString(g_parametersCreateUpdate[i].GetJsonValue())
 			nProps++
 		}
 	}
@@ -388,7 +292,12 @@ func listDataset(api core.Session, args []string) {
 	}
 
 	properties := enumerateDatasetProperties()
-	datasets, err := retrieveDatasetInfos(api, datasetNames, properties, format == "json")
+
+	extras := typeRetrieveParams{}
+	extras.shouldGetAllProps = format == "json"
+	extras.shouldRecurse = core.FindParameterValue(g_parametersListInspect, "recursive").VBool
+
+	datasets, err := retrieveDatasetInfos(api, datasetNames, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
@@ -429,7 +338,12 @@ func inspectDataset(api core.Session, args []string) {
 	}
 
 	properties := enumerateDatasetProperties()
-	datasets, err := retrieveDatasetInfos(api, args, properties, format == "json" || len(properties) == 0)
+
+	extras := typeRetrieveParams{}
+	extras.shouldGetAllProps = format == "json" || len(properties) == 0
+	extras.shouldRecurse = core.FindParameterValue(g_parametersListInspect, "recursive").VBool
+
+	datasets, err := retrieveDatasetInfos(api, args, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
@@ -472,25 +386,25 @@ func renameDataset(api core.Session, args []string) {
 }
 
 func enumerateDatasetProperties() []string {
-	option := findParameter(g_parametersListInspect, "output")
-	if option < 0 {
+	outputParam := core.FindParameterValue(g_parametersListInspect, "output")
+	if outputParam == nil {
 		return nil
 	}
 
 	var propsList []string
-	propsStr := g_parametersListInspect[option].value.vStr
+	propsStr := outputParam.VStr
 	if len(propsStr) > 0 {
 		propsList = strings.Split(propsStr, ",")
 		/*
-		   for j := 0; j < len(propsList); j++ {
-			   propsList[j] = strings.Trim(propsList[j], " \t\r\n")
-		   }
+		for j := 0; j < len(propsList); j++ {
+			propsList[j] = strings.Trim(propsList[j], " \t\r\n")
+		}
 		*/
 	}
 	return propsList
 }
 
-func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []string, shouldGetAllProps bool) ([]map[string]interface{}, error) {
+func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []string, extras typeRetrieveParams) ([]map[string]interface{}, error) {
 	var builder strings.Builder
 	builder.WriteString("[[ ")
 	// first arg = query-filter
@@ -505,8 +419,10 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 	}
 	builder.WriteString("], ") // end first arg
 	// second arg = query-options
-	builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":true, \"properties\":")
-	if shouldGetAllProps {
+	builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":")
+	builder.WriteString(fmt.Sprint(extras.shouldRecurse))
+	builder.WriteString(", \"properties\":")
+	if extras.shouldGetAllProps {
 		builder.WriteString("null")
 	} else {
 		builder.WriteString("[")
@@ -626,8 +542,8 @@ func getUsedPropertyColumns(datasets []map[string]interface{}) []string {
 }
 
 func getTableFormat() (string, error) {
-	isJson := g_parametersListInspect[findParameter(g_parametersListInspect, "json")].value.vBool
-	isCompact := g_parametersListInspect[findParameter(g_parametersListInspect, "no-headers")].value.vBool
+	isJson := core.FindParameterValue(g_parametersListInspect, "json").VBool
+	isCompact := core.FindParameterValue(g_parametersListInspect, "no-headers").VBool
 	if isJson && isCompact {
 		return "", errors.New("--json and --no-headers cannot be used together")
 	} else if isJson {
@@ -636,14 +552,5 @@ func getTableFormat() (string, error) {
 		return "compact", nil
 	}
 
-	return g_parametersListInspect[findParameter(g_parametersListInspect, "format")].value.vStr, nil
-}
-
-func findParameter(list []Parameter, name string) int {
-	for i := 0; i < len(list); i++ {
-		if list[i].name == name {
-			return i
-		}
-	}
-	return -1
+	return core.FindParameterValue(g_parametersListInspect, "format").VStr, nil
 }

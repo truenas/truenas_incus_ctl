@@ -10,10 +10,3 @@ type Session interface {
 	CallString(method string, timeoutStr string, paramsStr string) (json.RawMessage, error)
 	Close() error
 }
-
-func GetApi() Session {
-	if (false) {
-		return &RealSession{}
-	}
-	return &MockSession{}
-}
