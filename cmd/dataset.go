@@ -186,7 +186,7 @@ func init() {
 
 type typeRetrieveParams struct {
 	shouldGetAllProps bool
-	shouldRecurse bool
+	shouldRecurse     bool
 }
 
 func validateAndLogin(cmd *cobra.Command, args []string, minArgs int) core.Session {
@@ -228,7 +228,7 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 	}
 
 	var builder strings.Builder
-	builder.WriteString("{\"name\":")
+	builder.WriteString("[{\"name\":")
 	builder.WriteString(name)
 	builder.WriteString(", \"properties\":{")
 	nProps := 0
@@ -247,7 +247,7 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 			nProps++
 		}
 	}
-	builder.WriteString("} }")
+	builder.WriteString("} }]")
 
 	_, err = api.CallString("zfs.dataset."+cmdType, "10s", builder.String())
 	if err != nil {
@@ -267,7 +267,7 @@ func deleteDataset(api core.Session, args []string) {
 		log.Fatal(err)
 	}
 
-	_, err = api.CallString("pool.dataset.delete", "10s", name)
+	_, err = api.CallString("pool.dataset.delete", "10s", "["+name+"]")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
@@ -396,9 +396,9 @@ func enumerateDatasetProperties() []string {
 	if len(propsStr) > 0 {
 		propsList = strings.Split(propsStr, ",")
 		/*
-		for j := 0; j < len(propsList); j++ {
-			propsList[j] = strings.Trim(propsList[j], " \t\r\n")
-		}
+			for j := 0; j < len(propsList); j++ {
+				propsList[j] = strings.Trim(propsList[j], " \t\r\n")
+			}
 		*/
 	}
 	return propsList
@@ -484,17 +484,17 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 			continue
 		}
 
-		shouldAdd := false
-		if len(datasetNames) == 0 {
-			shouldAdd = true
-		} else {
-			for j := 0; j < len(datasetNames); j++ {
-				if name == datasetNames[j] {
-					shouldAdd = true
-					break
-				}
-			}
-		}
+		shouldAdd := true
+		// if len(datasetNames) == 0 {
+		// 	shouldAdd = true
+		// } else {
+		// 	for j := 0; j < len(datasetNames); j++ {
+		// 		if name == datasetNames[j] {
+		// 			shouldAdd = true
+		// 			break
+		// 		}
+		// 	}
+		// }
 		if !shouldAdd {
 			continue
 		}

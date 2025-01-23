@@ -5,6 +5,7 @@
     "version": "0.2.0",
     "configurations": [
 
+
         {
             "name": "dataset list",
             "type": "go",
@@ -14,12 +15,44 @@
             "args": ["dataset","list"]
         },
         {
+          "name": "ds ls -r",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["dataset","list","--recursive"]
+      },
+        {
             "name": "dataset list dozer",
             "type": "go",
             "request": "launch",
             "mode": "debug",
             "program": "${workspaceFolder}",
             "args": ["dataset","list","dozer"]
+        },
+        {
+          "name": "dataset ls -r dozer",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["dataset","ls","-r","dozer"]
+        },
+        {
+          "name": "dataset create dozer/created",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["dataset","create","dozer/created"]
+        },
+        {
+          "name": "dataset delete dozer/created",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["dataset","delete","dozer/created"]
         },
 
     ]
