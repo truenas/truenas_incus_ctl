@@ -1,81 +1,81 @@
 package core
 
 import (
-    "os"
-    "fmt"
-    "strings"
-    "encoding/json"
-    "truenas/admin-tool/truenas_api"
+	"os"
+	"fmt"
+	"strings"
+	"encoding/json"
+	"truenas/admin-tool/truenas_api"
 )
 
 type RealSession struct {
-    hostUrl string
-    apiKey string
-    client *truenas_api.Client
+	hostUrl string
+	apiKey string
+	client *truenas_api.Client
 }
 
 func (s *RealSession) Login() error {
-    if s.client != nil {
-        _ = s.Close()
-    }
+	if s.client != nil {
+		_ = s.Close()
+	}
 
-    var err error
-    s.hostUrl, s.apiKey, err = loadHostAndKey()
-    if err != nil {
-        return err
-    }
+	var err error
+	s.hostUrl, s.apiKey, err = loadHostAndKey()
+	if err != nil {
+		return err
+	}
 
-    client, err := truenas_api.NewClient(s.hostUrl, strings.HasPrefix(s.hostUrl, "wss://"))
-    if err != nil {
-        fmt.Println("Failed to create client:", err)
-        return err
-    }
+	client, err := truenas_api.NewClient(s.hostUrl, strings.HasPrefix(s.hostUrl, "wss://"))
+	if err != nil {
+		fmt.Println("Failed to create client:", err)
+		return err
+	}
 
-    err = client.Login("", "", s.apiKey)
-    if err != nil {
-        client.Close()
-        fmt.Println("client.Login failed:", err)
-        return err
-    }
+	err = client.Login("", "", s.apiKey)
+	if err != nil {
+		client.Close()
+		fmt.Println("client.Login failed:", err)
+		return err
+	}
 
-    s.client = client;
-    return nil
+	s.client = client;
+	return nil
 }
 
 func (s *RealSession) Call(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
-    return s.client.Call(method, timeoutStr, params)
+	return s.client.Call(method, timeoutStr, params)
 }
 
 func (s *RealSession) CallString(method string, timeoutStr string, paramsStr string) (json.RawMessage, error) {
-    return s.client.CallString(method, timeoutStr, paramsStr)
+	return s.client.CallString(method, timeoutStr, paramsStr)
 }
 
 func (s *RealSession) Close() error {
-    var err error
-    if s.client != nil {
-        err = s.client.Close()
-        s.client = nil
-    }
-    return err
+	var err error
+	if s.client != nil {
+		err = s.client.Close()
+		s.client = nil
+	}
+	return err
 }
 
 func loadHostAndKey() (string, string, error) {
-    fileName := "key.txt"
-    contents, err := os.ReadFile(fileName)
-    if err != nil {
-        fmt.Println("Could not open", fileName)
-        return "", "", err
-    }
+	fileName := "key.txt"
+	contents, err := os.ReadFile(fileName)
+	if err != nil {
+		fmt.Println("Could not open", fileName)
+		return "", "", err
+	}
 
-    lines := strings.Split(string(contents), "\n")
-    if len(lines) < 2 {
-        fmt.Println(lines[0])
-        fmt.Println(
-            "Failed to parse login config\n" +
-            "The first line must be the server URL, and the second line must be the API key",
-        )
-        return "", "", err
-    }
+	lines := strings.Split(string(contents), "\n")
+	if len(lines) < 2 {
+		fmt.Println(lines[0])
+		fmt.Println(
+			"Failed to parse login config\n" +
+			"The first line must be the server URL, and the second line must be the API key",
+		)
+		return "", "", err
+	}
 
-    return lines[0], lines[1], nil
+	return lines[0], lines[1], nil
 }

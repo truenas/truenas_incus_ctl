@@ -483,7 +483,7 @@ func enumerateDatasetProperties() []string {
 		propsList = strings.Split(propsStr, ",")
 		/*
 		   for j := 0; j < len(propsList); j++ {
-		       propsList[j] = strings.Trim(propsList[j], " \t\r\n")
+			   propsList[j] = strings.Trim(propsList[j], " \t\r\n")
 		   }
 		*/
 	}

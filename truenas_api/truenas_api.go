@@ -193,10 +193,10 @@ func (c *Client) Close() error {
 
 // Call sends an RPC call to the server and waits for a response.
 func (c *Client) Call(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
-    timeout, err := time.ParseDuration(timeoutStr)
-    if err != nil || timeout < 0 {
-        return nil, errors.New("Invalid timeout was given: " + timeoutStr)
-    }
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil || timeout < 0 {
+		return nil, errors.New("Invalid timeout was given: " + timeoutStr)
+	}
 
 	c.mu.Lock()
 	c.callID++ // Increment callID for each call
@@ -235,10 +235,10 @@ func (c *Client) Call(method string, timeoutStr string, params interface{}) (jso
 
 // Call sends an RPC call to the server and waits for a response.
 func (c *Client) CallString(method string, timeoutStr string, paramsStr string) (json.RawMessage, error) {
-    timeout, err := time.ParseDuration(timeoutStr)
-    if err != nil || timeout < 0 {
-        return nil, errors.New("Invalid timeout was given: " + timeoutStr)
-    }
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil || timeout < 0 {
+		return nil, errors.New("Invalid timeout was given: " + timeoutStr)
+	}
 
 	c.mu.Lock()
 	c.callID++ // Increment callID for each call
@@ -254,7 +254,7 @@ func (c *Client) CallString(method string, timeoutStr string, paramsStr string) 
 	}()
 
 	// Create the RPC request payload
-    request := "{\"jsonrpc\": \"2.0\", \"method\": \"" + method + "\", \"id\": " + strconv.Itoa(callID) + ", \"params\": " + paramsStr + " }"
+	request := "{\"jsonrpc\": \"2.0\", \"method\": \"" + method + "\", \"id\": " + strconv.Itoa(callID) + ", \"params\": " + paramsStr + " }"
 
 	w, err := c.conn.NextWriter(websocket.TextMessage)
 	if err != nil {
@@ -263,11 +263,11 @@ func (c *Client) CallString(method string, timeoutStr string, paramsStr string) 
 	_, err1 := io.WriteString(w, request)
 	err2 := w.Close()
 	if err1 != nil || err2 != nil {
-	    if err1 != nil {
-	        err = err1
-        } else {
-            err = err2
-        }
+		if err1 != nil {
+			err = err1
+		} else {
+			err = err2
+		}
 		return nil, fmt.Errorf("failed to send call: %w", err)
 	}
 
