@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"io"
 	"sync"
 	"time"
+	"strconv"
 
 	"github.com/gorilla/websocket"
 )
@@ -124,7 +126,7 @@ func (c *Client) SubscribeToJobs() error {
 	params := []interface{}{"core.get_jobs"} // Core function to subscribe to job updates
 
 	// Make the subscription call via WebSocket
-	res, err := c.Call("core.subscribe", 10, params)
+	res, err := c.Call("core.subscribe", "10s", params)
 	if err != nil {
 		return err
 	}
@@ -190,7 +192,12 @@ func (c *Client) Close() error {
 }
 
 // Call sends an RPC call to the server and waits for a response.
-func (c *Client) Call(method string, timeout time.Duration, params interface{}) (json.RawMessage, error) {
+func (c *Client) Call(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil || timeout < 0 {
+		return nil, errors.New("Invalid timeout was given: " + timeoutStr)
+	}
+
 	c.mu.Lock()
 	c.callID++ // Increment callID for each call
 	callID := c.callID
@@ -221,7 +228,54 @@ func (c *Client) Call(method string, timeout time.Duration, params interface{}) 
 	select {
 	case res := <-responseChan:
 		return res, nil
-	case <-time.After(timeout * time.Second):
+	case <-time.After(timeout):
+		return nil, errors.New("call timed out")
+	}
+}
+
+// Call sends an RPC call to the server and waits for a response.
+func (c *Client) CallString(method string, timeoutStr string, paramsStr string) (json.RawMessage, error) {
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil || timeout < 0 {
+		return nil, errors.New("Invalid timeout was given: " + timeoutStr)
+	}
+
+	c.mu.Lock()
+	c.callID++ // Increment callID for each call
+	callID := c.callID
+	responseChan := make(chan json.RawMessage, 1) // Create channel to receive the response
+	c.pending[callID] = responseChan              // Store the callID and response channel
+	c.mu.Unlock()
+
+	defer func() {
+		c.mu.Lock()
+		delete(c.pending, callID) // Clean up the pending map after response is received
+		c.mu.Unlock()
+	}()
+
+	// Create the RPC request payload
+	request := "{\"jsonrpc\": \"2.0\", \"method\": \"" + method + "\", \"id\": " + strconv.Itoa(callID) + ", \"params\": " + paramsStr + " }"
+
+	w, err := c.conn.NextWriter(websocket.TextMessage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send call: %w", err)
+	}
+	_, err1 := io.WriteString(w, request)
+	err2 := w.Close()
+	if err1 != nil || err2 != nil {
+		if err1 != nil {
+			err = err1
+		} else {
+			err = err2
+		}
+		return nil, fmt.Errorf("failed to send call: %w", err)
+	}
+
+	// Wait for the response or timeout
+	select {
+	case res := <-responseChan:
+		return res, nil
+	case <-time.After(timeout):
 		return nil, errors.New("call timed out")
 	}
 }
@@ -289,7 +343,7 @@ func (c *Client) listen() {
 // CallWithJob sends an RPC call that returns a job ID and tracks the long-running job.
 func (c *Client) CallWithJob(method string, params interface{}, callback func(progress float64, state string, desc string)) (*Job, error) {
 	// Call the API method
-	res, err := c.Call(method, 10, params)
+	res, err := c.Call(method, "10s", params)
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +379,7 @@ func (c *Client) CallWithJob(method string, params interface{}, callback func(pr
 
 // Ping sends a ping request to the server to check connectivity.
 func (c *Client) Ping() (string, error) {
-	res, err := c.Call("core.ping", 10, []interface{}{}) // Empty array as params
+	res, err := c.Call("core.ping", "10s", []interface{}{}) // Empty array as params
 
 	if err != nil {
 		return "", err
@@ -363,7 +417,7 @@ func (c *Client) Login(username, password, apiKey string) error {
 	}
 
 	// Make the login call
-	res, err := c.Call(method, 10, params)
+	res, err := c.Call(method, "10s", params)
 	if err != nil {
 		return fmt.Errorf("login failed: %w", err)
 	}
