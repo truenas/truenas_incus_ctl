@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"truenas/admin-tool/core"
 
@@ -231,11 +232,42 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 	builder.WriteString("[{\"name\":")
 	builder.WriteString(name)
 	builder.WriteString(", \"properties\":{")
+
 	nProps := 0
+	shouldCreateParents := false
+	wroteCreateParents := false
+	var userPropsStr string
+
 	for i := 0; i < len(g_parametersCreateUpdate); i++ {
-		if !g_parametersCreateUpdate[i].IsDefault() {
+		isProp := false
+		switch g_parametersCreateUpdate[i].Name {
+		case "create_parents":
+			shouldCreateParents = g_parametersCreateUpdate[i].Value.VBool
+		case "user_props":
+			userPropsStr = g_parametersCreateUpdate[i].Value.VStr
+		case "option":
+			paramsKV, err := convertParamsStrToFlatKVArray(g_parametersCreateUpdate[i].Value.VStr)
+			if err != nil {
+				log.Fatal(err)
+			}
+			for j := 0; j < len(paramsKV); j += 2 {
+				if nProps > 0 {
+					builder.WriteString(",")
+				}
+				builder.WriteString(paramsKV[j])
+				builder.WriteString(":")
+				builder.WriteString(paramsKV[j+1])
+				nProps++
+				if paramsKV[j] == "\"create_ancestors\"" {
+					wroteCreateParents = true
+				}
+			}
+		default:
+			isProp = true
+		}
+		if isProp && !g_parametersCreateUpdate[i].IsDefault() {
 			if nProps > 0 {
-				builder.WriteString(", ")
+				builder.WriteString(",")
 			}
 			prop, err := core.EncloseWith(g_parametersCreateUpdate[i].Name, "\"")
 			if err != nil {
@@ -247,7 +279,36 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 			nProps++
 		}
 	}
-	builder.WriteString("} }]")
+
+	if !wroteCreateParents && shouldCreateParents {
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		builder.WriteString("\"create_ancestors\":true")
+	}
+
+	builder.WriteString("}")
+
+	if userPropsStr != "" {
+		paramsKV, err := convertParamsStrToFlatKVArray(userPropsStr)
+		if err != nil {
+			log.Fatal(err)
+		}
+		builder.WriteString(",user_properties:[")
+		for j := 0; j < len(paramsKV); j += 2 {
+			if j > 0 {
+				builder.WriteString(",")
+			}
+			builder.WriteString("{\"key\":")
+			builder.WriteString(paramsKV[j])
+			builder.WriteString(",\"value\":")
+			builder.WriteString(paramsKV[j+1])
+			builder.WriteString("}")
+		}
+		builder.WriteString("]")
+	}
+
+	builder.WriteString("}]")
 
 	_, err = api.CallString("zfs.dataset."+cmdType, "10s", builder.String())
 	if err != nil {
@@ -384,6 +445,37 @@ func renameDataset(api core.Session, args []string) {
 		return
 	}
 	defer api.Close()
+}
+
+func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
+	array := make([]string, 0, 0)
+	params := strings.Split(fullParamsStr, ",")
+	for j := 0; j < len(params); j++ {
+		parts := strings.Split(params[j], "=")
+		var value string
+		if len(parts) == 0 {
+			continue
+		} else if len(parts) == 1 {
+			value = "true"
+		} else {
+			value = parts[1]
+		}
+		prop, err := core.EncloseWith(parts[0], "\"")
+		if err != nil {
+			return array, err
+		}
+		if value != "true" && value != "false" && value != "null" {
+			_, errNotNumber := strconv.Atoi(value)
+			if errNotNumber != nil {
+				value, err = core.EncloseWith(value, "\"")
+				if err != nil {
+					return array, err
+				}
+			}
+		}
+		array = append(array, prop, value)
+	}
+	return array, nil
 }
 
 func enumerateDatasetProperties() []string {

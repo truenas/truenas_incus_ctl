@@ -70,6 +70,7 @@ func getPoolNameFromDataset(datasetName string) string {
 
 type MockDataset struct {
 	name       string
+	parent     string
 	properties map[string]string
 	userProps  map[string]string
 }
@@ -92,7 +93,9 @@ func loadMockDatasets() map[string]MockDataset {
 		for j := 1; j < len(values)-1; j += 2 {
 			key := values[j]
 			value := values[j+1]
-			if strings.HasPrefix(key, "user:") {
+			if key == "parentmock" {
+				d.parent = value
+			} else if strings.HasPrefix(key, "user:") {
 				if d.userProps == nil {
 					d.userProps = make(map[string]string)
 				}
@@ -118,6 +121,10 @@ func saveMockDatasets(datasets *map[string]MockDataset) {
 	idx := 0
 	for _, d := range *datasets {
 		output.WriteString(d.name)
+		if d.parent != "" {
+			output.WriteString("\tparentmock\t")
+			output.WriteString(d.parent)
+		}
 		for key, value := range d.properties {
 			output.WriteString("\t")
 			output.WriteString(key)
@@ -267,6 +274,11 @@ func (s *MockSession) mockDatasetCreate(params interface{}) (json.RawMessage, er
 		return nil, errors.New("No dataset name was provided")
 	}
 
+	shouldCreateParents := false
+	if parentsValue, ok := cdp.properties["create_ancestors"]; ok {
+		shouldCreateParents = parentsValue == "true"
+	}
+
 	datasets := loadMockDatasets()
 
 	if datasets != nil {
@@ -280,6 +292,25 @@ func (s *MockSession) mockDatasetCreate(params interface{}) (json.RawMessage, er
 	newDataset := MockDataset{}
 	newDataset.properties = make(map[string]string)
 	newDataset.name = cdp.datasetName
+
+	cur := &newDataset
+	parts := strings.Split(cdp.datasetName, "/")
+	for i := len(parts) - 2; i >= 1; i-- {
+		// wasteful but easy
+		parentName := strings.Join(parts[0:i+1], "/")
+		parent, exists := datasets[parentName]
+		if shouldCreateParents {
+			if !exists {
+				parent = MockDataset{}
+				parent.name = parentName
+				datasets[parentName] = parent
+			}
+		} else if !exists {
+			return nil, errors.New("Parent dataset \"" + parentName + "\" does not exist")
+		}
+		cur.parent = parentName
+		cur = &parent
+	}
 
 	propertyKeys := make([]string, 0, len(cdp.properties))
 	for key, value := range cdp.properties {
