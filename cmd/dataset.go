@@ -29,26 +29,29 @@ var datasetCmd = &cobra.Command{
 var datasetCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Creates a dataset/zvol.",
+	Args:    cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		createOrUpdateDataset("create", validateAndLogin(cmd, args, 1), args)
+		createOrUpdateDataset("create", validateAndLogin(cmd, args), args)
 	},
 }
 
 var datasetUpdateCmd = &cobra.Command{
 	Use:     "update",
 	Short:   "Updates an existing dataset/zvol.",
+	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"set"},
 	Run: func(cmd *cobra.Command, args []string) {
-		createOrUpdateDataset("update", validateAndLogin(cmd, args, 1), args)
+		createOrUpdateDataset("update", validateAndLogin(cmd, args), args)
 	},
 }
 
 var datasetDeleteCmd = &cobra.Command{
 	Use:     "delete",
 	Short:   "Deletes a dataset/zvol.",
+	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"rm"},
 	Run: func(cmd *cobra.Command, args []string) {
-		deleteDataset(validateAndLogin(cmd, args, 1), args)
+		deleteDataset(validateAndLogin(cmd, args), args)
 	},
 }
 
@@ -57,7 +60,7 @@ var datasetListCmd = &cobra.Command{
 	Short:   "Prints a table of all datasets/zvols, given a source and an optional set of properties.",
 	Aliases: []string{"ls"},
 	Run: func(cmd *cobra.Command, args []string) {
-		listDataset(validateAndLogin(cmd, args, 0), args)
+		listDataset(validateAndLogin(cmd, args), args)
 	},
 }
 
@@ -67,7 +70,7 @@ var datasetInspectCmd = &cobra.Command{
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"get"},
 	Run: func(cmd *cobra.Command, args []string) {
-		inspectDataset(validateAndLogin(cmd, args, 0), args)
+		inspectDataset(validateAndLogin(cmd, args), args)
 	},
 }
 
@@ -76,7 +79,7 @@ var datasetPromoteCmd = &cobra.Command{
 	Short: "Promote a clone dataset to no longer depend on the origin snapshot.",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		promoteDataset(validateAndLogin(cmd, args, 0), args)
+		promoteDataset(validateAndLogin(cmd, args), args)
 	},
 }
 
@@ -87,9 +90,10 @@ var datasetRenameCmd = &cobra.Command{
 Snapshots can only be re‐named within the parent file system or volume.
 When renaming a snapshot, the parent file system of the snapshot does not need to be specified as part of the second argument.
 Renamed file systems can inherit new mount points, in which case they are unmounted and remounted at the new mount point.`,
+	Args:    cobra.ExactArgs(2),
 	Aliases: []string{"mv"},
 	Run: func(cmd *cobra.Command, args []string) {
-		renameDataset(validateAndLogin(cmd, args, 0), args)
+		renameDataset(validateAndLogin(cmd, args), args)
 	},
 }
 
@@ -190,12 +194,7 @@ type typeRetrieveParams struct {
 	shouldRecurse     bool
 }
 
-func validateAndLogin(cmd *cobra.Command, args []string, minArgs int) core.Session {
-	if len(args) < minArgs {
-		cmd.HelpFunc()(cmd, args)
-		return nil
-	}
-
+func validateAndLogin(cmd *cobra.Command, args []string) core.Session {
 	var api core.Session
 	if g_useMock {
 		api = &core.MockSession{}
@@ -445,6 +444,30 @@ func renameDataset(api core.Session, args []string) {
 		return
 	}
 	defer api.Close()
+
+	var err error
+	var builder strings.Builder
+
+	builder.WriteString("[")
+	err = core.WriteEncloseWith(&builder, args[0], "\"")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	builder.WriteString(",{\"new_name\":")
+	err = core.WriteEncloseWith(&builder, args[1], "\"")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Is this correct?
+	if core.FindParameterValue(g_parametersRename, "update-shares").VBool {
+		builder.WriteString(",\"update_shares\":true")
+	}
+
+	builder.WriteString("}]")
+
+	api.CallString("zfs.dataset.rename", "10s", builder.String())
 }
 
 func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
@@ -534,7 +557,8 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 	}
 	builder.WriteString(", \"user_properties\":false }} ]")
 
-	data, err := api.CallString("pool.dataset.query", "20s", builder.String())
+	query := builder.String()
+	data, err := api.CallString("pool.dataset.query", "20s", query)
 	if err != nil {
 		return nil, err
 	}
