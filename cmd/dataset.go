@@ -149,6 +149,7 @@ var g_parametersListInspect = []core.Parameter{
 	core.MakeParameter("Bool", "H", "no-headers", false, "Equivalent to --format=compact. More easily parsed by scripts"),
 	core.MakeParameter("String", "", "format", "table", "Format (csv|json|table|compact) (default \"table\")"),
 	core.MakeParameter("String", "o", "output", "", "Output property list"),
+	core.MakeParameter("Bool", "a", "all", false, "Output all properties"),
 	//core.MakeParameter("Bool", "p", "parseable", false, ""),
 	core.MakeParameter("String", "s", "source", "default", "A comma-separated list of sources to display.\n"+
 		"Those properties coming from a source other than those in this list are ignored.\n"+
@@ -354,7 +355,7 @@ func listDataset(api core.Session, args []string) {
 	properties := enumerateDatasetProperties()
 
 	extras := typeRetrieveParams{}
-	extras.shouldGetAllProps = format == "json"
+	extras.shouldGetAllProps = format == "json" || core.FindParameterValue(g_parametersListInspect, "all").VBool
 	// `zfs list` will "recurse" if no names are specified.
 	extras.shouldRecurse = len(datasetNames) == 0 || core.FindParameterValue(g_parametersListInspect, "recursive").VBool
 
@@ -471,7 +472,12 @@ func renameDataset(api core.Session, args []string) {
 }
 
 func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
-	array := make([]string, 0, 0)
+	var array []string
+	if fullParamsStr == "" {
+		return nil, nil
+	}
+
+	array = make([]string, 0, 0)
 	params := strings.Split(fullParamsStr, ",")
 	for j := 0; j < len(params); j++ {
 		parts := strings.Split(params[j], "=")
