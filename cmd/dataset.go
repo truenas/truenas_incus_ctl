@@ -98,6 +98,9 @@ Renamed file systems can inherit new mount points, in which case they are unmoun
 }
 
 var g_useMock bool
+var g_uri string
+var g_apiKey string
+var g_keyFile string
 
 var g_parametersCreateUpdate = []core.Parameter{
 	core.MakeParameter("String", "", "comments", "", "User defined comments"),
@@ -163,6 +166,9 @@ var g_parametersRename = []core.Parameter{
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&g_useMock, "mock", false, "Use the mock API instead of a TrueNAS server")
+	rootCmd.PersistentFlags().StringVarP(&g_uri, "uri", "U", "", "Server URI")
+	rootCmd.PersistentFlags().StringVarP(&g_apiKey, "api-key", "K", "", "API key")
+	rootCmd.PersistentFlags().StringVar(&g_keyFile, "key-file", "", "Text file containing server URI on the first line, API key on the second")
 
 	inputs := make([]reflect.Value, 5)
 	for i := 0; i < len(g_parametersCreateUpdate); i++ {
@@ -200,14 +206,17 @@ func validateAndLogin() core.Session {
 	if g_useMock {
 		api = &core.MockSession{}
 	} else {
-		api = &core.RealSession{}
+		api = &core.RealSession{
+			HostUrl: g_uri,
+			ApiKey: g_apiKey,
+			KeyFileName: g_keyFile,
+		}
 	}
 
 	err := api.Login()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to log in")
 		api.Close()
-		return nil
+		log.Fatal(err)
 	}
 
 	return api
