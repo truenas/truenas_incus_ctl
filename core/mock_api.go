@@ -15,8 +15,17 @@ type MockSession struct {
 
 const DEFAULT_DATASETS_PATH = "datasets.tsv"
 
-func getMockDatasetFileName() string {
-	return DEFAULT_DATASETS_PATH
+var curDatasetsPath string
+
+func init() {
+	curDatasetsPath = DEFAULT_DATASETS_PATH
+}
+
+func GetMockDatasetFileName() string {
+	return curDatasetsPath
+}
+func SetMockDatasetFileName(path string) {
+	curDatasetsPath = path
 }
 
 func (s *MockSession) Login() error {
@@ -306,7 +315,7 @@ func (s *MockSession) mockDatasetCreate(params interface{}) (json.RawMessage, er
 		delete(cdp.properties, "create_ancestors")
 	}
 
-	datasetsPath := getMockDatasetFileName()
+	datasetsPath := GetMockDatasetFileName()
 	datasets := loadMockDatasets(datasetsPath)
 
 	if datasets != nil {
@@ -363,7 +372,7 @@ func (s *MockSession) mockDatasetUpdate(params interface{}) (json.RawMessage, er
 	}
 	shouldUpdateParents = shouldUpdateParents
 
-	datasetsPath := getMockDatasetFileName()
+	datasetsPath := GetMockDatasetFileName()
 	datasets := loadMockDatasets(datasetsPath)
 	if datasets == nil {
 		return nil, errors.New("dataset does not exist")
@@ -417,7 +426,7 @@ func (s *MockSession) mockDatasetRename(params interface{}) (json.RawMessage, er
 		return nil, errors.New("New dataset name (second param) matches old dataset name (first param)")
 	}
 
-	datasetsPath := getMockDatasetFileName()
+	datasetsPath := GetMockDatasetFileName()
 	datasets := loadMockDatasets(datasetsPath)
 	if datasets == nil {
 		return nil, errors.New("dataset does not exist")
@@ -447,7 +456,7 @@ func (s *MockSession) mockDatasetDelete(params interface{}) (json.RawMessage, er
 		return nil, errors.New("dataset delete requires a string, representing the name of the dataset to delete")
 	}
 
-	datasetsPath := getMockDatasetFileName()
+	datasetsPath := GetMockDatasetFileName()
 	datasets := loadMockDatasets(datasetsPath)
 
 	if datasets == nil {
@@ -606,7 +615,7 @@ func (s *MockSession) mockDatasetQuery(params interface{}) (json.RawMessage, err
 		}
 	}
 
-	datasets := loadMockDatasets(getMockDatasetFileName())
+	datasets := loadMockDatasets(GetMockDatasetFileName())
 
 	var output strings.Builder
 	output.WriteString("{\"jsonrpc\":\"2.0\", \"result\":[")

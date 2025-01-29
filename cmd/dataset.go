@@ -31,7 +31,7 @@ var datasetCreateCmd = &cobra.Command{
 	Short: "Creates a dataset/zvol.",
 	Args:    cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		createOrUpdateDataset("create", validateAndLogin(cmd, args), args)
+		createOrUpdateDataset("create", validateAndLogin(), args)
 	},
 }
 
@@ -41,7 +41,7 @@ var datasetUpdateCmd = &cobra.Command{
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"set"},
 	Run: func(cmd *cobra.Command, args []string) {
-		createOrUpdateDataset("update", validateAndLogin(cmd, args), args)
+		createOrUpdateDataset("update", validateAndLogin(), args)
 	},
 }
 
@@ -51,7 +51,7 @@ var datasetDeleteCmd = &cobra.Command{
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"rm"},
 	Run: func(cmd *cobra.Command, args []string) {
-		deleteDataset(validateAndLogin(cmd, args), args)
+		deleteDataset(validateAndLogin(), args)
 	},
 }
 
@@ -60,7 +60,7 @@ var datasetListCmd = &cobra.Command{
 	Short:   "Prints a table of all datasets/zvols, given a source and an optional set of properties.",
 	Aliases: []string{"ls"},
 	Run: func(cmd *cobra.Command, args []string) {
-		listDataset(validateAndLogin(cmd, args), args)
+		listDataset(validateAndLogin(), args)
 	},
 }
 
@@ -70,7 +70,7 @@ var datasetInspectCmd = &cobra.Command{
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"get"},
 	Run: func(cmd *cobra.Command, args []string) {
-		inspectDataset(validateAndLogin(cmd, args), args)
+		inspectDataset(validateAndLogin(), args)
 	},
 }
 
@@ -79,7 +79,7 @@ var datasetPromoteCmd = &cobra.Command{
 	Short: "Promote a clone dataset to no longer depend on the origin snapshot.",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		promoteDataset(validateAndLogin(cmd, args), args)
+		promoteDataset(validateAndLogin(), args)
 	},
 }
 
@@ -93,7 +93,7 @@ Renamed file systems can inherit new mount points, in which case they are unmoun
 	Args:    cobra.ExactArgs(2),
 	Aliases: []string{"mv"},
 	Run: func(cmd *cobra.Command, args []string) {
-		renameDataset(validateAndLogin(cmd, args), args)
+		renameDataset(validateAndLogin(), args)
 	},
 }
 
@@ -195,7 +195,7 @@ type typeRetrieveParams struct {
 	shouldRecurse     bool
 }
 
-func validateAndLogin(cmd *cobra.Command, args []string) core.Session {
+func validateAndLogin() core.Session {
 	var api core.Session
 	if g_useMock {
 		api = &core.MockSession{}
