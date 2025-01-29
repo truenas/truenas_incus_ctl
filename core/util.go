@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"strings"
+	"slices"
 )
 
 func EncloseWith(original string, ends string) (string, error) {
@@ -19,4 +20,17 @@ func WriteEncloseWith(builder *strings.Builder, original string, ends string) er
 	}
 	builder.WriteString(str)
 	return nil
+}
+
+func GetKeysSorted[T any](dict map[string]T) []string {
+	var keys []string
+	size := len(dict)
+	if size > 0 {
+		keys = make([]string, 0, size)
+		for k, _ := range dict {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+	}
+	return keys
 }

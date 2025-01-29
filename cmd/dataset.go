@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"truenas/admin-tool/core"
 
@@ -28,26 +29,29 @@ var datasetCmd = &cobra.Command{
 var datasetCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Creates a dataset/zvol.",
+	Args:    cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		createOrUpdateDataset("create", validateAndLogin(cmd, args, 1), args)
+		createOrUpdateDataset("create", validateAndLogin(cmd, args), args)
 	},
 }
 
 var datasetUpdateCmd = &cobra.Command{
 	Use:     "update",
 	Short:   "Updates an existing dataset/zvol.",
+	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"set"},
 	Run: func(cmd *cobra.Command, args []string) {
-		createOrUpdateDataset("update", validateAndLogin(cmd, args, 1), args)
+		createOrUpdateDataset("update", validateAndLogin(cmd, args), args)
 	},
 }
 
 var datasetDeleteCmd = &cobra.Command{
 	Use:     "delete",
 	Short:   "Deletes a dataset/zvol.",
+	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"rm"},
 	Run: func(cmd *cobra.Command, args []string) {
-		deleteDataset(validateAndLogin(cmd, args, 1), args)
+		deleteDataset(validateAndLogin(cmd, args), args)
 	},
 }
 
@@ -56,7 +60,7 @@ var datasetListCmd = &cobra.Command{
 	Short:   "Prints a table of all datasets/zvols, given a source and an optional set of properties.",
 	Aliases: []string{"ls"},
 	Run: func(cmd *cobra.Command, args []string) {
-		listDataset(validateAndLogin(cmd, args, 0), args)
+		listDataset(validateAndLogin(cmd, args), args)
 	},
 }
 
@@ -66,7 +70,7 @@ var datasetInspectCmd = &cobra.Command{
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"get"},
 	Run: func(cmd *cobra.Command, args []string) {
-		inspectDataset(validateAndLogin(cmd, args, 0), args)
+		inspectDataset(validateAndLogin(cmd, args), args)
 	},
 }
 
@@ -75,7 +79,7 @@ var datasetPromoteCmd = &cobra.Command{
 	Short: "Promote a clone dataset to no longer depend on the origin snapshot.",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		promoteDataset(validateAndLogin(cmd, args, 0), args)
+		promoteDataset(validateAndLogin(cmd, args), args)
 	},
 }
 
@@ -86,9 +90,10 @@ var datasetRenameCmd = &cobra.Command{
 Snapshots can only be re‐named within the parent file system or volume.
 When renaming a snapshot, the parent file system of the snapshot does not need to be specified as part of the second argument.
 Renamed file systems can inherit new mount points, in which case they are unmounted and remounted at the new mount point.`,
+	Args:    cobra.ExactArgs(2),
 	Aliases: []string{"mv"},
 	Run: func(cmd *cobra.Command, args []string) {
-		renameDataset(validateAndLogin(cmd, args, 0), args)
+		renameDataset(validateAndLogin(cmd, args), args)
 	},
 }
 
@@ -144,6 +149,7 @@ var g_parametersListInspect = []core.Parameter{
 	core.MakeParameter("Bool", "H", "no-headers", false, "Equivalent to --format=compact. More easily parsed by scripts"),
 	core.MakeParameter("String", "", "format", "table", "Format (csv|json|table|compact) (default \"table\")"),
 	core.MakeParameter("String", "o", "output", "", "Output property list"),
+	core.MakeParameter("Bool", "a", "all", false, "Output all properties"),
 	//core.MakeParameter("Bool", "p", "parseable", false, ""),
 	core.MakeParameter("String", "s", "source", "default", "A comma-separated list of sources to display.\n"+
 		"Those properties coming from a source other than those in this list are ignored.\n"+
@@ -189,12 +195,7 @@ type typeRetrieveParams struct {
 	shouldRecurse     bool
 }
 
-func validateAndLogin(cmd *cobra.Command, args []string, minArgs int) core.Session {
-	if len(args) < minArgs {
-		cmd.HelpFunc()(cmd, args)
-		return nil
-	}
-
+func validateAndLogin(cmd *cobra.Command, args []string) core.Session {
 	var api core.Session
 	if g_useMock {
 		api = &core.MockSession{}
@@ -231,11 +232,42 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 	builder.WriteString("[{\"name\":")
 	builder.WriteString(name)
 	builder.WriteString(", \"properties\":{")
+
 	nProps := 0
+	shouldCreateParents := false
+	wroteCreateParents := false
+	var userPropsStr string
+
 	for i := 0; i < len(g_parametersCreateUpdate); i++ {
-		if !g_parametersCreateUpdate[i].IsDefault() {
+		isProp := false
+		switch g_parametersCreateUpdate[i].Name {
+		case "create_parents":
+			shouldCreateParents = g_parametersCreateUpdate[i].Value.VBool
+		case "user_props":
+			userPropsStr = g_parametersCreateUpdate[i].Value.VStr
+		case "option":
+			paramsKV, err := convertParamsStrToFlatKVArray(g_parametersCreateUpdate[i].Value.VStr)
+			if err != nil {
+				log.Fatal(err)
+			}
+			for j := 0; j < len(paramsKV); j += 2 {
+				if nProps > 0 {
+					builder.WriteString(",")
+				}
+				builder.WriteString(paramsKV[j])
+				builder.WriteString(":")
+				builder.WriteString(paramsKV[j+1])
+				nProps++
+				if paramsKV[j] == "\"create_ancestors\"" {
+					wroteCreateParents = true
+				}
+			}
+		default:
+			isProp = true
+		}
+		if isProp && !g_parametersCreateUpdate[i].IsDefault() {
 			if nProps > 0 {
-				builder.WriteString(", ")
+				builder.WriteString(",")
 			}
 			prop, err := core.EncloseWith(g_parametersCreateUpdate[i].Name, "\"")
 			if err != nil {
@@ -247,7 +279,36 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 			nProps++
 		}
 	}
-	builder.WriteString("} }]")
+
+	if !wroteCreateParents && shouldCreateParents {
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		builder.WriteString("\"create_ancestors\":true")
+	}
+
+	builder.WriteString("}")
+
+	if userPropsStr != "" {
+		paramsKV, err := convertParamsStrToFlatKVArray(userPropsStr)
+		if err != nil {
+			log.Fatal(err)
+		}
+		builder.WriteString(",user_properties:[")
+		for j := 0; j < len(paramsKV); j += 2 {
+			if j > 0 {
+				builder.WriteString(",")
+			}
+			builder.WriteString("{\"key\":")
+			builder.WriteString(paramsKV[j])
+			builder.WriteString(",\"value\":")
+			builder.WriteString(paramsKV[j+1])
+			builder.WriteString("}")
+		}
+		builder.WriteString("]")
+	}
+
+	builder.WriteString("}]")
 
 	_, err = api.CallString("zfs.dataset."+cmdType, "10s", builder.String())
 	if err != nil {
@@ -294,7 +355,7 @@ func listDataset(api core.Session, args []string) {
 	properties := enumerateDatasetProperties()
 
 	extras := typeRetrieveParams{}
-	extras.shouldGetAllProps = format == "json"
+	extras.shouldGetAllProps = format == "json" || core.FindParameterValue(g_parametersListInspect, "all").VBool
 	// `zfs list` will "recurse" if no names are specified.
 	extras.shouldRecurse = len(datasetNames) == 0 || core.FindParameterValue(g_parametersListInspect, "recursive").VBool
 
@@ -384,6 +445,66 @@ func renameDataset(api core.Session, args []string) {
 		return
 	}
 	defer api.Close()
+
+	var err error
+	var builder strings.Builder
+
+	builder.WriteString("[")
+	err = core.WriteEncloseWith(&builder, args[0], "\"")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	builder.WriteString(",{\"new_name\":")
+	err = core.WriteEncloseWith(&builder, args[1], "\"")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Is this correct?
+	if core.FindParameterValue(g_parametersRename, "update-shares").VBool {
+		builder.WriteString(",\"update_shares\":true")
+	}
+
+	builder.WriteString("}]")
+
+	api.CallString("zfs.dataset.rename", "10s", builder.String())
+}
+
+func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
+	var array []string
+	if fullParamsStr == "" {
+		return nil, nil
+	}
+
+	array = make([]string, 0, 0)
+	params := strings.Split(fullParamsStr, ",")
+	for j := 0; j < len(params); j++ {
+		parts := strings.Split(params[j], "=")
+		var value string
+		if len(parts) == 0 {
+			continue
+		} else if len(parts) == 1 {
+			value = "true"
+		} else {
+			value = parts[1]
+		}
+		prop, err := core.EncloseWith(parts[0], "\"")
+		if err != nil {
+			return array, err
+		}
+		if value != "true" && value != "false" && value != "null" {
+			_, errNotNumber := strconv.Atoi(value)
+			if errNotNumber != nil {
+				value, err = core.EncloseWith(value, "\"")
+				if err != nil {
+					return array, err
+				}
+			}
+		}
+		array = append(array, prop, value)
+	}
+	return array, nil
 }
 
 func enumerateDatasetProperties() []string {
@@ -442,7 +563,8 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 	}
 	builder.WriteString(", \"user_properties\":false }} ]")
 
-	data, err := api.CallString("pool.dataset.query", "20s", builder.String())
+	query := builder.String()
+	data, err := api.CallString("pool.dataset.query", "20s", query)
 	if err != nil {
 		return nil, err
 	}

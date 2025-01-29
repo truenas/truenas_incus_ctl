@@ -5,11 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 )
 
 type MockSession struct {
 	closed bool
+}
+
+const DEFAULT_DATASETS_PATH = "datasets.tsv"
+
+func getMockDatasetFileName() string {
+	return DEFAULT_DATASETS_PATH
 }
 
 func (s *MockSession) Login() error {
@@ -46,6 +53,10 @@ func (s *MockSession) Call(method string, timeoutStr string, params interface{})
 		return s.mockDatasetCreate(params)
 	case "zfs.dataset.create":
 		return s.mockDatasetCreate(params)
+	case "pool.dataset.update":
+		return s.mockDatasetUpdate(params)
+	case "zfs.dataset.update":
+		return s.mockDatasetUpdate(params)
 	case "pool.dataset.delete":
 		return s.mockDatasetDelete(params)
 	case "zfs.dataset.delete":
@@ -54,6 +65,8 @@ func (s *MockSession) Call(method string, timeoutStr string, params interface{})
 		return s.mockDatasetQuery(params)
 	case "zfs.dataset.query":
 		return s.mockDatasetQuery(params)
+	case "zfs.dataset.rename":
+		return s.mockDatasetRename(params)
 	default:
 		return nil, errors.New("Unrecognised command " + method)
 	}
@@ -74,9 +87,9 @@ type MockDataset struct {
 	userProps  map[string]string
 }
 
-func loadMockDatasets() map[string]MockDataset {
+func loadMockDatasets(mockDatasetsFileName string) map[string]MockDataset {
 	var datasets map[string]MockDataset
-	content, err := os.ReadFile("datasets.tsv")
+	content, err := os.ReadFile(mockDatasetsFileName)
 	if err != nil || len(content) == 0 {
 		return datasets
 	}
@@ -113,7 +126,7 @@ func loadMockDatasets() map[string]MockDataset {
 	return datasets
 }
 
-func saveMockDatasets(datasets *map[string]MockDataset) {
+func saveMockDatasets(mockDatasetsFileName string, datasets *map[string]MockDataset) {
 	var output strings.Builder
 	idx := 0
 	for _, d := range *datasets {
@@ -135,23 +148,11 @@ func saveMockDatasets(datasets *map[string]MockDataset) {
 	}
 
 	if idx > 0 {
-		_ = os.WriteFile("datasets.tsv", []byte(output.String()), 0666)
+		_ = os.WriteFile(mockDatasetsFileName, []byte(output.String()), 0666)
 	}
 }
 
-func getKeys(properties map[string]string) []string {
-	var keys []string
-	size := len(properties)
-	if size > 0 {
-		keys = make([]string, 0, size)
-		for k, _ := range properties {
-			keys = append(keys, k)
-		}
-	}
-	return keys
-}
-
-type typeCreateDatasetParams struct {
+type typeCreateUpdateDatasetParams struct {
 	datasetName string
 	comments    string
 	properties  map[string]string
@@ -173,8 +174,8 @@ func getParamArray(params interface{}, minArgs int) ([]interface{}, error) {
 	return paramArray, nil
 }
 
-func getCreateDatasetParams(params interface{}) (typeCreateDatasetParams, error) {
-	cdp := typeCreateDatasetParams{}
+func getCreateUpdateDatasetParams(params interface{}) (typeCreateUpdateDatasetParams, error) {
+	cdp := typeCreateUpdateDatasetParams{}
 
 	paramArray, err := getParamArray(params, 1)
 	if err != nil {
@@ -257,8 +258,40 @@ func getCreateDatasetParams(params interface{}) (typeCreateDatasetParams, error)
 	return cdp, nil
 }
 
+func editDatasetProperties(cdp *typeCreateUpdateDatasetParams, dataset *MockDataset) ([]string, []string) {
+	var propertyKeys []string
+	nProps := len(cdp.properties)
+	if nProps > 0 {
+		propertyKeys = make([]string, 0, nProps)
+		if dataset.properties == nil {
+			dataset.properties = make(map[string]string)
+		}
+		for key, value := range cdp.properties {
+			dataset.properties[key] = value
+			propertyKeys = append(propertyKeys, key)
+		}
+		slices.Sort(propertyKeys)
+	}
+
+	var userPropKeys []string
+	nUserProps := len(cdp.userProps)
+	if nProps > 0 {
+		userPropKeys = make([]string, 0, nUserProps)
+		if dataset.userProps == nil {
+			dataset.userProps = make(map[string]string)
+		}
+		for key, value := range cdp.userProps {
+			dataset.userProps[key] = value
+			userPropKeys = append(userPropKeys, key)
+		}
+		slices.Sort(userPropKeys)
+	}
+
+	return propertyKeys, userPropKeys
+}
+
 func (s *MockSession) mockDatasetCreate(params interface{}) (json.RawMessage, error) {
-	cdp, err := getCreateDatasetParams(params)
+	cdp, err := getCreateUpdateDatasetParams(params)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +300,14 @@ func (s *MockSession) mockDatasetCreate(params interface{}) (json.RawMessage, er
 		return nil, errors.New("No dataset name was provided")
 	}
 
-	datasets := loadMockDatasets()
+	shouldCreateParents := false
+	if parentsValue, ok := cdp.properties["create_ancestors"]; ok {
+		shouldCreateParents = parentsValue == "true"
+		delete(cdp.properties, "create_ancestors")
+	}
+
+	datasetsPath := getMockDatasetFileName()
+	datasets := loadMockDatasets(datasetsPath)
 
 	if datasets != nil {
 		if _, exists := datasets[cdp.datasetName]; exists {
@@ -281,18 +321,119 @@ func (s *MockSession) mockDatasetCreate(params interface{}) (json.RawMessage, er
 	newDataset.properties = make(map[string]string)
 	newDataset.name = cdp.datasetName
 
-	propertyKeys := make([]string, 0, len(cdp.properties))
-	for key, value := range cdp.properties {
-		newDataset.properties[key] = value
-		propertyKeys = append(propertyKeys, key)
+	parts := strings.Split(cdp.datasetName, "/")
+	for i := len(parts) - 2; i >= 1; i-- {
+		// wasteful but easy
+		parentName := strings.Join(parts[0:i+1], "/")
+		if _, exists := datasets[parentName]; !exists {
+			if shouldCreateParents {
+				parent := MockDataset{}
+				parent.name = parentName
+				datasets[parentName] = parent
+			} else {
+				return nil, errors.New("Parent dataset \"" + parentName + "\" does not exist")
+			}
+		}
 	}
 
+	propertyKeys, userPropKeys := editDatasetProperties(&cdp, &newDataset)
+
 	datasets[cdp.datasetName] = newDataset
-	saveMockDatasets(&datasets)
+	saveMockDatasets(datasetsPath, &datasets)
 
 	var output strings.Builder
-	writeDatasetInfo(&output, &newDataset, propertyKeys, nil)
+	writeDatasetInfo(&output, &newDataset, propertyKeys, userPropKeys)
 	return []byte(output.String()), nil
+}
+
+func (s *MockSession) mockDatasetUpdate(params interface{}) (json.RawMessage, error) {
+	udp, err := getCreateUpdateDatasetParams(params)
+	if err != nil {
+		return nil, err
+	}
+
+	if udp.datasetName == "" {
+		return nil, errors.New("No dataset name was provided")
+	}
+
+	shouldUpdateParents := false
+	if parentsValue, ok := udp.properties["create_ancestors"]; ok {
+		shouldUpdateParents = parentsValue == "true"
+		delete(udp.properties, "create_ancestors")
+	}
+	shouldUpdateParents = shouldUpdateParents
+
+	datasetsPath := getMockDatasetFileName()
+	datasets := loadMockDatasets(datasetsPath)
+	if datasets == nil {
+		return nil, errors.New("dataset does not exist")
+	}
+	dataset, exists := datasets[udp.datasetName]
+	if !exists {
+		return nil, errors.New("dataset does not exist")
+	}
+
+	propertyKeys, userPropKeys := editDatasetProperties(&udp, &dataset)
+
+	saveMockDatasets(datasetsPath, &datasets)
+
+	var output strings.Builder
+	writeDatasetInfo(&output, &dataset, propertyKeys, userPropKeys)
+	return []byte(output.String()), nil
+}
+
+func (s *MockSession) mockDatasetRename(params interface{}) (json.RawMessage, error) {
+	paramsList, err := getParamArray(params, 2)
+	if err != nil {
+		return nil, err
+	}
+
+	var oldName string
+	var newName string
+
+	if value, ok := paramsList[0].(string); ok {
+		oldName = value
+	} else {
+		return nil, errors.New("Dataset name (first param) was not a string")
+	}
+
+	if value, ok := paramsList[1].(map[string]interface{}); ok {
+		if inner, ok := value["new_name"]; ok {
+			if newName, ok = inner.(string); !ok {
+				return nil, errors.New("New dataset name (second param) was not a string")
+			}
+		}
+	} else if value, ok := paramsList[1].(string); ok {
+		newName = value
+	}
+
+	if oldName == "" {
+		return nil, errors.New("Dataset name (first param) was empty")
+	}
+	if newName == "" {
+		return nil, errors.New("New dataset name (second param) was empty")
+	}
+	if newName == oldName {
+		return nil, errors.New("New dataset name (second param) matches old dataset name (first param)")
+	}
+
+	datasetsPath := getMockDatasetFileName()
+	datasets := loadMockDatasets(datasetsPath)
+	if datasets == nil {
+		return nil, errors.New("dataset does not exist")
+	}
+	dataset, exists := datasets[oldName]
+	if !exists {
+		return nil, errors.New("dataset does not exist")
+	}
+
+	delete(datasets, oldName)
+	dataset.name = newName
+	datasets[newName] = dataset
+
+	saveMockDatasets(datasetsPath, &datasets)
+
+	return []byte("True"), nil
 }
 
 func (s *MockSession) mockDatasetDelete(params interface{}) (json.RawMessage, error) {
@@ -306,7 +447,8 @@ func (s *MockSession) mockDatasetDelete(params interface{}) (json.RawMessage, er
 		return nil, errors.New("dataset delete requires a string, representing the name of the dataset to delete")
 	}
 
-	datasets := loadMockDatasets()
+	datasetsPath := getMockDatasetFileName()
+	datasets := loadMockDatasets(datasetsPath)
 
 	if datasets == nil {
 		return nil, errors.New("dataset does not exist")
@@ -316,7 +458,7 @@ func (s *MockSession) mockDatasetDelete(params interface{}) (json.RawMessage, er
 	}
 
 	delete(datasets, datasetName)
-	saveMockDatasets(&datasets)
+	saveMockDatasets(datasetsPath, &datasets)
 
 	return []byte("True"), nil
 }
@@ -354,6 +496,8 @@ func getQueryDatasetParams(paramsList []interface{}) (typeQueryDatasetParams, er
 				}
 				cur++
 			}
+		} else {
+			cur++
 		}
 	}
 	if cur >= len(paramsList) {
@@ -462,7 +606,7 @@ func (s *MockSession) mockDatasetQuery(params interface{}) (json.RawMessage, err
 		}
 	}
 
-	datasets := loadMockDatasets()
+	datasets := loadMockDatasets(getMockDatasetFileName())
 
 	var output strings.Builder
 	output.WriteString("{\"jsonrpc\":\"2.0\", \"result\":[")
@@ -472,21 +616,22 @@ func (s *MockSession) mockDatasetQuery(params interface{}) (json.RawMessage, err
 			if dataset, exists := datasets[qdp.datasetName]; exists {
 				var properties []string
 				if qdp.shouldGetAllProps {
-					properties = getKeys(dataset.properties)
+					properties = GetKeysSorted(dataset.properties)
 				} else {
 					properties = qdp.properties
 				}
 				writeDatasetInfo(&output, &dataset, properties, nil)
 			}
 		} else {
-			idx := 0
-			for _, dataset := range datasets {
+			datasetNames := GetKeysSorted(datasets)
+			for idx, name := range datasetNames {
+				dataset := datasets[name]
 				if idx > 0 {
 					output.WriteString(", ")
 				}
 				var properties []string
 				if qdp.shouldGetAllProps {
-					properties = getKeys(dataset.properties)
+					properties = GetKeysSorted(dataset.properties)
 				} else {
 					properties = qdp.properties
 				}
