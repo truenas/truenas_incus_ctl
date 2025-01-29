@@ -1,16 +1,17 @@
 package core
 
 import (
+	"errors"
 	"os"
-	"fmt"
 	"strings"
 	"encoding/json"
 	"truenas/admin-tool/truenas_api"
 )
 
 type RealSession struct {
-	hostUrl string
-	apiKey string
+	HostUrl string
+	ApiKey string
+	KeyFileName string
 	client *truenas_api.Client
 }
 
@@ -20,25 +21,25 @@ func (s *RealSession) Login() error {
 	}
 
 	var err error
-	s.hostUrl, s.apiKey, err = loadHostAndKey()
-	if err != nil {
-		return err
+	if s.HostUrl == "" || s.ApiKey == "" {
+		s.HostUrl, s.ApiKey, err = loadHostAndKey(s.KeyFileName)
+		if err != nil {
+			return err
+		}
 	}
 
-	client, err := truenas_api.NewClient(s.hostUrl, strings.HasPrefix(s.hostUrl, "wss://"))
+	client, err := truenas_api.NewClient(s.HostUrl, strings.HasPrefix(s.HostUrl, "wss://"))
 	if err != nil {
-		fmt.Println("Failed to create client:", err)
-		return err
+		return errors.New("Failed to create client: " + err.Error())
 	}
 
-	err = client.Login("", "", s.apiKey)
+	err = client.Login("", "", s.ApiKey)
 	if err != nil {
 		client.Close()
-		fmt.Println("client.Login failed:", err)
-		return err
+		return errors.New("Client login failed: " + err.Error())
 	}
 
-	s.client = client;
+	s.client = client
 	return nil
 }
 
@@ -59,22 +60,19 @@ func (s *RealSession) Close() error {
 	return err
 }
 
-func loadHostAndKey() (string, string, error) {
-	fileName := "key.txt"
+func loadHostAndKey(fileName string) (string, string, error) {
+	if fileName == "" {
+		return "", "", errors.New("Could not open key file: no filename was given")
+	}
+
 	contents, err := os.ReadFile(fileName)
 	if err != nil {
-		fmt.Println("Could not open", fileName)
-		return "", "", err
+		return "", "", errors.New("Could not open key file: \"" + fileName + "\" does not exist")
 	}
 
 	lines := strings.Split(string(contents), "\n")
 	if len(lines) < 2 {
-		fmt.Println(lines[0])
-		fmt.Println(
-			"Failed to parse login config\n" +
-			"The first line must be the server URL, and the second line must be the API key",
-		)
-		return "", "", err
+		return "", "", errors.New("Failed to parse key file: the first line must be the server URL, and the second line must be the API key")
 	}
 
 	return lines[0], lines[1], nil
