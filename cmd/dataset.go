@@ -352,7 +352,7 @@ func deleteDataset(api core.Session, args []string) {
 	builder.WriteString(name)
 	builder.WriteString(",{")
 
-	usedOptions, _ , allTypes := getCobraFlags(datasetDeleteCmd)
+	usedOptions, _, allTypes := getCobraFlags(datasetDeleteCmd)
 	nProps := 0
 	for key, value := range usedOptions {
 		if nProps > 0 {
@@ -372,7 +372,8 @@ func deleteDataset(api core.Session, args []string) {
 	params := builder.String()
 	fmt.Println(params)
 
-	_, err = api.CallString("pool.dataset.delete", "10s", params)
+	out, err := api.CallString("pool.dataset.delete", "10s", params)
+	fmt.Println(string(out))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
