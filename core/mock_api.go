@@ -366,7 +366,7 @@ func (s *MockSession) mockDatasetUpdate(params interface{}) (json.RawMessage, er
 	}
 
 	propertyKeys, userPropKeys := editDatasetProperties(&udp, &dataset)
-
+	datasets[udp.datasetName] = dataset
 	saveMockDatasets(s.Source, &datasets)
 
 	var output strings.Builder
