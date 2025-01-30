@@ -204,7 +204,9 @@ type typeRetrieveParams struct {
 func validateAndLogin() core.Session {
 	var api core.Session
 	if g_useMock {
-		api = &core.MockSession{}
+		api = &core.MockSession{
+			Source: &core.FileRawa{ FileName: "datasets.tsv" },
+		}
 	} else {
 		api = &core.RealSession{
 			HostUrl: g_uri,

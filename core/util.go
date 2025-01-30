@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"slices"
 )
@@ -33,4 +34,32 @@ func GetKeysSorted[T any](dict map[string]T) []string {
 		slices.Sort(keys)
 	}
 	return keys
+}
+
+type ReadAllWriteAll interface {
+	ReadAll() ([]byte, error)
+	WriteAll([]byte) error
+}
+
+type FileRawa struct {
+	FileName string
+}
+
+type MemoryRawa struct {
+	Current []byte
+}
+
+func (rw *FileRawa) ReadAll() ([]byte, error) {
+	return os.ReadFile(rw.FileName)
+}
+func (rw *FileRawa) WriteAll(content []byte) error {
+	return os.WriteFile(rw.FileName, content, 0666)
+}
+
+func (rw *MemoryRawa) ReadAll() ([]byte, error) {
+	return rw.Current, nil
+}
+func (rw *MemoryRawa) WriteAll(content []byte) error {
+	rw.Current = content
+	return nil
 }
