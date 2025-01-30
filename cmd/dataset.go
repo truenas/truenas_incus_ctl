@@ -104,7 +104,7 @@ var g_datasetParametersCreateUpdate = []core.Parameter{
 	core.MakeParameter("String", "", "compression", "off", "Controls the compression algorithm used for this dataset\n(\"on\",\"off\",\"gzip\","+
 		"\"gzip-{n}\",\"lz4\",\"lzjb\",\"zle\",\"zstd\",\"zstd-{n}\",\"zstd-fast\",\"zstd-fast-{n}\")"),
 	core.MakeParameter("String", "", "atime", "off", "Controls whether the access time for files is updated when they are read (\"on\",\"off\")"),
-	core.MakeParameter("String", "", "exec", "off", "Controls whether processes can be executed from within this file system (\"on\",\"off\")"),
+	core.MakeParameter("String", "", "exec", "on", "Controls whether processes can be executed from within this file system (\"on\",\"off\")"),
 	core.MakeParameter("String", "", "managedby", "truenas-admin", "Manager of this dataset, must not be empty"),
 	core.MakeParameter("Bool", "", "quota", false, ""),
 	//core.MakeParameter("Bool", "", "quota_warning", false, ""),
@@ -266,9 +266,6 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 			isProp = true
 		}
 		if isProp && !g_datasetParametersCreateUpdate[i].IsDefault() {
-			if nProps > 0 {
-				builder.WriteString(",")
-			}
 			prop, err := core.EncloseWith(g_datasetParametersCreateUpdate[i].Name, "\"")
 			if err != nil {
 				log.Fatal(err)
@@ -276,7 +273,12 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 			builder.WriteString(",")
 			builder.WriteString(prop)
 			builder.WriteString(":")
-			builder.WriteString(g_datasetParametersCreateUpdate[i].GetJsonValue())
+			value := g_datasetParametersCreateUpdate[i].GetJsonValue()
+			// a list of props that need upper-casing? string enums need upper-casing to their api. but bools do not.
+			if g_datasetParametersCreateUpdate[i].Name == "exec" /* is-string-enum */ {
+				value = strings.ToUpper(value)
+			}
+			builder.WriteString(value)
 			nProps++
 		}
 	}
@@ -306,7 +308,9 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 
 	builder.WriteString("}]")
 
-	_, err = api.CallString("zfs.dataset."+cmdType, "10s", builder.String())
+	params := builder.String()
+	out, err := api.CallString("pool.dataset."+cmdType, "10s", params)
+	_ = out
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
