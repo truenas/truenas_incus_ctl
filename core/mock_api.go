@@ -178,7 +178,7 @@ func getCreateUpdateDatasetParams(params interface{}) (typeCreateUpdateDatasetPa
 
 	paramsMap, ok := paramArray[0].(map[string]interface{})
 	if !ok {
-		return cdp, errors.New("parameters for 'create' must be in the form of a map")
+		return cdp, errors.New("parameters for 'create/update' must be in the form of a map")
 	}
 
 	if value, ok := paramsMap["name"]; ok {
@@ -366,7 +366,7 @@ func (s *MockSession) mockDatasetUpdate(params interface{}) (json.RawMessage, er
 	}
 
 	propertyKeys, userPropKeys := editDatasetProperties(&udp, &dataset)
-
+	datasets[udp.datasetName] = dataset
 	saveMockDatasets(s.Source, &datasets)
 
 	var output strings.Builder

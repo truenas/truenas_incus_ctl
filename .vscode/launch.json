@@ -62,12 +62,28 @@
           "args": ["--key-file=${workspaceFolder}/key.txt","dataset","update","--exec=off","dozer/created"]
         },
         {
+          "name": "dataset update -o exec=off dozer/created",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","update","-o","exec=off","dozer/created"]
+        },
+        {
           "name": "dataset create -p dozer/created/parent/child",
           "type": "go",
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
           "args": ["--key-file=${workspaceFolder}/key.txt","dataset","create","--create_parents","dozer/created/parent/child"]  // -p also works.
+        },
+        {
+          "name": "dataset rm dozer/created",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","delete","dozer/created"]
         },
         {
           "name": "dataset rm -r dozer/created",

@@ -35,4 +35,9 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&g_keyFile, "key-file", "", "Text file containing server URL on the first line, API key on the second")
 }
 
-
+func RemoveGlobalFlags(flags map[string]string) {
+	delete(flags, "mock")
+	delete(flags, "url")
+	delete(flags, "api-key")
+	delete(flags, "key-file")
+}
