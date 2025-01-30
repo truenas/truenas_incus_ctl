@@ -580,7 +580,7 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 
 	var response interface{}
 	if err = json.Unmarshal(data, &response); err != nil {
-		return nil, errors.New(fmt.Sprintf("response error: %v", err))
+		return nil, fmt.Errorf("response error: %v", err)
 	}
 
 	responseMap, ok := response.(map[string]interface{})
