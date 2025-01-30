@@ -29,7 +29,7 @@ var datasetCmd = &cobra.Command{
 var datasetCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Creates a dataset/zvol.",
-	Args:    cobra.MinimumNArgs(1),
+	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		createOrUpdateDataset("create", validateAndLogin(), args)
 	},
@@ -129,7 +129,7 @@ var g_parametersCreateUpdate = []core.Parameter{
 	core.MakeParameter("Bool", "", "aclmode", false, ""),
 	core.MakeParameter("Bool", "", "acltype", false, ""),
 	core.MakeParameter("Bool", "", "share_type", false, ""),
-	core.MakeParameter("Bool", "p", "create_parents", true, "Creates all the non-existing parent datasets"),
+	core.MakeParameter("Bool", "p", "create_parents", false, "Creates all the non-existing parent datasets"),
 	core.MakeParameter("String", "", "user_props", "", "Sets the specified properties"),
 	core.MakeParameter("String", "o", "option", "", "Specify property=value,..."),
 	core.MakeParameter("Int64", "V", "volume", 0, "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size."),
