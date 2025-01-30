@@ -62,6 +62,14 @@
           "args": ["--key-file=${workspaceFolder}/key.txt","dataset","update","--exec=off","dozer/created"]
         },
         {
+          "name": "dataset update -o exec=off dozer/created",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","update","-o","exec=off","dozer/created"]
+        },
+        {
           "name": "dataset create -p dozer/created/parent/child",
           "type": "go",
           "request": "launch",
