@@ -17,21 +17,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const TESTING_DATASET_FILE = "ds_testing.tsv"
-
 var api *core.Session
+var dsText = MemoryRawa{}
 
 func setupTest(t *testing.T) {
-	_ = os.Remove(TESTING_DATASET_FILE)
-	SetMockDatasetFileName(TESTING_DATASET_FILE)
 	if api == nil {
-		api = &core.MockSession{}
+		api = &core.MockSession{ Source: &dsText }
 		api.Login()
 	}
 }
 
 func TestDatasetCreate(t *testing.T) {
 	setupTest(t)
+	dsText.Current = nil
+	// createOrUpdateDataset()
+	// verify json response
+	// verify dsText.Current
 }
 
 
