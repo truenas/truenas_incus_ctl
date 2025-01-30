@@ -31,7 +31,7 @@ var datasetCreateCmd = &cobra.Command{
 	Short: "Creates a dataset/zvol.",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		createOrUpdateDataset("create", validateAndLogin(cmd, args), args)
+		createOrUpdateDataset("create", validateAndLogin(), args)
 	},
 }
 
@@ -41,7 +41,7 @@ var datasetUpdateCmd = &cobra.Command{
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"set"},
 	Run: func(cmd *cobra.Command, args []string) {
-		createOrUpdateDataset("update", validateAndLogin(cmd, args), args)
+		createOrUpdateDataset("update", validateAndLogin(), args)
 	},
 }
 
@@ -51,7 +51,7 @@ var datasetDeleteCmd = &cobra.Command{
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"rm"},
 	Run: func(cmd *cobra.Command, args []string) {
-		deleteDataset(validateAndLogin(cmd, args), args)
+		deleteDataset(validateAndLogin(), args)
 	},
 }
 
@@ -60,7 +60,7 @@ var datasetListCmd = &cobra.Command{
 	Short:   "Prints a table of all datasets/zvols, given a source and an optional set of properties.",
 	Aliases: []string{"ls"},
 	Run: func(cmd *cobra.Command, args []string) {
-		listDataset(validateAndLogin(cmd, args), args)
+		listDataset(validateAndLogin(), args)
 	},
 }
 
@@ -70,7 +70,7 @@ var datasetInspectCmd = &cobra.Command{
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"get"},
 	Run: func(cmd *cobra.Command, args []string) {
-		inspectDataset(validateAndLogin(cmd, args), args)
+		inspectDataset(validateAndLogin(), args)
 	},
 }
 
@@ -79,7 +79,7 @@ var datasetPromoteCmd = &cobra.Command{
 	Short: "Promote a clone dataset to no longer depend on the origin snapshot.",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		promoteDataset(validateAndLogin(cmd, args), args)
+		promoteDataset(validateAndLogin(), args)
 	},
 }
 
@@ -93,13 +93,11 @@ Renamed file systems can inherit new mount points, in which case they are unmoun
 	Args:    cobra.ExactArgs(2),
 	Aliases: []string{"mv"},
 	Run: func(cmd *cobra.Command, args []string) {
-		renameDataset(validateAndLogin(cmd, args), args)
+		renameDataset(validateAndLogin(), args)
 	},
 }
 
-var g_useMock bool
-
-var g_parametersCreateUpdate = []core.Parameter{
+var g_datasetParametersCreateUpdate = []core.Parameter{
 	core.MakeParameter("String", "", "comments", "", "User defined comments"),
 	core.MakeParameter("String", "", "sync", "standard", "Controls the behavior of synchronous requests (\"standard\",\"always\",\"disabled\")"),
 	core.MakeParameter("String", "", "snapdir", "hidden", "Controls whether the .zfs directory is disabled, hidden or visible  (\"hidden\", \"visible\")"),
@@ -136,13 +134,13 @@ var g_parametersCreateUpdate = []core.Parameter{
 	core.MakeParameter("String", "", "snapdev", "hidden", "Controls whether the volume snapshot devices are hidden or visible (\"hidden\",\"visible\")"),
 }
 
-var g_parametersDelete = []core.Parameter{
+var g_datasetParametersDelete = []core.Parameter{
 	core.MakeParameter("Bool", "r", "recursive", false, "Also delete/destroy all children datasets. When the root dataset is specified,\n"+
 		"it will destroy all the children of the root dataset present leaving root dataset intact"),
 	core.MakeParameter("Bool", "f", "force", false, "Force delete busy datasets"),
 }
 
-var g_parametersListInspect = []core.Parameter{
+var g_datasetParametersListInspect = []core.Parameter{
 	core.MakeParameter("Bool", "r", "recursive", false, "Retrieves properties for children"),
 	core.MakeParameter("Bool", "u", "user-properties", false, "Include user-properties"),
 	core.MakeParameter("Bool", "j", "json", false, "Equivalent to --format=json"),
@@ -157,27 +155,25 @@ var g_parametersListInspect = []core.Parameter{
 		"The default value is all sources."),
 }
 
-var g_parametersRename = []core.Parameter{
+var g_datasetParametersRename = []core.Parameter{
 	core.MakeParameter("Bool", "s", "update-shares", false, "Will update any shares as part of rename"),
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVar(&g_useMock, "mock", false, "Use the mock API instead of a TrueNAS server")
-
 	inputs := make([]reflect.Value, 5)
-	for i := 0; i < len(g_parametersCreateUpdate); i++ {
-		core.AddParameterToFlags(datasetCreateCmd.Flags(), inputs, g_parametersCreateUpdate, i)
-		core.AddParameterToFlags(datasetUpdateCmd.Flags(), inputs, g_parametersCreateUpdate, i)
+	for i := 0; i < len(g_datasetParametersCreateUpdate); i++ {
+		core.AddParameterToFlags(datasetCreateCmd.Flags(), inputs, g_datasetParametersCreateUpdate, i)
+		core.AddParameterToFlags(datasetUpdateCmd.Flags(), inputs, g_datasetParametersCreateUpdate, i)
 	}
-	for i := 0; i < len(g_parametersDelete); i++ {
-		core.AddParameterToFlags(datasetDeleteCmd.Flags(), inputs, g_parametersDelete, i)
+	for i := 0; i < len(g_datasetParametersDelete); i++ {
+		core.AddParameterToFlags(datasetDeleteCmd.Flags(), inputs, g_datasetParametersDelete, i)
 	}
-	for i := 0; i < len(g_parametersListInspect); i++ {
-		core.AddParameterToFlags(datasetListCmd.Flags(), inputs, g_parametersListInspect, i)
-		core.AddParameterToFlags(datasetInspectCmd.Flags(), inputs, g_parametersListInspect, i)
+	for i := 0; i < len(g_datasetParametersListInspect); i++ {
+		core.AddParameterToFlags(datasetListCmd.Flags(), inputs, g_datasetParametersListInspect, i)
+		core.AddParameterToFlags(datasetInspectCmd.Flags(), inputs, g_datasetParametersListInspect, i)
 	}
-	for i := 0; i < len(g_parametersRename); i++ {
-		core.AddParameterToFlags(datasetRenameCmd.Flags(), inputs, g_parametersRename, i)
+	for i := 0; i < len(g_datasetParametersRename); i++ {
+		core.AddParameterToFlags(datasetRenameCmd.Flags(), inputs, g_datasetParametersRename, i)
 	}
 
 	datasetCmd.AddCommand(datasetCreateCmd)
@@ -195,19 +191,24 @@ type typeRetrieveParams struct {
 	shouldRecurse     bool
 }
 
-func validateAndLogin(cmd *cobra.Command, args []string) core.Session {
+func validateAndLogin() core.Session {
 	var api core.Session
 	if g_useMock {
-		api = &core.MockSession{}
+		api = &core.MockSession{
+			Source: &core.FileRawa{ FileName: "datasets.tsv" },
+		}
 	} else {
-		api = &core.RealSession{}
+		api = &core.RealSession{
+			HostUrl:     g_url,
+			ApiKey:      g_apiKey,
+			KeyFileName: g_keyFile,
+		}
 	}
 
 	err := api.Login()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to log in")
 		api.Close()
-		return nil
+		log.Fatal(err)
 	}
 
 	return api
@@ -238,15 +239,15 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 	wroteCreateParents := false
 	var userPropsStr string
 
-	for i := 0; i < len(g_parametersCreateUpdate); i++ {
+	for i := 0; i < len(g_datasetParametersCreateUpdate); i++ {
 		isProp := false
-		switch g_parametersCreateUpdate[i].Name {
+		switch g_datasetParametersCreateUpdate[i].Name {
 		case "create_parents":
-			shouldCreateParents = g_parametersCreateUpdate[i].Value.VBool
+			shouldCreateParents = g_datasetParametersCreateUpdate[i].Value.VBool
 		case "user_props":
-			userPropsStr = g_parametersCreateUpdate[i].Value.VStr
+			userPropsStr = g_datasetParametersCreateUpdate[i].Value.VStr
 		case "option":
-			paramsKV, err := convertParamsStrToFlatKVArray(g_parametersCreateUpdate[i].Value.VStr)
+			paramsKV, err := convertParamsStrToFlatKVArray(g_datasetParametersCreateUpdate[i].Value.VStr)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -265,17 +266,17 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 		default:
 			isProp = true
 		}
-		if isProp && !g_parametersCreateUpdate[i].IsDefault() {
+		if isProp && !g_datasetParametersCreateUpdate[i].IsDefault() {
 			if nProps > 0 {
 				builder.WriteString(",")
 			}
-			prop, err := core.EncloseWith(g_parametersCreateUpdate[i].Name, "\"")
+			prop, err := core.EncloseWith(g_datasetParametersCreateUpdate[i].Name, "\"")
 			if err != nil {
 				log.Fatal(err)
 			}
 			builder.WriteString(prop)
 			builder.WriteString(":")
-			builder.WriteString(g_parametersCreateUpdate[i].GetJsonValue())
+			builder.WriteString(g_datasetParametersCreateUpdate[i].GetJsonValue())
 			nProps++
 		}
 	}
@@ -355,9 +356,9 @@ func listDataset(api core.Session, args []string) {
 	properties := enumerateDatasetProperties()
 
 	extras := typeRetrieveParams{}
-	extras.shouldGetAllProps = format == "json" || core.FindParameterValue(g_parametersListInspect, "all").VBool
+	extras.shouldGetAllProps = format == "json" || core.FindParameterValue(g_datasetParametersListInspect, "all").VBool
 	// `zfs list` will "recurse" if no names are specified.
-	extras.shouldRecurse = len(datasetNames) == 0 || core.FindParameterValue(g_parametersListInspect, "recursive").VBool
+	extras.shouldRecurse = len(datasetNames) == 0 || core.FindParameterValue(g_datasetParametersListInspect, "recursive").VBool
 
 	datasets, err := retrieveDatasetInfos(api, datasetNames, properties, extras)
 	if err != nil {
@@ -403,7 +404,7 @@ func inspectDataset(api core.Session, args []string) {
 
 	extras := typeRetrieveParams{}
 	extras.shouldGetAllProps = format == "json" || len(properties) == 0
-	extras.shouldRecurse = core.FindParameterValue(g_parametersListInspect, "recursive").VBool
+	extras.shouldRecurse = core.FindParameterValue(g_datasetParametersListInspect, "recursive").VBool
 
 	datasets, err := retrieveDatasetInfos(api, args, properties, extras)
 	if err != nil {
@@ -462,7 +463,7 @@ func renameDataset(api core.Session, args []string) {
 	}
 
 	// Is this correct?
-	if core.FindParameterValue(g_parametersRename, "update-shares").VBool {
+	if core.FindParameterValue(g_datasetParametersRename, "update-shares").VBool {
 		builder.WriteString(",\"update_shares\":true")
 	}
 
@@ -508,7 +509,7 @@ func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
 }
 
 func enumerateDatasetProperties() []string {
-	outputParam := core.FindParameterValue(g_parametersListInspect, "output")
+	outputParam := core.FindParameterValue(g_datasetParametersListInspect, "output")
 	if outputParam == nil {
 		return nil
 	}
@@ -571,7 +572,7 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 
 	var response interface{}
 	if err = json.Unmarshal(data, &response); err != nil {
-		return nil, errors.New(fmt.Sprintf("response error: %v", err))
+		return nil, fmt.Errorf("response error: %v", err)
 	}
 
 	responseMap, ok := response.(map[string]interface{})
@@ -668,8 +669,8 @@ func getUsedPropertyColumns(datasets []map[string]interface{}) []string {
 }
 
 func getTableFormat() (string, error) {
-	isJson := core.FindParameterValue(g_parametersListInspect, "json").VBool
-	isCompact := core.FindParameterValue(g_parametersListInspect, "no-headers").VBool
+	isJson := core.FindParameterValue(g_datasetParametersListInspect, "json").VBool
+	isCompact := core.FindParameterValue(g_datasetParametersListInspect, "no-headers").VBool
 	if isJson && isCompact {
 		return "", errors.New("--json and --no-headers cannot be used together")
 	} else if isJson {
@@ -678,5 +679,5 @@ func getTableFormat() (string, error) {
 		return "compact", nil
 	}
 
-	return core.FindParameterValue(g_parametersListInspect, "format").VStr, nil
+	return core.FindParameterValue(g_datasetParametersListInspect, "format").VStr, nil
 }
