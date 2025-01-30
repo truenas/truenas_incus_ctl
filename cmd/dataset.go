@@ -97,11 +97,6 @@ Renamed file systems can inherit new mount points, in which case they are unmoun
 	},
 }
 
-var g_useMock bool
-var g_url string
-var g_apiKey string
-var g_keyFile string
-
 var g_parametersCreateUpdate = []core.Parameter{
 	core.MakeParameter("String", "", "comments", "", "User defined comments"),
 	core.MakeParameter("String", "", "sync", "standard", "Controls the behavior of synchronous requests (\"standard\",\"always\",\"disabled\")"),
@@ -165,11 +160,6 @@ var g_parametersRename = []core.Parameter{
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVar(&g_useMock, "mock", false, "Use the mock API instead of a TrueNAS server")
-	rootCmd.PersistentFlags().StringVarP(&g_url, "url", "U", "", "Server URL")
-	rootCmd.PersistentFlags().StringVarP(&g_apiKey, "api-key", "K", "", "API key")
-	rootCmd.PersistentFlags().StringVar(&g_keyFile, "key-file", "", "Text file containing server URL on the first line, API key on the second")
-
 	inputs := make([]reflect.Value, 5)
 	for i := 0; i < len(g_parametersCreateUpdate); i++ {
 		core.AddParameterToFlags(datasetCreateCmd.Flags(), inputs, g_parametersCreateUpdate, i)
