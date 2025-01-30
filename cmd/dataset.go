@@ -236,7 +236,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	wroteCreateParents := false
 	var userPropsStr string
 
-	optionsUsed, _ := getCobraFlags(cmd)
+	optionsUsed, _, allTypes := getCobraFlags(cmd)
 
 	for name, valueStr := range(optionsUsed) {
 		isProp := false
@@ -276,7 +276,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 			builder.WriteString(prop)
 			builder.WriteString(":")
 
-			if datasetCreateCmd.Flags().Lookup(name).Value.Type() == "string" {
+			if t, exists := allTypes[name]; exists && t == "string" {
 				v, err := core.EncloseWith(valueStr, "\"")
 				if err != nil {
 					log.Fatal(err)
@@ -339,7 +339,32 @@ func deleteDataset(api core.Session, args []string) {
 		log.Fatal(err)
 	}
 
-	_, err = api.CallString("pool.dataset.delete", "10s", "["+name+"]")
+	var builder strings.Builder
+	builder.WriteString("[")
+	builder.WriteString(name)
+	builder.WriteString(",{")
+
+	usedOptions, _ , allTypes := getCobraFlags(datasetDeleteCmd)
+	nProps := 0
+	for key, value := range usedOptions {
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		_ = core.WriteEncloseWith(&builder, key, "\"")
+		builder.WriteString(":")
+		if t, _ := allTypes[key]; t == "string" {
+			_ = core.WriteEncloseWith(&builder, value, "\"")
+		} else {
+			builder.WriteString(value)
+		}
+		nProps++
+	}
+
+	builder.WriteString("}]")
+	params := builder.String()
+	fmt.Println(params)
+
+	_, err = api.CallString("pool.dataset.delete", "10s", params)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
@@ -357,7 +382,7 @@ func listDataset(api core.Session, args []string) {
 		datasetNames = []string{args[0]}
 	}
 
-	_, allOptions := getCobraFlags(datasetListCmd)
+	_, allOptions, _ := getCobraFlags(datasetListCmd)
 
 	format, err := getTableFormat(allOptions)
 	if err != nil {
@@ -406,7 +431,7 @@ func inspectDataset(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	_, allOptions := getCobraFlags(datasetListCmd)
+	_, allOptions, _ := getCobraFlags(datasetListCmd)
 
 	format, err := getTableFormat(allOptions)
 	if err != nil {
@@ -461,7 +486,7 @@ func renameDataset(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	_, allOptions := getCobraFlags(datasetRenameCmd)
+	_, allOptions, _ := getCobraFlags(datasetRenameCmd)
 
 	var err error
 	var builder strings.Builder
