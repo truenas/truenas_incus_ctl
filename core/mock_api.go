@@ -178,7 +178,7 @@ func getCreateUpdateDatasetParams(params interface{}) (typeCreateUpdateDatasetPa
 
 	paramsMap, ok := paramArray[0].(map[string]interface{})
 	if !ok {
-		return cdp, errors.New("parameters for 'create' must be in the form of a map")
+		return cdp, errors.New("parameters for 'create/update' must be in the form of a map")
 	}
 
 	if value, ok := paramsMap["name"]; ok {

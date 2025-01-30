@@ -112,7 +112,7 @@ func init() {
 		cmd.Flags().String("compression", "off", "Controls the compression algorithm used for this dataset\n(\"on\",\"off\",\"gzip\","+
 			"\"gzip-{n}\",\"lz4\",\"lzjb\",\"zle\",\"zstd\",\"zstd-{n}\",\"zstd-fast\",\"zstd-fast-{n}\")")
 		cmd.Flags().String("atime", "off", "Controls whether the access time for files is updated when they are read (\"on\",\"off\")")
-		cmd.Flags().String("exec", "off", "Controls whether processes can be executed from within this file system (\"on\",\"off\")")
+		cmd.Flags().String("exec", "", "Controls whether processes can be executed from within this file system (\"on\",\"off\")")
 		cmd.Flags().String("managedby", "truenas-admin", "Manager of this dataset, must not be empty")
 		cmd.Flags().Bool("quota", false, "")
 		//cmd.Flags().Bool("quota_warning", false, "")
@@ -183,7 +183,7 @@ func validateAndLogin() core.Session {
 	var api core.Session
 	if g_useMock {
 		api = &core.MockSession{
-			Source: &core.FileRawa{ FileName: "datasets.tsv" },
+			Source: &core.FileRawa{FileName: "datasets.tsv"},
 		}
 	} else {
 		api = &core.RealSession{
@@ -218,12 +218,20 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		log.Fatal(err)
 	}
 
-	var builder strings.Builder
-	builder.WriteString("[{\"name\":")
-	builder.WriteString(name)
-	builder.WriteString(", \"properties\":{")
-
 	nProps := 0
+
+	var builder strings.Builder
+
+	if cmdType == "create" {
+		builder.WriteString("[{\"name\":")
+		builder.WriteString(name)
+		nProps++
+	} else {
+		builder.WriteString("[")
+		builder.WriteString(name)
+		builder.WriteString(",{")
+	}
+
 	shouldCreateParents := false
 	wroteCreateParents := false
 	var userPropsStr string
@@ -258,15 +266,16 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 			isProp = true
 		}
 		if isProp {
-			if nProps > 0 {
-				builder.WriteString(",")
-			}
 			prop, err := core.EncloseWith(name, "\"")
 			if err != nil {
 				log.Fatal(err)
 			}
+			if nProps > 0 {
+				builder.WriteString(",")
+			}
 			builder.WriteString(prop)
 			builder.WriteString(":")
+
 			if datasetCreateCmd.Flags().Lookup(name).Value.Type() == "string" {
 				v, err := core.EncloseWith(valueStr, "\"")
 				if err != nil {
@@ -274,19 +283,18 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 				}
 				valueStr = v
 			}
+			// a list of props that need upper-casing? string enums need upper-casing to their api. but bools do not.
+			if name == "exec" /* is-string-enum */ {
+				valueStr = strings.ToUpper(valueStr)
+			}
 			builder.WriteString(valueStr)
 			nProps++
 		}
 	}
 
 	if !wroteCreateParents && shouldCreateParents {
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
-		builder.WriteString("\"create_ancestors\":true")
+		builder.WriteString(",\"create_ancestors\":true")
 	}
-
-	builder.WriteString("}")
 
 	if userPropsStr != "" {
 		paramsKV, err := convertParamsStrToFlatKVArray(userPropsStr)
@@ -309,7 +317,11 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 
 	builder.WriteString("}]")
 
-	_, err = api.CallString("zfs.dataset."+cmdType, "10s", builder.String())
+	params := builder.String()
+	fmt.Println(params)
+
+	out, err := api.CallString("pool.dataset."+cmdType, "10s", params)
+	_ = out
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
