@@ -195,7 +195,7 @@ func validateAndLogin() core.Session {
 	var api core.Session
 	if g_useMock {
 		api = &core.MockSession{
-			Source: &core.FileRawa{ FileName: "datasets.tsv" },
+			Source: &core.FileRawa{FileName: "datasets.tsv"},
 		}
 	} else {
 		api = &core.RealSession{
@@ -232,7 +232,6 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 	var builder strings.Builder
 	builder.WriteString("[{\"name\":")
 	builder.WriteString(name)
-	builder.WriteString(", \"properties\":{")
 
 	nProps := 0
 	shouldCreateParents := false
@@ -274,6 +273,7 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 			if err != nil {
 				log.Fatal(err)
 			}
+			builder.WriteString(",")
 			builder.WriteString(prop)
 			builder.WriteString(":")
 			builder.WriteString(g_datasetParametersCreateUpdate[i].GetJsonValue())
@@ -282,13 +282,8 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 	}
 
 	if !wroteCreateParents && shouldCreateParents {
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
-		builder.WriteString("\"create_ancestors\":true")
+		builder.WriteString(",\"create_ancestors\":true")
 	}
-
-	builder.WriteString("}")
 
 	if userPropsStr != "" {
 		paramsKV, err := convertParamsStrToFlatKVArray(userPropsStr)
