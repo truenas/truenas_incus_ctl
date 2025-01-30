@@ -104,7 +104,7 @@ var g_datasetParametersCreateUpdate = []core.Parameter{
 	core.MakeParameter("String", "", "compression", "off", "Controls the compression algorithm used for this dataset\n(\"on\",\"off\",\"gzip\","+
 		"\"gzip-{n}\",\"lz4\",\"lzjb\",\"zle\",\"zstd\",\"zstd-{n}\",\"zstd-fast\",\"zstd-fast-{n}\")"),
 	core.MakeParameter("String", "", "atime", "off", "Controls whether the access time for files is updated when they are read (\"on\",\"off\")"),
-	core.MakeParameter("String", "", "exec", "on", "Controls whether processes can be executed from within this file system (\"on\",\"off\")"),
+	core.MakeParameter("String", "", "exec", "", "Controls whether processes can be executed from within this file system (\"on\",\"off\")"),
 	core.MakeParameter("String", "", "managedby", "truenas-admin", "Manager of this dataset, must not be empty"),
 	core.MakeParameter("Bool", "", "quota", false, ""),
 	//core.MakeParameter("Bool", "", "quota_warning", false, ""),
@@ -229,11 +229,20 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 		log.Fatal(err)
 	}
 
-	var builder strings.Builder
-	builder.WriteString("[{\"name\":")
-	builder.WriteString(name)
-
 	nProps := 0
+
+	var builder strings.Builder
+
+	if cmdType == "create" {
+		builder.WriteString("[{\"name\":")
+		builder.WriteString(name)
+		nProps++
+	} else {
+		builder.WriteString("[")
+		builder.WriteString(name)
+		builder.WriteString(",{")
+	}
+
 	shouldCreateParents := false
 	wroteCreateParents := false
 	var userPropsStr string
@@ -270,7 +279,9 @@ func createOrUpdateDataset(cmdType string, api core.Session, args []string) {
 			if err != nil {
 				log.Fatal(err)
 			}
-			builder.WriteString(",")
+			if nProps > 0 {
+				builder.WriteString(",")
+			}
 			builder.WriteString(prop)
 			builder.WriteString(":")
 			value := g_datasetParametersCreateUpdate[i].GetJsonValue()
