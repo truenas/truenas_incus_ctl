@@ -104,8 +104,8 @@ func init() {
 		renameDataset(validateAndLogin(), args)
 	}
 
-	createUpdateCmds := []*cobra.Command {datasetCreateCmd, datasetUpdateCmd}
-	for _, cmd := range(createUpdateCmds) {
+	createUpdateCmds := []*cobra.Command{datasetCreateCmd, datasetUpdateCmd}
+	for _, cmd := range createUpdateCmds {
 		cmd.Flags().String("comments", "", "User defined comments")
 		cmd.Flags().String("sync", "standard", "Controls the behavior of synchronous requests (\"standard\",\"always\",\"disabled\")")
 		cmd.Flags().String("snapdir", "hidden", "Controls whether the .zfs directory is disabled, hidden or visible  (\"hidden\", \"visible\")")
@@ -146,8 +146,8 @@ func init() {
 		"it will destroy all the children of the root dataset present leaving root dataset intact")
 	datasetDeleteCmd.Flags().BoolP("force", "f", false, "Force delete busy datasets")
 
-	listInspectCmds := []*cobra.Command {datasetListCmd, datasetInspectCmd}
-	for _, cmd := range(listInspectCmds) {
+	listInspectCmds := []*cobra.Command{datasetListCmd, datasetInspectCmd}
+	for _, cmd := range listInspectCmds {
 		cmd.Flags().BoolP("recursive", "r", false, "Retrieves properties for children")
 		cmd.Flags().BoolP("user-properties", "u", false, "Include user-properties")
 		cmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
@@ -238,7 +238,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 
 	optionsUsed, _, allTypes := getCobraFlags(cmd)
 
-	for name, valueStr := range(optionsUsed) {
+	for name, valueStr := range optionsUsed {
 		isProp := false
 		switch name {
 		case "create_parents":
@@ -254,9 +254,14 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 				if nProps > 0 {
 					builder.WriteString(",")
 				}
-				builder.WriteString(paramsKV[j])
+				key := paramsKV[j]
+				builder.WriteString(key)
 				builder.WriteString(":")
-				builder.WriteString(paramsKV[j+1])
+				value := paramsKV[j+1]
+				if key == "\"exec\"" { // TODO: this needs to somehow figure out when to ToUpper
+					value = strings.ToUpper(value)
+				}
+				builder.WriteString(value)
 				nProps++
 				if paramsKV[j] == "\"create_ancestors\"" {
 					wroteCreateParents = true
@@ -301,7 +306,10 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		if err != nil {
 			log.Fatal(err)
 		}
-		builder.WriteString(",user_properties:[")
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		builder.WriteString("user_properties:[")
 		for j := 0; j < len(paramsKV); j += 2 {
 			if j > 0 {
 				builder.WriteString(",")
