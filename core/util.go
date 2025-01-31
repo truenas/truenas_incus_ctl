@@ -36,6 +36,13 @@ func GetKeysSorted[T any](dict map[string]T) []string {
 	return keys
 }
 
+func IsValueTrue(dict map[string]string, key string) bool {
+	if valueStr, exists := dict[key]; exists {
+		return valueStr == "true"
+	}
+	return false
+}
+
 type ReadAllWriteAll interface {
 	ReadAll() ([]byte, error)
 	WriteAll([]byte) error

@@ -2,10 +2,15 @@ package cmd
 
 import (
 	"fmt"
+
 	"github.com/spf13/cobra"
 )
 
-const VERSION = "0.1.0"
+/*
+0.1.0 initial version
+0.1.1 added url, apikey and keyfile
+*/
+const VERSION = "0.1.1"
 
 var versionCmd = &cobra.Command{
 	Use: "version",
