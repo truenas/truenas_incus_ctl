@@ -102,6 +102,11 @@ func init() {
 		cmd.Flags().String("name", "", "")
 		cmd.Flags().Int("id", -1, "")
 		cmd.Flags().String("query-filter", "", "")
+		cmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
+		cmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
+		cmd.Flags().String("format", "table", "Format (csv|json|table|compact) (default \"table\")")
+		cmd.Flags().StringP("output", "o", "", "Output property list")
+		cmd.Flags().BoolP("all", "a", false, "Output all properties")
 	}
 
 	nfsCmd.AddCommand(nfsCreateCmd)
@@ -204,6 +209,18 @@ func deleteNfs(api core.Session, args []string) {
 		return
 	}
 	defer api.Close()
+
+	idStr := args[0]
+	_, err := strconv.Atoi(idStr)
+	if err != nil {
+		fmt.Errorf("ID \"%s\" was not a number", idStr)
+	}
+
+	out, err := api.CallString("sharing.nfs.delete", "10s", "[" + idStr + "]")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(string(out))
 }
 
 func listNfs(api core.Session, args []string) {
@@ -239,6 +256,29 @@ func listNfs(api core.Session, args []string) {
 		log.Fatal(err)
 	}
 	fmt.Println(string(out))
+
+	/*
+	var table strings.Builder
+	columnsList := getUsedPropertyColumns(datasets)
+
+	switch format {
+	case "compact":
+		core.WriteListCsv(&table, datasets, columnsList, false)
+	case "csv":
+		core.WriteListCsv(&table, datasets, columnsList, true)
+	case "json":
+		table.WriteString("{\"datasets\":")
+		core.WriteJson(&table, datasets)
+		table.WriteString("}\n")
+	case "table":
+		core.WriteListTable(&table, datasets, columnsList, true)
+	default:
+		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
+		return
+	}
+
+	os.Stdout.WriteString(table.String())
+	*/
 }
 
 func inspectNfs(api core.Session, args []string) {
