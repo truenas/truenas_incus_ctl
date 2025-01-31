@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"log"
 	"os"
+	"truenas/admin-tool/core"
 	"github.com/spf13/cobra"
 )
 
@@ -40,4 +42,27 @@ func RemoveGlobalFlags(flags map[string]string) {
 	delete(flags, "url")
 	delete(flags, "api-key")
 	delete(flags, "key-file")
+}
+
+func ValidateAndLogin() core.Session {
+	var api core.Session
+	if g_useMock {
+		api = &core.MockSession{
+			DatasetSource: &core.FileRawa{FileName: "datasets.tsv"},
+		}
+	} else {
+		api = &core.RealSession{
+			HostUrl:     g_url,
+			ApiKey:      g_apiKey,
+			KeyFileName: g_keyFile,
+		}
+	}
+
+	err := api.Login()
+	if err != nil {
+		api.Close()
+		log.Fatal(err)
+	}
+
+	return api
 }

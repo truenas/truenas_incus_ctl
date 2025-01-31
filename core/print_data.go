@@ -68,7 +68,7 @@ func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}) {
 		if i > 0 {
 			builder.WriteString(",")
 		}
-		name, _ := EncloseWith(p["name"].(string), "\"")
+		name := EncloseAndEscape(p["name"].(string), "\"")
 		builder.WriteString(name)
 		builder.WriteString(":{\"name\":")
 		builder.WriteString(name)
@@ -77,12 +77,12 @@ func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}) {
 				continue
 			}
 			builder.WriteString(",")
-			_ = WriteEncloseWith(builder, key, "\"")
+			WriteEncloseAndEscape(builder, key, "\"")
 			builder.WriteString(":")
 			if value == nil {
 				builder.WriteString("null")
 			} else if valueStr, ok := value.(string); ok {
-				_ = WriteEncloseWith(builder, valueStr, "\"")
+				WriteEncloseAndEscape(builder, valueStr, "\"")
 			} else {
 				builder.WriteString(fmt.Sprintf("%v", value))
 			}
