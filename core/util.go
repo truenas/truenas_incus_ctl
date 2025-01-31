@@ -44,6 +44,27 @@ func GetKeysSorted[T any](dict map[string]T) []string {
 	return keys
 }
 
+func ExtractJsonArrayOfMaps(obj map[string]interface{}, key string) ([]map[string]interface{}, string) {
+	if value, ok := obj[key]; ok {
+		if array, ok := value.([]interface{}); ok {
+			if len(array) == 0 {
+				return nil, ""
+			}
+			list := make([]map[string]interface{}, 0)
+			for i := 0; i < len(array); i++ {
+				if elem, ok := array[i].(map[string]interface{}); ok {
+					list = append(list, elem)
+				} else {
+					return nil, "contained a non-object entry"
+				}
+			}
+			return list, ""
+		}
+		return nil, "was not an array"
+	}
+	return nil, "did not contain a list"
+}
+
 func IsValueTrue(dict map[string]string, key string) bool {
 	if valueStr, exists := dict[key]; exists {
 		return valueStr == "true"

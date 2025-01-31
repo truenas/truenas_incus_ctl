@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"truenas/admin-tool/core"
@@ -168,7 +171,7 @@ func updateNfs(api core.Session, args []string) {
 	idStr := args[0]
 	_, err := strconv.Atoi(idStr)
 	if err != nil {
-		fmt.Errorf("ID \"%s\" was not a number", idStr)
+		log.Fatal(fmt.Errorf("ID \"%s\" was not a number", idStr))
 	}
 
 	var builder strings.Builder
@@ -213,7 +216,7 @@ func deleteNfs(api core.Session, args []string) {
 	idStr := args[0]
 	_, err := strconv.Atoi(idStr)
 	if err != nil {
-		fmt.Errorf("ID \"%s\" was not a number", idStr)
+		log.Fatal(fmt.Errorf("ID \"%s\" was not a number", idStr))
 	}
 
 	out, err := api.CallString("sharing.nfs.delete", "10s", "[" + idStr + "]")
@@ -230,6 +233,10 @@ func listNfs(api core.Session, args []string) {
 	defer api.Close()
 
 	_, allOptions, _ := getCobraFlags(nfsListCmd)
+	format, err := GetTableFormat(allOptions)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	var builder strings.Builder
 
@@ -244,7 +251,11 @@ func listNfs(api core.Session, args []string) {
 		builder.WriteString("[[\"id\",\"=\",")
 		builder.WriteString(fmt.Sprint(id))
 		builder.WriteString("]]")
+	} else {
+		builder.WriteString("[]")
 	}
+
+	builder.WriteString(",{\"extra\":{\"properties\":[\"ro\"]}}")
 
 	builder.WriteString("]")
 
@@ -255,30 +266,33 @@ func listNfs(api core.Session, args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(string(out))
 
-	/*
+	os.Stdout.WriteString(string(out))
+	format = format
+
+	shares, err := unpackNfsQuery(out)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	var table strings.Builder
-	columnsList := getUsedPropertyColumns(datasets)
+	columnsList := GetUsedPropertyColumns(shares, []string{"id", "path"})
 
 	switch format {
 	case "compact":
-		core.WriteListCsv(&table, datasets, columnsList, false)
+		core.WriteListCsv(&table, shares, columnsList, false)
 	case "csv":
-		core.WriteListCsv(&table, datasets, columnsList, true)
+		core.WriteListCsv(&table, shares, columnsList, true)
 	case "json":
-		table.WriteString("{\"datasets\":")
-		core.WriteJson(&table, datasets)
-		table.WriteString("}\n")
+		core.WriteJson(&table, shares)
 	case "table":
-		core.WriteListTable(&table, datasets, columnsList, true)
+		core.WriteListTable(&table, shares, columnsList, true)
 	default:
 		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
 		return
 	}
 
 	os.Stdout.WriteString(table.String())
-	*/
 }
 
 func inspectNfs(api core.Session, args []string) {
@@ -288,4 +302,23 @@ func inspectNfs(api core.Session, args []string) {
 	defer api.Close()
 
 	//_, allOptions, allTypes := getCobraFlags(nfsInspectCmd)
+}
+
+func unpackNfsQuery(data json.RawMessage) ([]map[string]interface{}, error) {
+	var response interface{}
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("response error: %v", err)
+	}
+
+	responseMap, ok := response.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("API response was not a JSON object")
+	}
+
+	resultsList, errMsg := core.ExtractJsonArrayOfMaps(responseMap, "result")
+	if errMsg != "" {
+		return nil, errors.New("API response results: " + errMsg)
+	}
+
+	return resultsList, nil
 }

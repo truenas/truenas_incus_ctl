@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"errors"
 	"log"
 	"os"
+	"slices"
 	"truenas/admin-tool/core"
 	"github.com/spf13/cobra"
 )
@@ -65,4 +67,39 @@ func ValidateAndLogin() core.Session {
 	}
 
 	return api
+}
+
+func GetUsedPropertyColumns(datasets []map[string]interface{}, required []string) []string {
+	columnsMap := make(map[string]bool)
+	columnsList := make([]string, 0)
+
+	for _, c := range required {
+		columnsMap[c] = true
+	}
+
+	for _, d := range datasets {
+		for key, _ := range d {
+			if _, exists := columnsMap[key]; !exists {
+				columnsMap[key] = true
+				columnsList = append(columnsList, key)
+			}
+		}
+	}
+
+	slices.Sort(columnsList)
+	return append(required, columnsList...)
+}
+
+func GetTableFormat(properties map[string]string) (string, error) {
+	isJson := core.IsValueTrue(properties, "json")
+	isCompact := core.IsValueTrue(properties, "no-headers")
+	if isJson && isCompact {
+		return "", errors.New("--json and --no-headers cannot be used together")
+	} else if isJson {
+		return "json", nil
+	} else if isCompact {
+		return "compact", nil
+	}
+
+	return properties["format"], nil
 }

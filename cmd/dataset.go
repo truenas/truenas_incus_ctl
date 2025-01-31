@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"truenas/admin-tool/core"
@@ -355,7 +354,7 @@ func listDataset(api core.Session, args []string) {
 
 	_, allOptions, _ := getCobraFlags(datasetListCmd)
 
-	format, err := getTableFormat(allOptions)
+	format, err := GetTableFormat(allOptions)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return
@@ -375,7 +374,7 @@ func listDataset(api core.Session, args []string) {
 	}
 
 	var builder strings.Builder
-	columnsList := getUsedPropertyColumns(datasets)
+	columnsList := GetUsedPropertyColumns(datasets, []string{"name"})
 
 	switch format {
 	case "compact":
@@ -404,7 +403,7 @@ func inspectDataset(api core.Session, args []string) {
 
 	_, allOptions, _ := getCobraFlags(datasetListCmd)
 
-	format, err := getTableFormat(allOptions)
+	format, err := GetTableFormat(allOptions)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return
@@ -423,7 +422,7 @@ func inspectDataset(api core.Session, args []string) {
 	}
 
 	var builder strings.Builder
-	columnsList := getUsedPropertyColumns(datasets)
+	columnsList := GetUsedPropertyColumns(datasets, []string{"name"})
 
 	switch format {
 	case "compact":
@@ -568,7 +567,7 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 		return nil, errors.New("API response was not a JSON object")
 	}
 
-	resultsList, errMsg := extractJsonArrayOfMaps(responseMap, "result")
+	resultsList, errMsg := core.ExtractJsonArrayOfMaps(responseMap, "result")
 	if errMsg != "" {
 		return nil, errors.New("API response results: " + errMsg)
 	}
@@ -581,7 +580,7 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 	// Do not refactor this loop condition into a range!
 	// This loop modifies the size of resultsList as it iterates.
 	for i := 0; i < len(resultsList); i++ {
-		children, _ := extractJsonArrayOfMaps(resultsList[i], "children")
+		children, _ := core.ExtractJsonArrayOfMaps(resultsList[i], "children")
 		if len(children) > 0 {
 			resultsList = append(append(resultsList[0:i+1], children...), resultsList[i+1:]...)
 		}
@@ -616,56 +615,4 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 	}
 
 	return datasetList, nil
-}
-
-func extractJsonArrayOfMaps(obj map[string]interface{}, key string) ([]map[string]interface{}, string) {
-	if value, ok := obj[key]; ok {
-		if array, ok := value.([]interface{}); ok {
-			if len(array) == 0 {
-				return nil, ""
-			}
-			list := make([]map[string]interface{}, 0)
-			for i := 0; i < len(array); i++ {
-				if elem, ok := array[i].(map[string]interface{}); ok {
-					list = append(list, elem)
-				} else {
-					return nil, "contained a non-object entry"
-				}
-			}
-			return list, ""
-		}
-		return nil, "was not an array"
-	}
-	return nil, "did not contain a list"
-}
-
-func getUsedPropertyColumns(datasets []map[string]interface{}) []string {
-	columnsMap := make(map[string]bool)
-	columnsList := make([]string, 0)
-	columnsMap["name"] = true
-	for _, d := range datasets {
-		for key, _ := range d {
-			if _, exists := columnsMap[key]; !exists {
-				columnsMap[key] = true
-				columnsList = append(columnsList, key)
-			}
-		}
-	}
-
-	slices.Sort(columnsList)
-	return append([]string{"name"}, columnsList...)
-}
-
-func getTableFormat(properties map[string]string) (string, error) {
-	isJson := core.IsValueTrue(properties, "json")
-	isCompact := core.IsValueTrue(properties, "no-headers")
-	if isJson && isCompact {
-		return "", errors.New("--json and --no-headers cannot be used together")
-	} else if isJson {
-		return "json", nil
-	} else if isCompact {
-		return "compact", nil
-	}
-
-	return properties["format"], nil
 }
