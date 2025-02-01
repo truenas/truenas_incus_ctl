@@ -92,6 +92,11 @@ func init() {
 	snapshotDeleteCmd.Flags().Bool("defer", false, "defer the deletion of snapshot")
 
 	snapshotListCmd.Flags().BoolP("recursive", "r", false, "")
+	snapshotListCmd.Flags().BoolP("user-properties", "u", false, "Include user-properties")
+	snapshotListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
+	snapshotListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
+	snapshotListCmd.Flags().String("format", "table", "Format (csv|json|table|compact) (default \"table\")")
+	snapshotListCmd.Flags().StringP("output", "o", "", "Output property list")
 	snapshotListCmd.Flags().Bool("all", false, "")
 
 	snapshotRollbackCmd.Flags().BoolP("force", "f", false, "force unmount of any clones")
