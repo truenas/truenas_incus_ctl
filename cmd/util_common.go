@@ -1,5 +1,15 @@
 package cmd
 
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	//"log"
+	"slices"
+	"strings"
+	"truenas/admin-tool/core"
+)
+
 type typeRetrieveParams struct {
 	retrieveType      string
 	shouldGetAllProps bool
@@ -8,29 +18,29 @@ type typeRetrieveParams struct {
 
 func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
 	var endpoint string
-	switch params.typeRetrieve {
+	switch params.retrieveType {
 	case "dataset":
 		endpoint = "pool.dataset.query"
 	case "snapshot":
 		endpoint = "zfs.snapshot.query"
 	default:
-		return nil, fmt.Errorf("Unrecognised retrieve format \"" + params.typeRetrieve + "\"")
+		return nil, fmt.Errorf("Unrecognised retrieve format \"" + params.retrieveType + "\"")
 	}
 	
 	var builder strings.Builder
 	builder.WriteString("[[ ")
 	// first arg = query-filter
-	if len(datasetNames) == 1 {
+	if len(names) == 1 {
 		builder.WriteString("[\"id\", \"=\", ")
-		core.WriteEncloseAndEscape(&builder, datasetNames[0], "\"")
+		core.WriteEncloseAndEscape(&builder, names[0], "\"")
 		builder.WriteString("]")
 	}
 	builder.WriteString("], ") // end first arg
 	// second arg = query-options
 	builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":")
-	builder.WriteString(fmt.Sprint(extras.shouldRecurse))
+	builder.WriteString(fmt.Sprint(params.shouldRecurse))
 	builder.WriteString(", \"properties\":")
-	if extras.shouldGetAllProps {
+	if params.shouldGetAllProps {
 		builder.WriteString("null")
 	} else {
 		builder.WriteString("[")
@@ -46,6 +56,8 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList 
 	builder.WriteString(", \"user_properties\":false }} ]")
 
 	query := builder.String()
+	fmt.Println(query)
+
 	data, err := api.CallString(endpoint, "20s", query)
 	if err != nil {
 		return nil, err
@@ -69,7 +81,8 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList 
 		return nil, nil
 	}
 
-	datasetList := make([]map[string]interface{}, 0)
+	datasetMap := make(map[string]map[string]interface{})
+	datasetMapKeys := make([]string, 0, 0)
 
 	// Do not refactor this loop condition into a range!
 	// This loop modifies the size of resultsList as it iterates.
@@ -86,6 +99,9 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList 
 			}
 		}
 		if len(name) == 0 {
+			continue
+		}
+		if _, exists := datasetMap[name]; exists {
 			continue
 		}
 
@@ -105,7 +121,15 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList 
 				}
 			}
 		}
-		datasetList = append(datasetList, dict)
+		datasetMap[name] = dict
+		datasetMapKeys = append(datasetMapKeys, name)
+	}
+
+	slices.Sort(datasetMapKeys)
+	nKeys := len(datasetMapKeys)
+	datasetList := make([]map[string]interface{}, nKeys, nKeys)
+	for i, _ := range datasetMapKeys {
+		datasetList[i] = datasetMap[datasetMapKeys[i]]
 	}
 
 	return datasetList, nil

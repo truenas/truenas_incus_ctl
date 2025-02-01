@@ -214,47 +214,68 @@ func listSnapshot(api core.Session, args []string) {
 	}
 	defer api.Close()
 
+	var snapshotNames []string
+	if len(args) > 0 {
+		snapshotNames = []string{args[0]}
+	}
+
 	_, allOptions, _ := getCobraFlags(snapshotListCmd)
 
-	var propsList []string
-
-	var builder strings.Builder
-	builder.WriteString("[[ ")
-	// first arg = query-filter
-	if len(args) == 1 {
-		builder.WriteString("[\"id\", \"=\", ")
-		core.WriteEncloseAndEscape(&builder, args[0], "\"")
-		builder.WriteString("]")
-	}
-	builder.WriteString("], ") // end first arg
-	// second arg = query-options
-	builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":")
-	builder.WriteString(allOptions["recursive"])
-	builder.WriteString(", \"properties\":")
-	if allOptions["all"] == "true" {
-		builder.WriteString("null")
-	} else {
-		builder.WriteString("[")
-		if len(propsList) > 0 {
-			core.WriteEncloseAndEscape(&builder, propsList[0], "\"")
-			for i := 1; i < len(propsList); i++ {
-				builder.WriteString(",")
-				core.WriteEncloseAndEscape(&builder, propsList[i], "\"")
-			}
-		}
-		builder.WriteString("]")
-	}
-	builder.WriteString(", \"user_properties\":false }} ]")
-
-	query := builder.String()
-	fmt.Println(query)
-
-	out, err := api.CallString("zfs.snapshot.query", "10s", query)
+	format, err := GetTableFormat(allOptions)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		return
 	}
 
-	os.Stdout.WriteString(string(out))
+	properties := EnumerateOutputProperties(allOptions)
+
+	extras := typeRetrieveParams{}
+	extras.retrieveType = "snapshot"
+	extras.shouldGetAllProps = true // snapshot retrieval is broken, might as well get all properties for consistency
+	// `zfs list` will "recurse" if no names are specified.
+	extras.shouldRecurse = len(snapshotNames) == 0 || core.IsValueTrue(allOptions, "recursive")
+
+	snapshots, err := RetrieveDatasetOrSnapshotInfos(api, snapshotNames, properties, extras)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "API error:", err)
+		return
+	}
+
+	shouldGetAllProps := format == "json" || core.IsValueTrue(allOptions, "all")
+
+	required := []string{"name"}
+	var columnsList []string
+	if shouldGetAllProps {
+		columnsList = GetUsedPropertyColumns(snapshots, required)
+	} else {
+		outputCols := allOptions["output"]
+		var specList []string
+		if outputCols != "" {
+			specList = strings.Split(allOptions["output"], ",")
+		}
+		columnsList = MakePropertyColumns(required, specList)
+		
+	}
+
+	var table strings.Builder
+
+	switch format {
+	case "compact":
+		core.WriteListCsv(&table, snapshots, columnsList, false)
+	case "csv":
+		core.WriteListCsv(&table, snapshots, columnsList, true)
+	case "json":
+		table.WriteString("{\"snapshots\":")
+		core.WriteJson(&table, snapshots)
+		table.WriteString("}\n")
+	case "table":
+		core.WriteListTable(&table, snapshots, columnsList, true)
+	default:
+		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
+		return
+	}
+
+	os.Stdout.WriteString(table.String())
 }
 
 func rollbackSnapshot(api core.Session, args []string) {
