@@ -69,7 +69,25 @@ func ValidateAndLogin() core.Session {
 	return api
 }
 
-func GetUsedPropertyColumns(datasets []map[string]interface{}, required []string) []string {
+func MakePropertyColumns(required []string, additional []string) []string {
+	columnSet := make(map[string]bool)
+	uniqAdditional := make([]string, 0, 0)
+
+	for _, c := range required {
+		columnSet[c] = true
+	}
+	for _, c := range additional {
+		if _, exists := columnSet[c]; !exists {
+			uniqAdditional = append(uniqAdditional, c)
+		}
+		columnSet[c] = true
+	}
+
+	slices.Sort(uniqAdditional)
+	return append(required, uniqAdditional...)
+}
+
+func GetUsedPropertyColumns(data []map[string]interface{}, required []string) []string {
 	columnsMap := make(map[string]bool)
 	columnsList := make([]string, 0)
 
@@ -77,7 +95,7 @@ func GetUsedPropertyColumns(datasets []map[string]interface{}, required []string
 		columnsMap[c] = true
 	}
 
-	for _, d := range datasets {
+	for _, d := range data {
 		for key, _ := range d {
 			if _, exists := columnsMap[key]; !exists {
 				columnsMap[key] = true

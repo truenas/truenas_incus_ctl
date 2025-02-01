@@ -238,8 +238,81 @@ func listNfs(api core.Session, args []string) {
 		log.Fatal(err)
 	}
 
-	var builder strings.Builder
+	stmt := makeNfsQueryStatement(allOptions)
+	fmt.Println(stmt)
 
+	out, err := api.CallString("sharing.nfs.query", "10s", stmt)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	shares, err := unpackNfsQuery(out)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	required := []string{"id", "path"}
+	var columnsList []string
+	if all, _ := allOptions["all"]; all == "true" {
+		columnsList = GetUsedPropertyColumns(shares, required)
+	} else {
+		outputCols := allOptions["output"]
+		var specList []string
+		if outputCols != "" {
+			specList = strings.Split(allOptions["output"], ",")
+		}
+		columnsList = MakePropertyColumns(required, specList)
+	}
+
+	printNfsTable(format, shares, columnsList)
+}
+
+func inspectNfs(api core.Session, args []string) {
+	if api == nil {
+		return
+	}
+	defer api.Close()
+
+	_, allOptions, _ := getCobraFlags(nfsListCmd)
+	format, err := GetTableFormat(allOptions)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if _, errNotNumber := strconv.Atoi(args[0]); errNotNumber == nil {
+		allOptions["id"] = args[0]
+	} else {
+		allOptions["name"] = args[0]
+	}
+
+	stmt := makeNfsQueryStatement(allOptions)
+	fmt.Println(stmt)
+
+	out, err := api.CallString("sharing.nfs.query", "10s", stmt)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	shares, err := unpackNfsQuery(out)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	required := []string{"id", "path"}
+	outputCols := allOptions["output"]
+
+	var columnsList []string
+	if outputCols != "" {
+		columnsList = MakePropertyColumns(required, strings.Split(outputCols, ","))
+	} else {
+		columnsList = GetUsedPropertyColumns(shares, required)
+	}
+
+	printNfsTable(format, shares, columnsList)
+}
+
+func makeNfsQueryStatement(allOptions map[string]string) string {
+	var builder strings.Builder
 	builder.WriteString("[")
 
 	if name := allOptions["name"]; name != "" {
@@ -255,53 +328,10 @@ func listNfs(api core.Session, args []string) {
 		builder.WriteString("[]")
 	}
 
-	builder.WriteString(",{\"extra\":{\"properties\":[\"ro\"]}}")
+	//builder.WriteString(",{\"extra\":{\"properties\":[\"ro\"]}}")
 
 	builder.WriteString("]")
-
-	stmt := builder.String()
-	fmt.Println(stmt)
-
-	out, err := api.CallString("sharing.nfs.query", "10s", stmt)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	os.Stdout.WriteString(string(out))
-	format = format
-
-	shares, err := unpackNfsQuery(out)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var table strings.Builder
-	columnsList := GetUsedPropertyColumns(shares, []string{"id", "path"})
-
-	switch format {
-	case "compact":
-		core.WriteListCsv(&table, shares, columnsList, false)
-	case "csv":
-		core.WriteListCsv(&table, shares, columnsList, true)
-	case "json":
-		core.WriteJson(&table, shares)
-	case "table":
-		core.WriteListTable(&table, shares, columnsList, true)
-	default:
-		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
-		return
-	}
-
-	os.Stdout.WriteString(table.String())
-}
-
-func inspectNfs(api core.Session, args []string) {
-	if api == nil {
-		return
-	}
-	defer api.Close()
-
-	//_, allOptions, allTypes := getCobraFlags(nfsInspectCmd)
+	return builder.String()
 }
 
 func unpackNfsQuery(data json.RawMessage) ([]map[string]interface{}, error) {
@@ -321,4 +351,24 @@ func unpackNfsQuery(data json.RawMessage) ([]map[string]interface{}, error) {
 	}
 
 	return resultsList, nil
+}
+
+func printNfsTable(format string, shares []map[string]interface{}, columnsList []string) {
+	var table strings.Builder
+
+	switch format {
+	case "compact":
+		core.WriteListCsv(&table, shares, columnsList, false)
+	case "csv":
+		core.WriteListCsv(&table, shares, columnsList, true)
+	case "json":
+		core.WriteJson(&table, shares)
+	case "table":
+		core.WriteListTable(&table, shares, columnsList, true)
+	default:
+		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
+		return
+	}
+
+	os.Stdout.WriteString(table.String())
 }
