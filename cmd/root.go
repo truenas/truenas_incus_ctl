@@ -43,7 +43,9 @@ func RemoveGlobalFlags(flags map[string]string) {
 	delete(flags, "mock")
 	delete(flags, "url")
 	delete(flags, "api-key")
+	delete(flags, "api_key")
 	delete(flags, "key-file")
+	delete(flags, "key_file")
 }
 
 func ValidateAndLogin() core.Session {
