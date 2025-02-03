@@ -431,19 +431,10 @@ func renameDataset(api core.Session, args []string) {
 
 	options, _ := GetCobraFlags(datasetRenameCmd, nil)
 
-	var builder strings.Builder
+	InsertNonCobraFlag(options, "string", "new_name", args[1])
+	stmt := BuildNameStrAndPropertiesJson(options, args[0])
 
-	builder.WriteString("[")
-	core.WriteEncloseAndEscape(&builder, args[0], "\"")
-	builder.WriteString(",{\"new_name\":")
-	core.WriteEncloseAndEscape(&builder, args[1], "\"")
-
-	if core.IsValueTrue(options.allFlags, "update-shares") {
-		builder.WriteString(",\"update_shares\":true")
-	}
-
-	builder.WriteString("}]")
-	stmt := builder.String()
+	fmt.Println(stmt)
 
 	out, err := api.CallString("zfs.dataset.rename", "10s", stmt)
 	if err != nil {

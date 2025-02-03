@@ -44,6 +44,14 @@ func GetCobraFlags(cmd *cobra.Command, cmdEnums map[string][]string) (FlagMap, e
 	return fm, nil
 }
 
+func InsertNonCobraFlag(fm FlagMap, flagType, flagName, flagValue string) {
+	key := strings.ReplaceAll(flagName, "-", "_")
+	fm.flagKeys = append(fm.flagKeys, key)
+	fm.usedFlags[key] = flagValue
+	fm.allFlags[key] = flagValue
+	fm.allTypes[key] = flagType
+}
+
 func ValidateFlagEnums(flags *map[string]string, cmdEnums map[string][]string) error {
 	var builder strings.Builder
 	for key, value := range *flags {
