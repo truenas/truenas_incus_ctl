@@ -31,6 +31,17 @@ func WriteEncloseAndEscape(builder *strings.Builder, original string, ends strin
 	builder.WriteString(ends)
 }
 
+func WriteJsonStringArray(builder *strings.Builder, valueList []string) {
+	for i, elem := range valueList {
+		if i > 0 {
+			builder.WriteString(",")
+		}
+		builder.WriteString("\"")
+		builder.WriteString(elem)
+		builder.WriteString("\"")
+	}
+}
+
 func GetKeysSorted[T any](dict map[string]T) []string {
 	var keys []string
 	size := len(dict)

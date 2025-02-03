@@ -8,8 +8,6 @@ import (
 	"slices"
 	"strings"
 	"truenas/admin-tool/core"
-
-	"github.com/spf13/cobra"
 )
 
 type typeRetrieveParams struct {
@@ -18,21 +16,20 @@ type typeRetrieveParams struct {
 	shouldRecurse     bool
 }
 
-func BuildNameStrAndPropertiesJson(cmd *cobra.Command, nameStr string) string {
+func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) string {
 	var builder strings.Builder
 	builder.WriteString("[")
 	core.WriteEncloseAndEscape(&builder, nameStr, "\"")
 	builder.WriteString(",{")
 
-	usedOptions, _, allTypes := getCobraFlags(cmd)
 	nProps := 0
-	for key, value := range usedOptions {
+	for key, value := range options.usedFlags {
 		if nProps > 0 {
 			builder.WriteString(",")
 		}
 		core.WriteEncloseAndEscape(&builder, key, "\"")
 		builder.WriteString(":")
-		if t, _ := allTypes[key]; t == "string" {
+		if t, _ := options.allTypes[key]; t == "string" {
 			core.WriteEncloseAndEscape(&builder, value, "\"")
 		} else {
 			builder.WriteString(value)

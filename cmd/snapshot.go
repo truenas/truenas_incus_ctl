@@ -61,6 +61,8 @@ var snapshotRollbackCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 }
 
+var g_snapshotListEnums map[string][]string
+
 func init() {
 	snapshotCloneCmd.Run = func(cmd *cobra.Command, args []string) {
 		cloneSnapshot(ValidateAndLogin(), args)
@@ -96,6 +98,8 @@ func init() {
 	snapshotListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 	snapshotListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
 	snapshotListCmd.Flags().String("format", "table", "Format (csv|json|table|compact) (default \"table\")")
+	snapshotListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" " +
+			AddFlagsEnum(&g_snapshotListEnums, "format", []string{"csv","json","table","compact"}))
 	snapshotListCmd.Flags().StringP("output", "o", "", "Output property list")
 	snapshotListCmd.Flags().Bool("all", false, "")
 
@@ -149,7 +153,7 @@ func createSnapshot(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	usedOptions, allOptions, _ := getCobraFlags(snapshotCreateCmd)
+	options, _ := GetCobraFlags(snapshotCreateCmd, nil)
 
 	snapshot := args[0]
 	datasetLen := strings.Index(snapshot, "@")
@@ -171,15 +175,15 @@ func createSnapshot(api core.Session, args []string) {
 	// "naming_schema":""
 
 	builder.WriteString(",\"recursive\":")
-	builder.WriteString(allOptions["recursive"])
+	builder.WriteString(options.allFlags["recursive"])
 	builder.WriteString(",\"exclude\":[")
 	builder.WriteString("]")
 
-	if value, exists := usedOptions["suspend_vms"]; exists {
+	if value, exists := options.usedFlags["suspend_vms"]; exists {
 		builder.WriteString(",\"suspend_vms\":")
 		builder.WriteString(value)
 	}
-	if value, exists := usedOptions["vmware_sync"]; exists {
+	if value, exists := options.usedFlags["vmware_sync"]; exists {
 		builder.WriteString(",\"vmware_sync\":")
 		builder.WriteString(value)
 	}
@@ -218,7 +222,8 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 		log.Fatal(fmt.Errorf("No dataset name was found in snapshot specifier.\nExpected <datasetname>@<snapshotname>."))
 	}
 
-	params := BuildNameStrAndPropertiesJson(cmd, snapshot)
+	options, _ := GetCobraFlags(cmd, nil)
+	params := BuildNameStrAndPropertiesJson(options, snapshot)
 	fmt.Println(params)
 
 	out, err := api.CallString("zfs.snapshot." + cmdType, "10s", params)
@@ -240,21 +245,24 @@ func listSnapshot(api core.Session, args []string) {
 		snapshotNames = []string{args[0]}
 	}
 
-	_, allOptions, _ := getCobraFlags(snapshotListCmd)
+	options, err := GetCobraFlags(snapshotListCmd, g_snapshotListEnums)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	format, err := GetTableFormat(allOptions)
+	format, err := GetTableFormat(options.allFlags)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return
 	}
 
-	properties := EnumerateOutputProperties(allOptions)
+	properties := EnumerateOutputProperties(options.allFlags)
 
 	extras := typeRetrieveParams{}
 	extras.retrieveType = "snapshot"
 	extras.shouldGetAllProps = true // snapshot retrieval is broken, might as well get all properties for consistency
 	// `zfs list` will "recurse" if no names are specified.
-	extras.shouldRecurse = len(snapshotNames) == 0 || core.IsValueTrue(allOptions, "recursive")
+	extras.shouldRecurse = len(snapshotNames) == 0 || core.IsValueTrue(options.allFlags, "recursive")
 
 	snapshots, err := RetrieveDatasetOrSnapshotInfos(api, snapshotNames, properties, extras)
 	if err != nil {
@@ -262,17 +270,17 @@ func listSnapshot(api core.Session, args []string) {
 		return
 	}
 
-	shouldGetAllProps := format == "json" || core.IsValueTrue(allOptions, "all")
+	shouldGetAllProps := format == "json" || core.IsValueTrue(options.allFlags, "all")
 
 	required := []string{"name"}
 	var columnsList []string
 	if shouldGetAllProps {
 		columnsList = GetUsedPropertyColumns(snapshots, required)
 	} else {
-		outputCols := allOptions["output"]
+		outputCols := options.allFlags["output"]
 		var specList []string
 		if outputCols != "" {
-			specList = strings.Split(allOptions["output"], ",")
+			specList = strings.Split(outputCols, ",")
 		}
 		columnsList = MakePropertyColumns(required, specList)
 	}

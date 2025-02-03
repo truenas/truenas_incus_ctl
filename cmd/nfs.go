@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"truenas/admin-tool/core"
@@ -62,6 +63,8 @@ var nfsInspectCmd = &cobra.Command{
 	Aliases: []string{"get"},
 }
 
+var g_nfsListInspectEnums map[string][]string
+
 func init() {
 	nfsCreateCmd.Run = func(cmd *cobra.Command, args []string) {
 		createNfs(ValidateAndLogin(), args)
@@ -106,7 +109,8 @@ func init() {
 		cmd.Flags().String("query-filter", "", "")
 		cmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 		cmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
-		cmd.Flags().String("format", "table", "Format (csv|json|table|compact) (default \"table\")")
+		cmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" " +
+			AddFlagsEnum(&g_nfsListInspectEnums, "format", []string{"csv","json","table","compact"}))
 		cmd.Flags().StringP("output", "o", "", "Output property list")
 		cmd.Flags().BoolP("all", "a", false, "Output all properties")
 	}
@@ -129,25 +133,19 @@ func createNfs(api core.Session, args []string) {
 	datasetName := args[0]
 	sharePath := "/mnt/" + datasetName
 
+	options, _ := GetCobraFlags(nfsCreateCmd, nil)
+
+	securityList, err := ValidateEnumArray(options.allFlags["security"], []string{"sys","krb5","krb5i","krb5p"})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	var builder strings.Builder
 	builder.WriteString("[{\"path\":")
 	core.WriteEncloseAndEscape(&builder, sharePath, "\"")
+	builder.WriteString(",")
 
-	optionsUsed, _, allTypes := getCobraFlags(nfsCreateCmd)
-	nProps := 0
-	for propName, valueStr := range optionsUsed {
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
-		core.WriteEncloseAndEscape(&builder, propName, "\"")
-		builder.WriteString(":")
-		if t, exists := allTypes[propName]; exists && t == "string" {
-			core.WriteEncloseAndEscape(&builder, valueStr, "\"")
-		} else {
-			builder.WriteString(valueStr)
-		}
-		nProps++
-	}
+	writeCreateUpdateProperties(&builder, options, securityList)
 
 	builder.WriteString("}]")
 
@@ -173,26 +171,19 @@ func updateNfs(api core.Session, args []string) {
 		log.Fatal(fmt.Errorf("ID \"%s\" was not a number", idStr))
 	}
 
+	options, _ := GetCobraFlags(nfsUpdateCmd, nil)
+
+	securityList, err := ValidateEnumArray(options.allFlags["security"], []string{"sys","krb5","krb5i","krb5p"})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	var builder strings.Builder
 	builder.WriteString("[")
 	builder.WriteString(idStr)
 	builder.WriteString(",{")
 
-	optionsUsed, _, allTypes := getCobraFlags(nfsUpdateCmd)
-	nProps := 0
-	for propName, valueStr := range optionsUsed {
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
-		core.WriteEncloseAndEscape(&builder, propName, "\"")
-		builder.WriteString(":")
-		if t, exists := allTypes[propName]; exists && t == "string" {
-			core.WriteEncloseAndEscape(&builder, valueStr, "\"")
-		} else {
-			builder.WriteString(valueStr)
-		}
-		nProps++
-	}
+	writeCreateUpdateProperties(&builder, options, securityList)
 
 	builder.WriteString("}]")
 
@@ -204,6 +195,33 @@ func updateNfs(api core.Session, args []string) {
 		log.Fatal(err)
 	}
 	fmt.Println(string(out))
+}
+
+func writeCreateUpdateProperties(builder *strings.Builder, options FlagMap, securityList []string) {
+	nProps := 0
+	for propName, valueStr := range options.usedFlags {
+		if propName == "security" {
+			continue
+		}
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		core.WriteEncloseAndEscape(builder, propName, "\"")
+		builder.WriteString(":")
+		if t, exists := options.allTypes[propName]; exists && t == "string" {
+			core.WriteEncloseAndEscape(builder, valueStr, "\"")
+		} else {
+			builder.WriteString(valueStr)
+		}
+		nProps++
+	}
+
+	if nProps > 0 {
+		builder.WriteString(",")
+	}
+	builder.WriteString("\"security\":[")
+	core.WriteJsonStringArray(builder, securityList)
+	builder.WriteString("]")
 }
 
 func deleteNfs(api core.Session, args []string) {
@@ -231,13 +249,18 @@ func listNfs(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	_, allOptions, _ := getCobraFlags(nfsListCmd)
-	format, err := GetTableFormat(allOptions)
+	options, err := GetCobraFlags(nfsListCmd, g_nfsListInspectEnums)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+
+	format, err := GetTableFormat(options.allFlags)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	stmt := makeNfsQueryStatement(allOptions)
+	stmt := makeNfsQueryStatement(options.allFlags)
 	fmt.Println(stmt)
 
 	out, err := api.CallString("sharing.nfs.query", "10s", stmt)
@@ -252,13 +275,13 @@ func listNfs(api core.Session, args []string) {
 
 	required := []string{"id", "path"}
 	var columnsList []string
-	if all, _ := allOptions["all"]; all == "true" {
+	if all, _ := options.allFlags["all"]; all == "true" {
 		columnsList = GetUsedPropertyColumns(shares, required)
 	} else {
-		outputCols := allOptions["output"]
+		outputCols := options.allFlags["output"]
 		var specList []string
 		if outputCols != "" {
-			specList = strings.Split(allOptions["output"], ",")
+			specList = strings.Split(outputCols, ",")
 		}
 		columnsList = MakePropertyColumns(required, specList)
 	}
@@ -272,19 +295,24 @@ func inspectNfs(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	_, allOptions, _ := getCobraFlags(nfsListCmd)
-	format, err := GetTableFormat(allOptions)
+	options, err := GetCobraFlags(nfsListCmd, g_nfsListInspectEnums)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+
+	format, err := GetTableFormat(options.allFlags)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	if _, errNotNumber := strconv.Atoi(args[0]); errNotNumber == nil {
-		allOptions["id"] = args[0]
+		options.allFlags["id"] = args[0]
 	} else {
-		allOptions["name"] = args[0]
+		options.allFlags["name"] = args[0]
 	}
 
-	stmt := makeNfsQueryStatement(allOptions)
+	stmt := makeNfsQueryStatement(options.allFlags)
 	fmt.Println(stmt)
 
 	out, err := api.CallString("sharing.nfs.query", "10s", stmt)
@@ -298,7 +326,7 @@ func inspectNfs(api core.Session, args []string) {
 	}
 
 	required := []string{"id", "path"}
-	outputCols := allOptions["output"]
+	outputCols := options.allFlags["output"]
 
 	var columnsList []string
 	if outputCols != "" {
