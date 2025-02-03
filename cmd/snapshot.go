@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+
 	//"strconv"
 	"strings"
 	"truenas/admin-tool/core"
@@ -73,7 +74,7 @@ func init() {
 	snapshotDeleteCmd.Run = func(cmd *cobra.Command, args []string) {
 		deleteOrRollbackSnapshot(cmd, ValidateAndLogin(), args)
 	}
-	
+
 	snapshotListCmd.Run = func(cmd *cobra.Command, args []string) {
 		listSnapshot(ValidateAndLogin(), args)
 	}
@@ -102,7 +103,7 @@ func init() {
 	snapshotRollbackCmd.Flags().BoolP("force", "f", false, "force unmount of any clones")
 	snapshotRollbackCmd.Flags().BoolP("recursive", "r", false, "destroy any snapshots and bookmarks more recent than the one specified")
 	snapshotRollbackCmd.Flags().BoolP("recursive-clones", "R", false, "like recursive, but also destroy any clones")
-	snapshotRollbackCmd.Flags().Bool("recursive-rollback", false, "perform a completem recursive rollback of each child snapshots.\n" +
+	snapshotRollbackCmd.Flags().Bool("recursive-rollback", false, "perform a completem recursive rollback of each child snapshots.\n"+
 		"If any child does not have specified snapshot, this operation will fail.")
 
 	snapshotCmd.AddCommand(snapshotCloneCmd)
@@ -133,7 +134,7 @@ func cloneSnapshot(api core.Session, args []string) {
 	builder.WriteString("}}]")
 
 	stmt := builder.String()
-	fmt.Println(stmt)
+	DebugString(stmt)
 
 	out, err := api.CallString("zfs.snapshot.clone", "10s", stmt)
 	if err != nil {
@@ -191,7 +192,7 @@ func createSnapshot(api core.Session, args []string) {
 	builder.WriteString("}}]")
 
 	stmt := builder.String()
-	fmt.Println(stmt)
+	DebugString(stmt)
 
 	out, err := api.CallString("zfs.snapshot.create", "10s", stmt)
 	if err != nil {
@@ -219,9 +220,9 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	}
 
 	params := BuildNameStrAndPropertiesJson(cmd, snapshot)
-	fmt.Println(params)
+	DebugString(params)
 
-	out, err := api.CallString("zfs.snapshot." + cmdType, "10s", params)
+	out, err := api.CallString("zfs.snapshot."+cmdType, "10s", params)
 	fmt.Println(string(out))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
