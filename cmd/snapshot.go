@@ -97,7 +97,6 @@ func init() {
 	snapshotListCmd.Flags().BoolP("user-properties", "u", false, "Include user-properties")
 	snapshotListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 	snapshotListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
-	snapshotListCmd.Flags().String("format", "table", "Format (csv|json|table|compact) (default \"table\")")
 	snapshotListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" " +
 			AddFlagsEnum(&g_snapshotListEnums, "format", []string{"csv","json","table","compact"}))
 	snapshotListCmd.Flags().StringP("output", "o", "", "Output property list")

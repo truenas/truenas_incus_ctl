@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"truenas/admin-tool/core"
 
@@ -21,16 +20,18 @@ func GetCobraFlags(cmd *cobra.Command, cmdEnums map[string][]string) (FlagMap, e
 	fm := FlagMap{}
 	fm.usedFlags = make(map[string]string)
 	cmd.Flags().Visit(func(flag *pflag.Flag) {
-		fm.usedFlags[flag.Name] = flag.Value.String()
+		key := strings.ReplaceAll(flag.Name, "-", "_")
+		fm.usedFlags[key] = flag.Value.String()
 	})
 
 	fm.flagKeys = make([]string, 0)
 	fm.allFlags = make(map[string]string)
 	fm.allTypes = make(map[string]string)
 	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
-		fm.flagKeys = append(fm.flagKeys, flag.Name)
-		fm.allFlags[flag.Name] = flag.Value.String()
-		fm.allTypes[flag.Name] = flag.Value.Type()
+		key := strings.ReplaceAll(flag.Name, "-", "_")
+		fm.flagKeys = append(fm.flagKeys, key)
+		fm.allFlags[key] = flag.Value.String()
+		fm.allTypes[key] = flag.Value.Type()
 	})
 
 	RemoveGlobalFlags(fm.usedFlags)
@@ -59,11 +60,11 @@ func ValidateFlagEnums(flags *map[string]string, cmdEnums map[string][]string) e
 			if !found {
 				builder.WriteString("Error: flag \"")
 				builder.WriteString(key)
-				builder.WriteString("\" - value \"")
+				builder.WriteString("\": value \"")
 				builder.WriteString(value)
-				builder.WriteString("\" was not in valid set ")
-				builder.WriteString(fmt.Sprint(enumList))
-				builder.WriteString("\n")
+				builder.WriteString("\" was not in the valid set (")
+				core.WriteJsonStringArray(&builder, enumList)
+				builder.WriteString(")\n")
 			}
 		}
 	}
@@ -113,6 +114,9 @@ func ValidateEnumArray(content string, enumList []string) ([]string, error) {
 }
 
 func AddFlagsEnum(enumMap *map[string][]string, flagName string, newEnum []string) string {
+	if *enumMap == nil {
+		*enumMap = make(map[string][]string)
+	}
 	(*enumMap)[flagName] = newEnum
 	var builder strings.Builder
 	builder.WriteString("(")

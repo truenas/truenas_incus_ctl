@@ -8,8 +8,9 @@ import (
 
 func PrintTableData(format string, jsonName string, columnsList []string, data []map[string]interface{}) {
 	var table strings.Builder
+	f := strings.ToLower(format)
 
-	switch format {
+	switch f {
 	case "compact":
 		WriteListCsv(&table, data, columnsList, false)
 	case "csv":
@@ -23,7 +24,7 @@ func PrintTableData(format string, jsonName string, columnsList []string, data [
 	case "table":
 		WriteListTable(&table, data, columnsList, true)
 	default:
-		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
+		fmt.Fprintln(os.Stderr, "Unrecognised table format", f)
 		return
 	}
 

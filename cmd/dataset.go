@@ -129,8 +129,8 @@ func init() {
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "compression", g_compressionEnum[:]))
 		cmd.Flags().String("atime", "off", "Controls whether the access time for files is updated when they are read " +
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "atime", []string{"on","off"}))
-		cmd.Flags().String("exec", "", "Controls whether processes can be executed from within this file system " +
-			AddFlagsEnum(&g_datasetCreateUpdateEnums, "exec", []string{"on","off"}))
+		cmd.Flags().String("exec", "inherit", "Controls whether processes can be executed from within this file system " +
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "exec", []string{"inherit","on","off"}))
 		cmd.Flags().String("managedby", "truenas-admin", "Manager of this dataset, must not be empty")
 		cmd.Flags().Bool("quota", false, "")
 		//cmd.Flags().Bool("quota_warning", false, "")
@@ -250,9 +250,6 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 				builder.WriteString(key)
 				builder.WriteString(":")
 				value := paramsKV[j+1]
-				if key == "\"exec\"" { // TODO: this needs to somehow figure out when to ToUpper
-					value = strings.ToUpper(value)
-				}
 				builder.WriteString(value)
 				nProps++
 				if paramsKV[j] == "\"create_ancestors\"" {
@@ -271,10 +268,6 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 
 			if t, exists := options.allTypes[propName]; exists && t == "string" {
 				valueStr = core.EncloseAndEscape(valueStr, "\"")
-			}
-			// a list of props that need upper-casing? string enums need upper-casing to their api. but bools do not.
-			if propName == "exec" /* is-string-enum */ {
-				valueStr = strings.ToUpper(valueStr)
 			}
 			builder.WriteString(valueStr)
 			nProps++

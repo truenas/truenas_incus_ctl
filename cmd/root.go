@@ -43,7 +43,9 @@ func RemoveGlobalFlags(flags map[string]string) {
 	delete(flags, "mock")
 	delete(flags, "url")
 	delete(flags, "api-key")
+	delete(flags, "api_key")
 	delete(flags, "key-file")
+	delete(flags, "key_file")
 }
 
 func ValidateAndLogin() core.Session {
@@ -110,7 +112,7 @@ func GetUsedPropertyColumns(data []map[string]interface{}, required []string) []
 
 func GetTableFormat(properties map[string]string) (string, error) {
 	isJson := core.IsValueTrue(properties, "json")
-	isCompact := core.IsValueTrue(properties, "no-headers")
+	isCompact := core.IsValueTrue(properties, "no_headers")
 	if isJson && isCompact {
 		return "", errors.New("--json and --no-headers cannot be used together")
 	} else if isJson {
