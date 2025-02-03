@@ -136,9 +136,7 @@ func createNfs(api core.Session, args []string) {
 	optionsUsed, _, allTypes := getCobraFlags(nfsCreateCmd)
 	nProps := 0
 	for propName, valueStr := range optionsUsed {
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
+		builder.WriteString(",")
 		core.WriteEncloseAndEscape(&builder, propName, "\"")
 		builder.WriteString(":")
 		if t, exists := allTypes[propName]; exists && t == "string" {
