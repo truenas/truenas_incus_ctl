@@ -1,26 +1,34 @@
 package core
 
 import (
-	"errors"
 	"os"
 	"strings"
 	"slices"
 )
 
-func EncloseWith(original string, ends string) (string, error) {
-	if strings.Index(original, ends) >= 0 {
-		return "", errors.New("string already contains '" + ends + "'")
-	}
-	return ends + original + ends, nil
+func EncloseAndEscape(original string, ends string) string {
+	var builder strings.Builder
+	WriteEncloseAndEscape(&builder, original, ends)
+	return builder.String()
 }
 
-func WriteEncloseWith(builder *strings.Builder, original string, ends string) error {
-	str, err := EncloseWith(original, ends)
-	if err != nil {
-		return err
+func WriteEncloseAndEscape(builder *strings.Builder, original string, ends string) {
+	builder.WriteString(ends)
+	off := 0
+	for off < len(original) {
+		idx := strings.Index(original[off:], ends)
+		if idx < 0 {
+			builder.WriteString(original[off:])
+			break
+		}
+		if idx != 0 {
+			builder.WriteString(original[off:off+idx])
+		}
+		builder.WriteString("\\")
+		builder.WriteString(ends)
+		off += idx + 1
 	}
-	builder.WriteString(str)
-	return nil
+	builder.WriteString(ends)
 }
 
 func GetKeysSorted[T any](dict map[string]T) []string {
@@ -34,6 +42,27 @@ func GetKeysSorted[T any](dict map[string]T) []string {
 		slices.Sort(keys)
 	}
 	return keys
+}
+
+func ExtractJsonArrayOfMaps(obj map[string]interface{}, key string) ([]map[string]interface{}, string) {
+	if value, ok := obj[key]; ok {
+		if array, ok := value.([]interface{}); ok {
+			if len(array) == 0 {
+				return nil, ""
+			}
+			list := make([]map[string]interface{}, 0)
+			for i := 0; i < len(array); i++ {
+				if elem, ok := array[i].(map[string]interface{}); ok {
+					list = append(list, elem)
+				} else {
+					return nil, "contained a non-object entry"
+				}
+			}
+			return list, ""
+		}
+		return nil, "was not an array"
+	}
+	return nil, "did not contain a list"
 }
 
 func IsValueTrue(dict map[string]string, key string) bool {
@@ -64,7 +93,13 @@ func (rw *FileRawa) WriteAll(content []byte) error {
 }
 
 func (rw *MemoryRawa) ReadAll() ([]byte, error) {
-	return rw.Current, nil
+	var buf []byte
+	size := len(rw.Current)
+	if size > 0 {
+		buf = make([]byte, size)
+		copy(buf, rw.Current)
+	}
+	return buf, nil
 }
 func (rw *MemoryRawa) WriteAll(content []byte) error {
 	rw.Current = content

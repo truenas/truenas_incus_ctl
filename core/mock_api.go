@@ -9,7 +9,7 @@ import (
 )
 
 type MockSession struct {
-	Source ReadAllWriteAll
+	DatasetSource ReadAllWriteAll
 	closed bool
 }
 
@@ -300,7 +300,7 @@ func (s *MockSession) mockDatasetCreate(params interface{}) (json.RawMessage, er
 		delete(cdp.properties, "create_ancestors")
 	}
 
-	datasets := loadMockDatasets(s.Source)
+	datasets := loadMockDatasets(s.DatasetSource)
 
 	if datasets != nil {
 		if _, exists := datasets[cdp.datasetName]; exists {
@@ -332,7 +332,7 @@ func (s *MockSession) mockDatasetCreate(params interface{}) (json.RawMessage, er
 	propertyKeys, userPropKeys := editDatasetProperties(&cdp, &newDataset)
 
 	datasets[cdp.datasetName] = newDataset
-	saveMockDatasets(s.Source, &datasets)
+	saveMockDatasets(s.DatasetSource, &datasets)
 
 	var output strings.Builder
 	writeDatasetInfo(&output, &newDataset, propertyKeys, userPropKeys)
@@ -356,7 +356,7 @@ func (s *MockSession) mockDatasetUpdate(params interface{}) (json.RawMessage, er
 	}
 	shouldUpdateParents = shouldUpdateParents
 
-	datasets := loadMockDatasets(s.Source)
+	datasets := loadMockDatasets(s.DatasetSource)
 	if datasets == nil {
 		return nil, errors.New("dataset does not exist")
 	}
@@ -367,7 +367,7 @@ func (s *MockSession) mockDatasetUpdate(params interface{}) (json.RawMessage, er
 
 	propertyKeys, userPropKeys := editDatasetProperties(&udp, &dataset)
 	datasets[udp.datasetName] = dataset
-	saveMockDatasets(s.Source, &datasets)
+	saveMockDatasets(s.DatasetSource, &datasets)
 
 	var output strings.Builder
 	writeDatasetInfo(&output, &dataset, propertyKeys, userPropKeys)
@@ -409,7 +409,7 @@ func (s *MockSession) mockDatasetRename(params interface{}) (json.RawMessage, er
 		return nil, errors.New("New dataset name (second param) matches old dataset name (first param)")
 	}
 
-	datasets := loadMockDatasets(s.Source)
+	datasets := loadMockDatasets(s.DatasetSource)
 	if datasets == nil {
 		return nil, errors.New("dataset does not exist")
 	}
@@ -422,7 +422,7 @@ func (s *MockSession) mockDatasetRename(params interface{}) (json.RawMessage, er
 	dataset.name = newName
 	datasets[newName] = dataset
 
-	saveMockDatasets(s.Source, &datasets)
+	saveMockDatasets(s.DatasetSource, &datasets)
 
 	return []byte("True"), nil
 }
@@ -438,7 +438,7 @@ func (s *MockSession) mockDatasetDelete(params interface{}) (json.RawMessage, er
 		return nil, errors.New("dataset delete requires a string, representing the name of the dataset to delete")
 	}
 
-	datasets := loadMockDatasets(s.Source)
+	datasets := loadMockDatasets(s.DatasetSource)
 
 	if datasets == nil {
 		return nil, errors.New("dataset does not exist")
@@ -448,7 +448,7 @@ func (s *MockSession) mockDatasetDelete(params interface{}) (json.RawMessage, er
 	}
 
 	delete(datasets, datasetName)
-	saveMockDatasets(s.Source, &datasets)
+	saveMockDatasets(s.DatasetSource, &datasets)
 
 	return []byte("True"), nil
 }
@@ -596,7 +596,7 @@ func (s *MockSession) mockDatasetQuery(params interface{}) (json.RawMessage, err
 		}
 	}
 
-	datasets := loadMockDatasets(s.Source)
+	datasets := loadMockDatasets(s.DatasetSource)
 
 	var output strings.Builder
 	output.WriteString("{\"jsonrpc\":\"2.0\", \"result\":[")

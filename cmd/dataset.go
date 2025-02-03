@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"truenas/admin-tool/core"
@@ -77,31 +76,31 @@ Renamed file systems can inherit new mount points, in which case they are unmoun
 
 func init() {
 	datasetCreateCmd.Run = func(cmd *cobra.Command, args []string) {
-		createOrUpdateDataset(cmd, validateAndLogin(), args)
+		createOrUpdateDataset(cmd, ValidateAndLogin(), args)
 	}
 
 	datasetUpdateCmd.Run = func(cmd *cobra.Command, args []string) {
-		createOrUpdateDataset(cmd, validateAndLogin(), args)
+		createOrUpdateDataset(cmd, ValidateAndLogin(), args)
 	}
 
 	datasetDeleteCmd.Run = func(cmd *cobra.Command, args []string) {
-		deleteDataset(validateAndLogin(), args)
+		deleteDataset(ValidateAndLogin(), args)
 	}
 
 	datasetListCmd.Run = func(cmd *cobra.Command, args []string) {
-		listDataset(validateAndLogin(), args)
+		listDataset(ValidateAndLogin(), args)
 	}
 
 	datasetInspectCmd.Run = func(cmd *cobra.Command, args []string) {
-		inspectDataset(validateAndLogin(), args)
+		inspectDataset(ValidateAndLogin(), args)
 	}
 
 	datasetPromoteCmd.Run = func(cmd *cobra.Command, args []string) {
-		promoteDataset(validateAndLogin(), args)
+		promoteDataset(ValidateAndLogin(), args)
 	}
 
 	datasetRenameCmd.Run = func(cmd *cobra.Command, args []string) {
-		renameDataset(validateAndLogin(), args)
+		renameDataset(ValidateAndLogin(), args)
 	}
 
 	createUpdateCmds := []*cobra.Command{datasetCreateCmd, datasetUpdateCmd}
@@ -179,29 +178,6 @@ type typeRetrieveParams struct {
 	shouldRecurse     bool
 }
 
-func validateAndLogin() core.Session {
-	var api core.Session
-	if g_useMock {
-		api = &core.MockSession{
-			Source: &core.FileRawa{FileName: "datasets.tsv"},
-		}
-	} else {
-		api = &core.RealSession{
-			HostUrl:     g_url,
-			ApiKey:      g_apiKey,
-			KeyFileName: g_keyFile,
-		}
-	}
-
-	err := api.Login()
-	if err != nil {
-		api.Close()
-		log.Fatal(err)
-	}
-
-	return api
-}
-
 func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) {
 	if api == nil {
 		return
@@ -213,22 +189,18 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		log.Fatal(errors.New("cmdType was not create or update"))
 	}
 
-	name, err := core.EncloseWith(args[0], "\"")
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	nameEsc := core.EncloseAndEscape(args[0], "\"")
 	nProps := 0
 
 	var builder strings.Builder
 
 	if cmdType == "create" {
 		builder.WriteString("[{\"name\":")
-		builder.WriteString(name)
+		builder.WriteString(nameEsc)
 		nProps++
 	} else {
 		builder.WriteString("[")
-		builder.WriteString(name)
+		builder.WriteString(nameEsc)
 		builder.WriteString(",{")
 	}
 
@@ -238,9 +210,9 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 
 	optionsUsed, _, allTypes := getCobraFlags(cmd)
 
-	for name, valueStr := range optionsUsed {
+	for propName, valueStr := range optionsUsed {
 		isProp := false
-		switch name {
+		switch propName {
 		case "create_parents":
 			shouldCreateParents = valueStr == "true"
 		case "user_props":
@@ -271,25 +243,17 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 			isProp = true
 		}
 		if isProp {
-			prop, err := core.EncloseWith(name, "\"")
-			if err != nil {
-				log.Fatal(err)
-			}
 			if nProps > 0 {
 				builder.WriteString(",")
 			}
-			builder.WriteString(prop)
+			core.WriteEncloseAndEscape(&builder, propName, "\"")
 			builder.WriteString(":")
 
-			if t, exists := allTypes[name]; exists && t == "string" {
-				v, err := core.EncloseWith(valueStr, "\"")
-				if err != nil {
-					log.Fatal(err)
-				}
-				valueStr = v
+			if t, exists := allTypes[propName]; exists && t == "string" {
+				valueStr = core.EncloseAndEscape(valueStr, "\"")
 			}
 			// a list of props that need upper-casing? string enums need upper-casing to their api. but bools do not.
-			if name == "exec" /* is-string-enum */ {
+			if propName == "exec" /* is-string-enum */ {
 				valueStr = strings.ToUpper(valueStr)
 			}
 			builder.WriteString(valueStr)
@@ -342,14 +306,11 @@ func deleteDataset(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	name, err := core.EncloseWith(args[0], "\"")
-	if err != nil {
-		log.Fatal(err)
-	}
+	nameEsc := core.EncloseAndEscape(args[0], "\"")
 
 	var builder strings.Builder
 	builder.WriteString("[")
-	builder.WriteString(name)
+	builder.WriteString(nameEsc)
 	builder.WriteString(",{")
 
 	usedOptions, _, allTypes := getCobraFlags(datasetDeleteCmd)
@@ -358,10 +319,10 @@ func deleteDataset(api core.Session, args []string) {
 		if nProps > 0 {
 			builder.WriteString(",")
 		}
-		_ = core.WriteEncloseWith(&builder, key, "\"")
+		core.WriteEncloseAndEscape(&builder, key, "\"")
 		builder.WriteString(":")
 		if t, _ := allTypes[key]; t == "string" {
-			_ = core.WriteEncloseWith(&builder, value, "\"")
+			core.WriteEncloseAndEscape(&builder, value, "\"")
 		} else {
 			builder.WriteString(value)
 		}
@@ -393,7 +354,7 @@ func listDataset(api core.Session, args []string) {
 
 	_, allOptions, _ := getCobraFlags(datasetListCmd)
 
-	format, err := getTableFormat(allOptions)
+	format, err := GetTableFormat(allOptions)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return
@@ -413,7 +374,7 @@ func listDataset(api core.Session, args []string) {
 	}
 
 	var builder strings.Builder
-	columnsList := getUsedPropertyColumns(datasets)
+	columnsList := GetUsedPropertyColumns(datasets, []string{"name"})
 
 	switch format {
 	case "compact":
@@ -442,7 +403,7 @@ func inspectDataset(api core.Session, args []string) {
 
 	_, allOptions, _ := getCobraFlags(datasetListCmd)
 
-	format, err := getTableFormat(allOptions)
+	format, err := GetTableFormat(allOptions)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return
@@ -461,7 +422,7 @@ func inspectDataset(api core.Session, args []string) {
 	}
 
 	var builder strings.Builder
-	columnsList := getUsedPropertyColumns(datasets)
+	columnsList := GetUsedPropertyColumns(datasets, []string{"name"})
 
 	switch format {
 	case "compact":
@@ -497,20 +458,12 @@ func renameDataset(api core.Session, args []string) {
 
 	_, allOptions, _ := getCobraFlags(datasetRenameCmd)
 
-	var err error
 	var builder strings.Builder
 
 	builder.WriteString("[")
-	err = core.WriteEncloseWith(&builder, args[0], "\"")
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	core.WriteEncloseAndEscape(&builder, args[0], "\"")
 	builder.WriteString(",{\"new_name\":")
-	err = core.WriteEncloseWith(&builder, args[1], "\"")
-	if err != nil {
-		log.Fatal(err)
-	}
+	core.WriteEncloseAndEscape(&builder, args[1], "\"")
 
 	if core.IsValueTrue(allOptions, "update-shares") {
 		builder.WriteString(",\"update_shares\":true")
@@ -539,17 +492,11 @@ func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
 		} else {
 			value = parts[1]
 		}
-		prop, err := core.EncloseWith(parts[0], "\"")
-		if err != nil {
-			return array, err
-		}
+		prop := core.EncloseAndEscape(parts[0], "\"")
 		if value != "true" && value != "false" && value != "null" {
 			_, errNotNumber := strconv.Atoi(value)
 			if errNotNumber != nil {
-				value, err = core.EncloseWith(value, "\"")
-				if err != nil {
-					return array, err
-				}
+				value = core.EncloseAndEscape(value, "\"")
 			}
 		}
 		array = append(array, prop, value)
@@ -580,12 +527,8 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 	builder.WriteString("[[ ")
 	// first arg = query-filter
 	if len(datasetNames) == 1 {
-		name, err := core.EncloseWith(datasetNames[0], "\"")
-		if err != nil {
-			log.Fatal(err)
-		}
 		builder.WriteString("[\"id\", \"=\", ")
-		builder.WriteString(name)
+		core.WriteEncloseAndEscape(&builder, datasetNames[0], "\"")
 		builder.WriteString("]")
 	}
 	builder.WriteString("], ") // end first arg
@@ -597,17 +540,13 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 		builder.WriteString("null")
 	} else {
 		builder.WriteString("[")
-		for i := 0; i < len(propsList); i++ {
-			prop, err := core.EncloseWith(propsList[i], "\"")
-			if err != nil {
-				log.Fatal(err)
-			}
-			if i >= 1 {
+		if len(propsList) > 0 {
+			core.WriteEncloseAndEscape(&builder, propsList[0], "\"")
+			for i := 1; i < len(propsList); i++ {
 				builder.WriteString(",")
+				core.WriteEncloseAndEscape(&builder, propsList[i], "\"")
 			}
-			builder.WriteString(prop)
 		}
-
 		builder.WriteString("]")
 	}
 	builder.WriteString(", \"user_properties\":false }} ]")
@@ -628,7 +567,7 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 		return nil, errors.New("API response was not a JSON object")
 	}
 
-	resultsList, errMsg := extractJsonArrayOfMaps(responseMap, "result")
+	resultsList, errMsg := core.ExtractJsonArrayOfMaps(responseMap, "result")
 	if errMsg != "" {
 		return nil, errors.New("API response results: " + errMsg)
 	}
@@ -641,7 +580,7 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 	// Do not refactor this loop condition into a range!
 	// This loop modifies the size of resultsList as it iterates.
 	for i := 0; i < len(resultsList); i++ {
-		children, _ := extractJsonArrayOfMaps(resultsList[i], "children")
+		children, _ := core.ExtractJsonArrayOfMaps(resultsList[i], "children")
 		if len(children) > 0 {
 			resultsList = append(append(resultsList[0:i+1], children...), resultsList[i+1:]...)
 		}
@@ -676,56 +615,4 @@ func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []s
 	}
 
 	return datasetList, nil
-}
-
-func extractJsonArrayOfMaps(obj map[string]interface{}, key string) ([]map[string]interface{}, string) {
-	if value, ok := obj[key]; ok {
-		if array, ok := value.([]interface{}); ok {
-			if len(array) == 0 {
-				return nil, ""
-			}
-			list := make([]map[string]interface{}, 0)
-			for i := 0; i < len(array); i++ {
-				if elem, ok := array[i].(map[string]interface{}); ok {
-					list = append(list, elem)
-				} else {
-					return nil, "contained a non-object entry"
-				}
-			}
-			return list, ""
-		}
-		return nil, "was not an array"
-	}
-	return nil, "did not contain a list"
-}
-
-func getUsedPropertyColumns(datasets []map[string]interface{}) []string {
-	columnsMap := make(map[string]bool)
-	columnsList := make([]string, 0)
-	columnsMap["name"] = true
-	for _, d := range datasets {
-		for key, _ := range d {
-			if _, exists := columnsMap[key]; !exists {
-				columnsMap[key] = true
-				columnsList = append(columnsList, key)
-			}
-		}
-	}
-
-	slices.Sort(columnsList)
-	return append([]string{"name"}, columnsList...)
-}
-
-func getTableFormat(properties map[string]string) (string, error) {
-	isJson := core.IsValueTrue(properties, "json")
-	isCompact := core.IsValueTrue(properties, "no-headers")
-	if isJson && isCompact {
-		return "", errors.New("--json and --no-headers cannot be used together")
-	} else if isJson {
-		return "json", nil
-	} else if isCompact {
-		return "compact", nil
-	}
-
-	return properties["format"], nil
 }
