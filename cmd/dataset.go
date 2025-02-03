@@ -301,31 +301,7 @@ func deleteDataset(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	nameEsc := core.EncloseAndEscape(args[0], "\"")
-
-	var builder strings.Builder
-	builder.WriteString("[")
-	builder.WriteString(nameEsc)
-	builder.WriteString(",{")
-
-	usedOptions, _, allTypes := getCobraFlags(datasetDeleteCmd)
-	nProps := 0
-	for key, value := range usedOptions {
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
-		core.WriteEncloseAndEscape(&builder, key, "\"")
-		builder.WriteString(":")
-		if t, _ := allTypes[key]; t == "string" {
-			core.WriteEncloseAndEscape(&builder, value, "\"")
-		} else {
-			builder.WriteString(value)
-		}
-		nProps++
-	}
-
-	builder.WriteString("}]")
-	params := builder.String()
+	params := BuildNameStrAndPropertiesJson(datasetDeleteCmd, args[0])
 	fmt.Println(params)
 
 	out, err := api.CallString("pool.dataset.delete", "10s", params)
@@ -369,26 +345,8 @@ func listDataset(api core.Session, args []string) {
 		return
 	}
 
-	var builder strings.Builder
 	columnsList := GetUsedPropertyColumns(datasets, []string{"name"})
-
-	switch format {
-	case "compact":
-		core.WriteListCsv(&builder, datasets, columnsList, false)
-	case "csv":
-		core.WriteListCsv(&builder, datasets, columnsList, true)
-	case "json":
-		builder.WriteString("{\"datasets\":")
-		core.WriteJson(&builder, datasets)
-		builder.WriteString("}\n")
-	case "table":
-		core.WriteListTable(&builder, datasets, columnsList, true)
-	default:
-		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
-		return
-	}
-
-	os.Stdout.WriteString(builder.String())
+	core.PrintTableData(format, "datasets", columnsList, datasets)
 }
 
 func inspectDataset(api core.Session, args []string) {
@@ -418,26 +376,8 @@ func inspectDataset(api core.Session, args []string) {
 		return
 	}
 
-	var builder strings.Builder
 	columnsList := GetUsedPropertyColumns(datasets, []string{"name"})
-
-	switch format {
-	case "compact":
-		core.WriteInspectCsv(&builder, datasets, columnsList, false)
-	case "csv":
-		core.WriteInspectCsv(&builder, datasets, columnsList, true)
-	case "json":
-		builder.WriteString("{\"datasets\":")
-		core.WriteJson(&builder, datasets)
-		builder.WriteString("}\n")
-	case "table":
-		core.WriteInspectTable(&builder, datasets, columnsList, true)
-	default:
-		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
-		return
-	}
-
-	os.Stdout.WriteString(builder.String())
+	core.PrintTableData(format, "datasets", columnsList, datasets)
 }
 
 func promoteDataset(api core.Session, args []string) {
@@ -445,6 +385,15 @@ func promoteDataset(api core.Session, args []string) {
 		return
 	}
 	defer api.Close()
+
+	nameEsc := core.EncloseAndEscape(args[0], "\"")
+	out, err := api.CallString("pool.dataset.promote", "10s", "[" + nameEsc + "]")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "API error:", err)
+		return
+	}
+
+	os.Stdout.WriteString(string(out))
 }
 
 func renameDataset(api core.Session, args []string) {
@@ -467,8 +416,15 @@ func renameDataset(api core.Session, args []string) {
 	}
 
 	builder.WriteString("}]")
+	stmt := builder.String()
 
-	api.CallString("zfs.dataset.rename", "10s", builder.String())
+	out, err := api.CallString("zfs.dataset.rename", "10s", stmt)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "API error:", err)
+		return
+	}
+
+	os.Stdout.WriteString(string(out))
 }
 
 func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {

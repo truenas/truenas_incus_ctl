@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 	"strings"
 	"truenas/admin-tool/core"
@@ -264,7 +263,7 @@ func listNfs(api core.Session, args []string) {
 		columnsList = MakePropertyColumns(required, specList)
 	}
 
-	printNfsTable(format, shares, columnsList)
+	core.PrintTableData(format, "shares", columnsList, shares)
 }
 
 func inspectNfs(api core.Session, args []string) {
@@ -308,7 +307,7 @@ func inspectNfs(api core.Session, args []string) {
 		columnsList = GetUsedPropertyColumns(shares, required)
 	}
 
-	printNfsTable(format, shares, columnsList)
+	core.PrintTableData(format, "shares", columnsList, shares)
 }
 
 func makeNfsQueryStatement(allOptions map[string]string) string {
@@ -351,24 +350,4 @@ func unpackNfsQuery(data json.RawMessage) ([]map[string]interface{}, error) {
 	}
 
 	return resultsList, nil
-}
-
-func printNfsTable(format string, shares []map[string]interface{}, columnsList []string) {
-	var table strings.Builder
-
-	switch format {
-	case "compact":
-		core.WriteListCsv(&table, shares, columnsList, false)
-	case "csv":
-		core.WriteListCsv(&table, shares, columnsList, true)
-	case "json":
-		core.WriteJson(&table, shares)
-	case "table":
-		core.WriteListTable(&table, shares, columnsList, true)
-	default:
-		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
-		return
-	}
-
-	os.Stdout.WriteString(table.String())
 }

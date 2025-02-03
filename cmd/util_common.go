@@ -8,12 +8,40 @@ import (
 	"slices"
 	"strings"
 	"truenas/admin-tool/core"
+
+	"github.com/spf13/cobra"
 )
 
 type typeRetrieveParams struct {
 	retrieveType      string
 	shouldGetAllProps bool
 	shouldRecurse     bool
+}
+
+func BuildNameStrAndPropertiesJson(cmd *cobra.Command, nameStr string) string {
+	var builder strings.Builder
+	builder.WriteString("[")
+	core.WriteEncloseAndEscape(&builder, nameStr, "\"")
+	builder.WriteString(",{")
+
+	usedOptions, _, allTypes := getCobraFlags(cmd)
+	nProps := 0
+	for key, value := range usedOptions {
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		core.WriteEncloseAndEscape(&builder, key, "\"")
+		builder.WriteString(":")
+		if t, _ := allTypes[key]; t == "string" {
+			core.WriteEncloseAndEscape(&builder, value, "\"")
+		} else {
+			builder.WriteString(value)
+		}
+		nProps++
+	}
+
+	builder.WriteString("}]")
+	return builder.String()
 }
 
 func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {

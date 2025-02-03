@@ -2,7 +2,7 @@ package cmd
 
 import (
 	//"encoding/json"
-	//"errors"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -71,7 +71,7 @@ func init() {
 	}
 
 	snapshotDeleteCmd.Run = func(cmd *cobra.Command, args []string) {
-		deleteSnapshot(ValidateAndLogin(), args)
+		deleteOrRollbackSnapshot(cmd, ValidateAndLogin(), args)
 	}
 	
 	snapshotListCmd.Run = func(cmd *cobra.Command, args []string) {
@@ -79,7 +79,7 @@ func init() {
 	}
 
 	snapshotRollbackCmd.Run = func(cmd *cobra.Command, args []string) {
-		rollbackSnapshot(ValidateAndLogin(), args)
+		deleteOrRollbackSnapshot(cmd, ValidateAndLogin(), args)
 	}
 
 	snapshotCreateCmd.Flags().BoolP("recursive", "r", false, "")
@@ -201,11 +201,32 @@ func createSnapshot(api core.Session, args []string) {
 	os.Stdout.WriteString(string(out))
 }
 
-func deleteSnapshot(api core.Session, args []string) {
+func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []string) {
 	if api == nil {
 		return
 	}
 	defer api.Close()
+
+	cmdType := cmd.Use
+	if cmdType != "delete" && cmdType != "rollback" {
+		log.Fatal(errors.New("cmdType was not delete or rollback"))
+	}
+
+	snapshot := args[0]
+	datasetLen := strings.Index(snapshot, "@")
+	if datasetLen <= 0 {
+		log.Fatal(fmt.Errorf("No dataset name was found in snapshot specifier.\nExpected <datasetname>@<snapshotname>."))
+	}
+
+	params := BuildNameStrAndPropertiesJson(cmd, snapshot)
+	fmt.Println(params)
+
+	out, err := api.CallString("zfs.snapshot." + cmdType, "10s", params)
+	fmt.Println(string(out))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "API error:", err)
+		return
+	}
 }
 
 func listSnapshot(api core.Session, args []string) {
@@ -254,34 +275,7 @@ func listSnapshot(api core.Session, args []string) {
 			specList = strings.Split(allOptions["output"], ",")
 		}
 		columnsList = MakePropertyColumns(required, specList)
-		
 	}
 
-	var table strings.Builder
-
-	switch format {
-	case "compact":
-		core.WriteListCsv(&table, snapshots, columnsList, false)
-	case "csv":
-		core.WriteListCsv(&table, snapshots, columnsList, true)
-	case "json":
-		table.WriteString("{\"snapshots\":")
-		core.WriteJson(&table, snapshots)
-		table.WriteString("}\n")
-	case "table":
-		core.WriteListTable(&table, snapshots, columnsList, true)
-	default:
-		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
-		return
-	}
-
-	os.Stdout.WriteString(table.String())
+	core.PrintTableData(format, "snapshots", columnsList, snapshots)
 }
-
-func rollbackSnapshot(api core.Session, args []string) {
-	if api == nil {
-		return
-	}
-	defer api.Close()
-}
-
