@@ -91,7 +91,7 @@ func init() {
 		cmd.Flags().Bool("read-only", false, "Export as write protected, default false")
 		cmd.Flags().Bool("ro", false, "Equivalent to --read-only=true")
 		cmd.Flags().String("comment", "", "")
-		cmd.Flags().String("networks", "", "A list of authorized networks that are allowed to access the share " +
+		cmd.Flags().String("networks", "", "A list of authorized networks that are allowed to access the share "+
 			"using CIDR notation. If empty, all networks are allowed")
 		cmd.Flags().String("hosts", "", "List of hosts")
 		cmd.Flags().String("maproot-user", "", "")
@@ -150,7 +150,7 @@ func createNfs(api core.Session, args []string) {
 	builder.WriteString("}]")
 
 	stmt := builder.String()
-	fmt.Println(stmt)
+	DebugString(stmt)
 
 	out, err := api.CallString("sharing.nfs.create", "10s", stmt)
 	if err != nil {
@@ -188,7 +188,7 @@ func updateNfs(api core.Session, args []string) {
 	builder.WriteString("}]")
 
 	stmt := builder.String()
-	fmt.Println(stmt)
+	DebugString(stmt)
 
 	out, err := api.CallString("sharing.nfs.update", "10s", stmt)
 	if err != nil {
@@ -236,7 +236,7 @@ func deleteNfs(api core.Session, args []string) {
 		log.Fatal(fmt.Errorf("ID \"%s\" was not a number", idStr))
 	}
 
-	out, err := api.CallString("sharing.nfs.delete", "10s", "[" + idStr + "]")
+	out, err := api.CallString("sharing.nfs.delete", "10s", "["+idStr+"]")
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"slices"
 	"truenas/admin-tool/core"
+
 	"github.com/spf13/cobra"
 )
 
@@ -28,11 +30,13 @@ func Execute() {
 }
 
 var g_useMock bool
+var g_debug bool
 var g_url string
 var g_apiKey string
 var g_keyFile string
 
 func init() {
+	rootCmd.PersistentFlags().BoolVar(&g_debug, "debug", false, "Enable debug logs")
 	rootCmd.PersistentFlags().BoolVar(&g_useMock, "mock", false, "Use the mock API instead of a TrueNAS server")
 	rootCmd.PersistentFlags().StringVarP(&g_url, "url", "U", "", "Server URL")
 	rootCmd.PersistentFlags().StringVarP(&g_apiKey, "api-key", "K", "", "API key")
@@ -40,6 +44,7 @@ func init() {
 }
 
 func RemoveGlobalFlags(flags map[string]string) {
+	delete(flags, "debug")
 	delete(flags, "mock")
 	delete(flags, "url")
 	delete(flags, "api-key")
@@ -114,7 +119,7 @@ func GetTableFormat(properties map[string]string) (string, error) {
 	isJson := core.IsValueTrue(properties, "json")
 	isCompact := core.IsValueTrue(properties, "no_headers")
 	if isJson && isCompact {
-		return "", errors.New("--json and --no-headers cannot be used together")
+		return "", errors.New("--json and --no_headers cannot be used together")
 	} else if isJson {
 		return "json", nil
 	} else if isCompact {
@@ -122,4 +127,10 @@ func GetTableFormat(properties map[string]string) (string, error) {
 	}
 
 	return properties["format"], nil
+}
+
+func DebugString(str string) {
+	if g_debug {
+		fmt.Println(str)
+	}
 }

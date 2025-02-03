@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	//"log"
 	"slices"
 	"strings"
@@ -51,7 +52,7 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList 
 	default:
 		return nil, fmt.Errorf("Unrecognised retrieve format \"" + params.retrieveType + "\"")
 	}
-	
+
 	var builder strings.Builder
 	builder.WriteString("[[ ")
 	// first arg = query-filter
@@ -81,7 +82,7 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList 
 	builder.WriteString(", \"user_properties\":false }} ]")
 
 	query := builder.String()
-	fmt.Println(query)
+	DebugString(query)
 
 	data, err := api.CallString(endpoint, "20s", query)
 	if err != nil {

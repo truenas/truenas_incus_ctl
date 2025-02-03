@@ -16,7 +16,6 @@ import (
 var datasetCmd = &cobra.Command{
 	Use: "dataset",
 	Run: func(cmd *cobra.Command, args []string) {
-		//fmt.Println("dataset")
 		if len(args) == 0 {
 			cmd.HelpFunc()(cmd, args)
 			return
@@ -303,7 +302,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	builder.WriteString("}]")
 
 	params := builder.String()
-	fmt.Println(params)
+	DebugString(params)
 
 	out, err := api.CallString("pool.dataset."+cmdType, "10s", params)
 	_ = out
@@ -321,7 +320,7 @@ func deleteDataset(api core.Session, args []string) {
 
 	options, _ := GetCobraFlags(datasetDeleteCmd, nil)
 	params := BuildNameStrAndPropertiesJson(options, args[0])
-	fmt.Println(params)
+	DebugString(params)
 
 	out, err := api.CallString("pool.dataset.delete", "10s", params)
 	fmt.Println(string(out))
@@ -414,7 +413,7 @@ func promoteDataset(api core.Session, args []string) {
 	defer api.Close()
 
 	nameEsc := core.EncloseAndEscape(args[0], "\"")
-	out, err := api.CallString("pool.dataset.promote", "10s", "[" + nameEsc + "]")
+	out, err := api.CallString("pool.dataset.promote", "10s", "["+nameEsc+"]")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
