@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"encoding/json"
+	//"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -16,7 +16,6 @@ import (
 var datasetCmd = &cobra.Command{
 	Use: "dataset",
 	Run: func(cmd *cobra.Command, args []string) {
-		//fmt.Println("dataset")
 		if len(args) == 0 {
 			cmd.HelpFunc()(cmd, args)
 			return
@@ -173,11 +172,6 @@ func init() {
 	rootCmd.AddCommand(datasetCmd)
 }
 
-type typeRetrieveParams struct {
-	shouldGetAllProps bool
-	shouldRecurse     bool
-}
-
 func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) {
 	if api == nil {
 		return
@@ -290,7 +284,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	builder.WriteString("}]")
 
 	params := builder.String()
-	fmt.Println(params)
+	DebugString(params)
 
 	out, err := api.CallString("pool.dataset."+cmdType, "10s", params)
 	_ = out
@@ -306,32 +300,8 @@ func deleteDataset(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	nameEsc := core.EncloseAndEscape(args[0], "\"")
-
-	var builder strings.Builder
-	builder.WriteString("[")
-	builder.WriteString(nameEsc)
-	builder.WriteString(",{")
-
-	usedOptions, _, allTypes := getCobraFlags(datasetDeleteCmd)
-	nProps := 0
-	for key, value := range usedOptions {
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
-		core.WriteEncloseAndEscape(&builder, key, "\"")
-		builder.WriteString(":")
-		if t, _ := allTypes[key]; t == "string" {
-			core.WriteEncloseAndEscape(&builder, value, "\"")
-		} else {
-			builder.WriteString(value)
-		}
-		nProps++
-	}
-
-	builder.WriteString("}]")
-	params := builder.String()
-	fmt.Println(params)
+	params := BuildNameStrAndPropertiesJson(datasetDeleteCmd, args[0])
+	DebugString(params)
 
 	out, err := api.CallString("pool.dataset.delete", "10s", params)
 	fmt.Println(string(out))
@@ -360,39 +330,22 @@ func listDataset(api core.Session, args []string) {
 		return
 	}
 
-	properties := enumerateDatasetProperties(allOptions)
+	properties := EnumerateOutputProperties(allOptions)
 
 	extras := typeRetrieveParams{}
+	extras.retrieveType = "dataset"
 	extras.shouldGetAllProps = format == "json" || core.IsValueTrue(allOptions, "all")
 	// `zfs list` will "recurse" if no names are specified.
 	extras.shouldRecurse = len(datasetNames) == 0 || core.IsValueTrue(allOptions, "recursive")
 
-	datasets, err := retrieveDatasetInfos(api, datasetNames, properties, extras)
+	datasets, err := RetrieveDatasetOrSnapshotInfos(api, datasetNames, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
 	}
 
-	var builder strings.Builder
 	columnsList := GetUsedPropertyColumns(datasets, []string{"name"})
-
-	switch format {
-	case "compact":
-		core.WriteListCsv(&builder, datasets, columnsList, false)
-	case "csv":
-		core.WriteListCsv(&builder, datasets, columnsList, true)
-	case "json":
-		builder.WriteString("{\"datasets\":")
-		core.WriteJson(&builder, datasets)
-		builder.WriteString("}\n")
-	case "table":
-		core.WriteListTable(&builder, datasets, columnsList, true)
-	default:
-		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
-		return
-	}
-
-	os.Stdout.WriteString(builder.String())
+	core.PrintTableData(format, "datasets", columnsList, datasets)
 }
 
 func inspectDataset(api core.Session, args []string) {
@@ -409,38 +362,21 @@ func inspectDataset(api core.Session, args []string) {
 		return
 	}
 
-	properties := enumerateDatasetProperties(allOptions)
+	properties := EnumerateOutputProperties(allOptions)
 
 	extras := typeRetrieveParams{}
+	extras.retrieveType = "dataset"
 	extras.shouldGetAllProps = format == "json" || len(properties) == 0
 	extras.shouldRecurse = core.IsValueTrue(allOptions, "recursive")
 
-	datasets, err := retrieveDatasetInfos(api, args, properties, extras)
+	datasets, err := RetrieveDatasetOrSnapshotInfos(api, args, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
 	}
 
-	var builder strings.Builder
 	columnsList := GetUsedPropertyColumns(datasets, []string{"name"})
-
-	switch format {
-	case "compact":
-		core.WriteInspectCsv(&builder, datasets, columnsList, false)
-	case "csv":
-		core.WriteInspectCsv(&builder, datasets, columnsList, true)
-	case "json":
-		builder.WriteString("{\"datasets\":")
-		core.WriteJson(&builder, datasets)
-		builder.WriteString("}\n")
-	case "table":
-		core.WriteInspectTable(&builder, datasets, columnsList, true)
-	default:
-		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
-		return
-	}
-
-	os.Stdout.WriteString(builder.String())
+	core.PrintTableData(format, "datasets", columnsList, datasets)
 }
 
 func promoteDataset(api core.Session, args []string) {
@@ -448,6 +384,15 @@ func promoteDataset(api core.Session, args []string) {
 		return
 	}
 	defer api.Close()
+
+	nameEsc := core.EncloseAndEscape(args[0], "\"")
+	out, err := api.CallString("pool.dataset.promote", "10s", "["+nameEsc+"]")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "API error:", err)
+		return
+	}
+
+	os.Stdout.WriteString(string(out))
 }
 
 func renameDataset(api core.Session, args []string) {
@@ -470,8 +415,15 @@ func renameDataset(api core.Session, args []string) {
 	}
 
 	builder.WriteString("}]")
+	stmt := builder.String()
 
-	api.CallString("zfs.dataset.rename", "10s", builder.String())
+	out, err := api.CallString("zfs.dataset.rename", "10s", stmt)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "API error:", err)
+		return
+	}
+
+	os.Stdout.WriteString(string(out))
 }
 
 func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
@@ -502,117 +454,4 @@ func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
 		array = append(array, prop, value)
 	}
 	return array, nil
-}
-
-func enumerateDatasetProperties(properties map[string]string) []string {
-	propsStr, exists := properties["output"]
-	if !exists || propsStr == "" {
-		return nil
-	}
-
-	var propsList []string
-	if len(propsStr) > 0 {
-		propsList = strings.Split(propsStr, ",")
-		/*
-			for j := 0; j < len(propsList); j++ {
-				propsList[j] = strings.Trim(propsList[j], " \t\r\n")
-			}
-		*/
-	}
-	return propsList
-}
-
-func retrieveDatasetInfos(api core.Session, datasetNames []string, propsList []string, extras typeRetrieveParams) ([]map[string]interface{}, error) {
-	var builder strings.Builder
-	builder.WriteString("[[ ")
-	// first arg = query-filter
-	if len(datasetNames) == 1 {
-		builder.WriteString("[\"id\", \"=\", ")
-		core.WriteEncloseAndEscape(&builder, datasetNames[0], "\"")
-		builder.WriteString("]")
-	}
-	builder.WriteString("], ") // end first arg
-	// second arg = query-options
-	builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":")
-	builder.WriteString(fmt.Sprint(extras.shouldRecurse))
-	builder.WriteString(", \"properties\":")
-	if extras.shouldGetAllProps {
-		builder.WriteString("null")
-	} else {
-		builder.WriteString("[")
-		if len(propsList) > 0 {
-			core.WriteEncloseAndEscape(&builder, propsList[0], "\"")
-			for i := 1; i < len(propsList); i++ {
-				builder.WriteString(",")
-				core.WriteEncloseAndEscape(&builder, propsList[i], "\"")
-			}
-		}
-		builder.WriteString("]")
-	}
-	builder.WriteString(", \"user_properties\":false }} ]")
-
-	query := builder.String()
-	data, err := api.CallString("pool.dataset.query", "20s", query)
-	if err != nil {
-		return nil, err
-	}
-
-	var response interface{}
-	if err = json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("response error: %v", err)
-	}
-
-	responseMap, ok := response.(map[string]interface{})
-	if !ok {
-		return nil, errors.New("API response was not a JSON object")
-	}
-
-	resultsList, errMsg := core.ExtractJsonArrayOfMaps(responseMap, "result")
-	if errMsg != "" {
-		return nil, errors.New("API response results: " + errMsg)
-	}
-	if len(resultsList) == 0 {
-		return nil, nil
-	}
-
-	datasetList := make([]map[string]interface{}, 0)
-
-	// Do not refactor this loop condition into a range!
-	// This loop modifies the size of resultsList as it iterates.
-	for i := 0; i < len(resultsList); i++ {
-		children, _ := core.ExtractJsonArrayOfMaps(resultsList[i], "children")
-		if len(children) > 0 {
-			resultsList = append(append(resultsList[0:i+1], children...), resultsList[i+1:]...)
-		}
-
-		var name string
-		if nameValue, ok := resultsList[i]["name"]; ok {
-			if nameStr, ok := nameValue.(string); ok {
-				name = nameStr
-			}
-		}
-		if len(name) == 0 {
-			continue
-		}
-
-		dict := make(map[string]interface{})
-		dict["name"] = name
-
-		var propsMap map[string]interface{}
-		if props, ok := resultsList[i]["properties"]; ok {
-			propsMap, ok = props.(map[string]interface{})
-		}
-		for key, value := range propsMap {
-			if valueMap, ok := value.(map[string]interface{}); ok {
-				if actualValue, ok := valueMap["parsed"]; ok {
-					dict[key] = actualValue
-				} else if actualValue, ok := valueMap["value"]; ok {
-					dict[key] = actualValue
-				}
-			}
-		}
-		datasetList = append(datasetList, dict)
-	}
-
-	return datasetList, nil
 }

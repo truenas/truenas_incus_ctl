@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 	"strings"
 	"truenas/admin-tool/core"
@@ -89,7 +88,7 @@ func init() {
 		cmd.Flags().Bool("read-only", false, "Export as write protected, default false")
 		cmd.Flags().Bool("ro", false, "Equivalent to --read-only=true")
 		cmd.Flags().String("comment", "", "")
-		cmd.Flags().String("networks", "", "A list of authorized networks that are allowed to access the share " +
+		cmd.Flags().String("networks", "", "A list of authorized networks that are allowed to access the share "+
 			"using CIDR notation. If empty, all networks are allowed")
 		cmd.Flags().String("hosts", "", "List of hosts")
 		cmd.Flags().String("maproot-user", "", "")
@@ -137,9 +136,7 @@ func createNfs(api core.Session, args []string) {
 	optionsUsed, _, allTypes := getCobraFlags(nfsCreateCmd)
 	nProps := 0
 	for propName, valueStr := range optionsUsed {
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
+		builder.WriteString(",")
 		core.WriteEncloseAndEscape(&builder, propName, "\"")
 		builder.WriteString(":")
 		if t, exists := allTypes[propName]; exists && t == "string" {
@@ -153,7 +150,7 @@ func createNfs(api core.Session, args []string) {
 	builder.WriteString("}]")
 
 	stmt := builder.String()
-	fmt.Println(stmt)
+	DebugString(stmt)
 
 	out, err := api.CallString("sharing.nfs.create", "10s", stmt)
 	if err != nil {
@@ -198,7 +195,7 @@ func updateNfs(api core.Session, args []string) {
 	builder.WriteString("}]")
 
 	stmt := builder.String()
-	fmt.Println(stmt)
+	DebugString(stmt)
 
 	out, err := api.CallString("sharing.nfs.update", "10s", stmt)
 	if err != nil {
@@ -219,7 +216,7 @@ func deleteNfs(api core.Session, args []string) {
 		log.Fatal(fmt.Errorf("ID \"%s\" was not a number", idStr))
 	}
 
-	out, err := api.CallString("sharing.nfs.delete", "10s", "[" + idStr + "]")
+	out, err := api.CallString("sharing.nfs.delete", "10s", "["+idStr+"]")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -264,7 +261,7 @@ func listNfs(api core.Session, args []string) {
 		columnsList = MakePropertyColumns(required, specList)
 	}
 
-	printNfsTable(format, shares, columnsList)
+	core.PrintTableData(format, "shares", columnsList, shares)
 }
 
 func inspectNfs(api core.Session, args []string) {
@@ -308,7 +305,7 @@ func inspectNfs(api core.Session, args []string) {
 		columnsList = GetUsedPropertyColumns(shares, required)
 	}
 
-	printNfsTable(format, shares, columnsList)
+	core.PrintTableData(format, "shares", columnsList, shares)
 }
 
 func makeNfsQueryStatement(allOptions map[string]string) string {
@@ -351,24 +348,4 @@ func unpackNfsQuery(data json.RawMessage) ([]map[string]interface{}, error) {
 	}
 
 	return resultsList, nil
-}
-
-func printNfsTable(format string, shares []map[string]interface{}, columnsList []string) {
-	var table strings.Builder
-
-	switch format {
-	case "compact":
-		core.WriteListCsv(&table, shares, columnsList, false)
-	case "csv":
-		core.WriteListCsv(&table, shares, columnsList, true)
-	case "json":
-		core.WriteJson(&table, shares)
-	case "table":
-		core.WriteListTable(&table, shares, columnsList, true)
-	default:
-		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
-		return
-	}
-
-	os.Stdout.WriteString(table.String())
 }

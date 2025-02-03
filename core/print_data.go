@@ -2,8 +2,33 @@ package core;
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
+
+func PrintTableData(format string, jsonName string, columnsList []string, data []map[string]interface{}) {
+	var table strings.Builder
+
+	switch format {
+	case "compact":
+		WriteListCsv(&table, data, columnsList, false)
+	case "csv":
+		WriteListCsv(&table, data, columnsList, true)
+	case "json":
+		table.WriteString("{")
+		WriteEncloseAndEscape(&table, jsonName, "\"")
+		table.WriteString(":")
+		WriteJson(&table, data)
+		table.WriteString("}\n")
+	case "table":
+		WriteListTable(&table, data, columnsList, true)
+	default:
+		fmt.Fprintln(os.Stderr, "Unrecognised table format", format)
+		return
+	}
+
+	os.Stdout.WriteString(table.String())
+}
 
 func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
 	isFirstCol := true
