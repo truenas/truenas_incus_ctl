@@ -93,5 +93,21 @@
           "program": "${workspaceFolder}",
           "args": ["--key-file=${workspaceFolder}/key.txt","dataset","delete","-r","dozer/created"]
         },
+         {
+          "name": "dataset share nfs create dozer/created",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["--key-file=${workspaceFolder}/key.txt","share","nfs","create","--comment","made with admin-tool","--maproot-user=root", "--maproot-group","root","dozer/created"]
+        },
+        {
+          "name": "dataset share nfs list dozer/created",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["--key-file=${workspaceFolder}/key.txt","share","nfs","list","--name","dozer/created"]
+        },
     ]
 }
