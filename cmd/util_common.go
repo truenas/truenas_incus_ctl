@@ -13,7 +13,6 @@ import (
 
 type typeRetrieveParams struct {
 	retrieveType      string
-	primaryColumn     string
 	shouldGetAllProps bool
 	shouldRecurse     bool
 }
@@ -43,7 +42,7 @@ func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) string {
 	return builder.String()
 }
 
-func RetrieveDatasetOrSnapshotInfos(api core.Session, entries []string, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
+func RetrieveDatasetOrSnapshotInfos(api core.Session, entries, entryTypes, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
 	var endpoint string
 	switch params.retrieveType {
 	case "dataset":
@@ -54,34 +53,16 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, entries []string, propsLis
 		return nil, fmt.Errorf("Unrecognised retrieve format \"" + params.retrieveType + "\"")
 	}
 
-	if params.primaryColumn == "" {
-		return nil, fmt.Errorf("Error querying " + params.retrieveType + "s: primary column was not set")
+	if len(entryTypes) != len(entries) {
+		return nil, fmt.Errorf("Length mismatch between entries and entry types:", len(entries), "!=", len(entryTypes))
 	}
 
 	var builder strings.Builder
-	builder.WriteString("[[ ")
+	builder.WriteString("[")
 
-	// first arg = query-filter
-	if len(entries) > 0 {
-		builder.WriteString("[")
-		core.WriteEncloseAndEscape(&builder, params.primaryColumn, "\"")
-		if len(entries) == 1 {
-			builder.WriteString(", \"=\", ")
-			core.WriteEncloseAndEscape(&builder, entries[0], "\"")
-		} else {
-			builder.WriteString(", \"in\", ")
-			builder.WriteString("[")
-			for i, elem := range entries {
-				if i > 0 {
-					builder.WriteString(",")
-				}
-				core.WriteEncloseAndEscape(&builder, elem, "\"")
-			}
-			builder.WriteString("]")
-		}
-		builder.WriteString("]")
-	}
-	builder.WriteString("], ") // end first arg
+	writeQueryFilter(&builder, entries, entryTypes)
+
+	builder.WriteString(", ") // end first arg
 
 	// second arg = query-options
 	builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":")
@@ -143,7 +124,7 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, entries []string, propsLis
 		}
 
 		var primary string
-		if primaryValue, ok := resultsList[i][params.primaryColumn]; ok {
+		if primaryValue, ok := resultsList[i]["id"]; ok {
 			if primaryStr, ok := primaryValue.(string); ok {
 				primary = primaryStr
 			}
@@ -156,12 +137,12 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, entries []string, propsLis
 		}
 
 		dict := make(map[string]interface{})
-		dict[params.primaryColumn] = primary
+		dict["id"] = primary
 
-		insertProperties(dict, resultsList[i], []string{params.primaryColumn, "children", "properties"})
+		insertProperties(dict, resultsList[i], []string{"id", "children", "properties"})
 		if innerProps, exists := resultsList[i]["properties"]; exists {
 			if innerPropsMap, ok := innerProps.(map[string]interface{}); ok {
-				insertProperties(dict, innerPropsMap, []string{params.primaryColumn})
+				insertProperties(dict, innerPropsMap, nil)
 			}
 		}
 
@@ -178,6 +159,54 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, entries []string, propsLis
 	}
 
 	return outputList, nil
+}
+
+func writeQueryFilter(builder *strings.Builder, entries, entryTypes []string) {
+	builder.WriteString("[")
+
+	// first arg = query-filter
+	if len(entries) == 1 {
+		builder.WriteString("[")
+		core.WriteEncloseAndEscape(builder, entryTypes[0], "\"")
+		builder.WriteString(",\"=\",")
+		core.WriteEncloseAndEscape(builder, entries[0], "\"")
+		builder.WriteString("]")
+	} else if len(entries) > 1 {
+		typeEntriesMap := make(map[string][]string)
+		uniqTypes := make([]string, 0, 0)
+		for i := 0; i < len(entries); i++ {
+			if _, exists := typeEntriesMap[entryTypes[i]]; !exists {
+				typeEntriesMap[entryTypes[i]] = make([]string, 0, 0)
+				uniqTypes = append(uniqTypes, entryTypes[i])
+			}
+			typeEntriesMap[entryTypes[i]] = append(typeEntriesMap[entryTypes[i]], entries[i])
+		}
+
+		for i := 0; i < len(uniqTypes) - 1; i++ {
+			builder.WriteString("[\"OR\",[")
+		}
+
+		writeKeyAndArray(builder, uniqTypes[0], typeEntriesMap[uniqTypes[0]])
+		for i := 1; i < len(uniqTypes); i++ {
+			builder.WriteString(",")
+			writeKeyAndArray(builder, uniqTypes[i], typeEntriesMap[uniqTypes[i]])
+			builder.WriteString("]]")
+		}
+	}
+	builder.WriteString("]")
+}
+
+func writeKeyAndArray(builder *strings.Builder, key string, array []string) {
+	builder.WriteString("[")
+	core.WriteEncloseAndEscape(builder, key, "\"")
+	builder.WriteString(",\"in\",[")
+	for j, elem := range array {
+		if j > 0 {
+			builder.WriteString(",")
+		}
+		core.WriteEncloseAndEscape(builder, elem, "\"")
+	}
+	builder.WriteString("]]")
 }
 
 func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []string) {

@@ -349,16 +349,19 @@ func listDataset(api core.Session, args []string) {
 	}
 
 	properties := EnumerateOutputProperties(options.allFlags)
+	idTypes, err := getDatasetListInspectTypes(args)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// `zfs list` will "recurse" if no names are specified.
 	extras := typeRetrieveParams{
 		retrieveType:      "dataset",
-		primaryColumn:     "name",
 		shouldGetAllProps: format == "json" || core.IsValueTrue(options.allFlags, "all"),
 		shouldRecurse:     len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	datasets, err := RetrieveDatasetOrSnapshotInfos(api, args, properties, extras)
+	datasets, err := RetrieveDatasetOrSnapshotInfos(api, args, idTypes, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
@@ -396,15 +399,18 @@ func inspectDataset(api core.Session, args []string) {
 	}
 
 	properties := EnumerateOutputProperties(options.allFlags)
+	idTypes, err := getDatasetListInspectTypes(args)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	extras := typeRetrieveParams{
 		retrieveType:      "dataset",
-		primaryColumn:     "name",
 		shouldGetAllProps: format == "json" || len(properties) == 0,
 		shouldRecurse:     core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	datasets, err := RetrieveDatasetOrSnapshotInfos(api, args, properties, extras)
+	datasets, err := RetrieveDatasetOrSnapshotInfos(api, args, idTypes, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
@@ -498,4 +504,26 @@ func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
 		array = append(array, prop, value)
 	}
 	return array, nil
+}
+
+func getDatasetListInspectTypes(args []string) ([]string, error) {
+	var typeList []string
+	if len(args) == 0 {
+		return typeList, nil
+	}
+
+	typeList = make([]string, len(args), len(args))
+	for i := 0; i < len(args); i++ {
+		t := core.IdentifyObject(args[i])
+		if t == "id" || t == "share" {
+			return typeList, errors.New("querying datasets based on mount point is not yet supported")
+		} else if t == "snapshot" {
+			return typeList, errors.New("querying datasets based on shapshot is not yet supported")
+		} else if t == "dataset" {
+			t = "name"
+		}
+		typeList[i] = t
+	}
+
+	return typeList, nil
 }

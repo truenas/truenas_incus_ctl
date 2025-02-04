@@ -252,16 +252,19 @@ func listSnapshot(api core.Session, args []string) {
 	}
 
 	properties := EnumerateOutputProperties(options.allFlags)
+	idTypes, err := getSnapshotListTypes(args)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// `zfs list` will "recurse" if no names are specified.
 	extras := typeRetrieveParams{
 		retrieveType:      "snapshot",
-		primaryColumn:     "name",
 		shouldGetAllProps: format == "json" || core.IsValueTrue(options.allFlags, "all"),
 		shouldRecurse:     len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	snapshots, err := RetrieveDatasetOrSnapshotInfos(api, args, properties, extras)
+	snapshots, err := RetrieveDatasetOrSnapshotInfos(api, args, idTypes, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
@@ -278,4 +281,27 @@ func listSnapshot(api core.Session, args []string) {
 	}
 
 	core.PrintTableDataList(format, "snapshots", columnsList, snapshots)
+}
+
+func getSnapshotListTypes(args []string) ([]string, error) {
+	var typeList []string
+	if len(args) == 0 {
+		return typeList, nil
+	}
+
+	typeList = make([]string, len(args), len(args))
+	for i := 0; i < len(args); i++ {
+		t := core.IdentifyObject(args[i])
+		if t == "id" || t == "share" {
+			return typeList, errors.New("querying snapshots based on mount point is not yet supported")
+		} else if t == "snapshot" {
+			t = "name"
+		} else if t == "snapshot_only" {
+			t = "snapshot_name"
+			args[i] = args[i][1:]
+		}
+		typeList[i] = t
+	}
+
+	return typeList, nil
 }
