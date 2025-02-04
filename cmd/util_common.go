@@ -7,6 +7,7 @@ import (
 	//"os"
 	//"log"
 	"slices"
+	"strconv"
 	"strings"
 	"truenas/admin-tool/core"
 )
@@ -42,13 +43,15 @@ func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) string {
 	return builder.String()
 }
 
-func RetrieveDatasetOrSnapshotInfos(api core.Session, entries, entryTypes, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
+func QueryApi(api core.Session, entries, entryTypes, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
 	var endpoint string
 	switch params.retrieveType {
 	case "dataset":
 		endpoint = "pool.dataset.query"
 	case "snapshot":
 		endpoint = "zfs.snapshot.query"
+	case "nfs":
+		endpoint = "sharing.nfs.query"
 	default:
 		return nil, fmt.Errorf("Unrecognised retrieve format \"" + params.retrieveType + "\"")
 	}
@@ -61,27 +64,12 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, entries, entryTypes, props
 	builder.WriteString("[")
 
 	writeQueryFilter(&builder, entries, entryTypes)
-
-	builder.WriteString(", ") // end first arg
-
-	// second arg = query-options
-	builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":")
-	builder.WriteString(fmt.Sprint(params.shouldRecurse))
-	builder.WriteString(", \"properties\":")
-	if params.shouldGetAllProps {
-		builder.WriteString("null")
-	} else {
-		builder.WriteString("[")
-		if len(propsList) > 0 {
-			core.WriteEncloseAndEscape(&builder, propsList[0], "\"")
-			for i := 1; i < len(propsList); i++ {
-				builder.WriteString(",")
-				core.WriteEncloseAndEscape(&builder, propsList[i], "\"")
-			}
-		}
-		builder.WriteString("]")
+	if params.retrieveType != "nfs" {
+		builder.WriteString(", ")
+		writeQueryOptions(&builder, propsList, params)
 	}
-	builder.WriteString(", \"user_properties\":false }} ]")
+
+	builder.WriteString("]")
 
 	query := builder.String()
 	DebugString(query)
@@ -109,11 +97,13 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, entries, entryTypes, props
 		return nil, errors.New("API response results: " + errMsg)
 	}
 	if len(resultsList) == 0 {
+		DebugString("resultsList was empty")
 		return nil, nil
 	}
 
 	outputMap := make(map[string]map[string]interface{})
-	outputMapKeys := make([]string, 0, 0)
+	outputMapIntKeys := make([]int, 0, 0)
+	outputMapStrKeys := make([]string, 0, 0)
 
 	// Do not refactor this loop condition into a range!
 	// This loop modifies the size of resultsList as it iterates.
@@ -127,6 +117,8 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, entries, entryTypes, props
 		if primaryValue, ok := resultsList[i]["id"]; ok {
 			if primaryStr, ok := primaryValue.(string); ok {
 				primary = primaryStr
+			} else {
+				primary = fmt.Sprint(primaryValue)
 			}
 		}
 		if len(primary) == 0 {
@@ -147,15 +139,23 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, entries, entryTypes, props
 		}
 
 		outputMap[primary] = dict
-		outputMapKeys = append(outputMapKeys, primary)
+		if primaryInt, errNotNumber := strconv.Atoi(primary); errNotNumber == nil {
+			outputMapIntKeys = append(outputMapIntKeys, primaryInt)
+		} else {
+			outputMapStrKeys = append(outputMapStrKeys, primary)
+		}
 	}
 
-	slices.Sort(outputMapKeys)
-	nKeys := len(outputMapKeys)
+	slices.Sort(outputMapIntKeys)
+	slices.Sort(outputMapStrKeys)
+	nKeys := len(outputMapIntKeys) + len(outputMapStrKeys)
 
 	outputList := make([]map[string]interface{}, nKeys, nKeys)
-	for i, _ := range outputMapKeys {
-		outputList[i] = outputMap[outputMapKeys[i]]
+	for i, _ := range outputMapIntKeys {
+		outputList[i] = outputMap[strconv.Itoa(outputMapIntKeys[i])]
+	}
+	for i, _ := range outputMapStrKeys {
+		outputList[len(outputMapIntKeys) + i] = outputMap[outputMapStrKeys[i]]
 	}
 
 	return outputList, nil
@@ -207,6 +207,27 @@ func writeKeyAndArray(builder *strings.Builder, key string, array []string) {
 		core.WriteEncloseAndEscape(builder, elem, "\"")
 	}
 	builder.WriteString("]]")
+}
+
+func writeQueryOptions(builder *strings.Builder, propsList []string, params typeRetrieveParams) {
+	// second arg = query-options
+	builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":")
+	builder.WriteString(fmt.Sprint(params.shouldRecurse))
+	builder.WriteString(", \"properties\":")
+	if params.shouldGetAllProps {
+		builder.WriteString("null")
+	} else {
+		builder.WriteString("[")
+		if len(propsList) > 0 {
+			core.WriteEncloseAndEscape(builder, propsList[0], "\"")
+			for i := 1; i < len(propsList); i++ {
+				builder.WriteString(",")
+				core.WriteEncloseAndEscape(builder, propsList[i], "\"")
+			}
+		}
+		builder.WriteString("]")
+	}
+	builder.WriteString(", \"user_properties\":false }} ")
 }
 
 func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []string) {

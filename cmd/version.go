@@ -10,8 +10,9 @@ import (
 0.1.0 initial version
 0.1.1 added url, apikey and keyfile
 0.1.2 added `share nfs` functionality
+0.1.3 improved querying, removed --name and --id from `share nfs list`
 */
-const VERSION = "0.1.2"
+const VERSION = "0.1.3"
 
 var versionCmd = &cobra.Command{
 	Use: "version",

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -104,9 +103,6 @@ func init() {
 
 	listInspectCmds := []*cobra.Command{nfsListCmd, nfsInspectCmd}
 	for _, cmd := range listInspectCmds {
-		cmd.Flags().String("name", "", "")
-		cmd.Flags().Int("id", -1, "")
-		cmd.Flags().String("query-filter", "", "")
 		cmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 		cmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
 		cmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" " +
@@ -260,31 +256,32 @@ func listNfs(api core.Session, args []string) {
 		log.Fatal(err)
 	}
 
-	stmt := makeNfsQueryStatement(options.allFlags)
-	fmt.Println(stmt)
-
-	out, err := api.CallString("sharing.nfs.query", "10s", stmt)
+	properties := EnumerateOutputProperties(options.allFlags)
+	idTypes, err := getNfsListInspectTypes(args)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	shares, err := unpackNfsQuery(out)
+	extras := typeRetrieveParams{
+		retrieveType:      "nfs",
+		shouldGetAllProps: format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldRecurse:     len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+	}
+
+	shares, err := QueryApi(api, args, idTypes, properties, extras)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, "API error:", err)
+		return
 	}
 
 	required := []string{"id", "path"}
 	var columnsList []string
-	if all, _ := options.allFlags["all"]; all == "true" {
+	if extras.shouldGetAllProps {
 		columnsList = GetUsedPropertyColumns(shares, required)
+	} else if len(properties) > 0 {
+		columnsList = properties
 	} else {
-		outputCols := options.allFlags["output"]
-		var specList []string
-		if outputCols != "" {
-			specList = strings.Split(outputCols, ",")
-			required = nil
-		}
-		columnsList = MakePropertyColumns(required, specList)
+		columnsList = required
 	}
 
 	core.PrintTableDataList(format, "shares", columnsList, shares)
@@ -307,78 +304,53 @@ func inspectNfs(api core.Session, args []string) {
 		log.Fatal(err)
 	}
 
-	if _, errNotNumber := strconv.Atoi(args[0]); errNotNumber == nil {
-		options.allFlags["id"] = args[0]
-	} else {
-		options.allFlags["name"] = args[0]
-	}
-
-	stmt := makeNfsQueryStatement(options.allFlags)
-	fmt.Println(stmt)
-
-	out, err := api.CallString("sharing.nfs.query", "10s", stmt)
+	properties := EnumerateOutputProperties(options.allFlags)
+	idTypes, err := getNfsListInspectTypes(args)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	shares, err := unpackNfsQuery(out)
-	if err != nil {
-		log.Fatal(err)
+	extras := typeRetrieveParams{
+		retrieveType:      "nfs",
+		shouldGetAllProps: format == "json" || len(properties) == 0,
+		shouldRecurse:     core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	outputCols := options.allFlags["output"]
+	shares, err := QueryApi(api, args, idTypes, properties, extras)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "API error:", err)
+		return
+	}
+
 	required := []string{"id", "path"}
 	var columnsList []string
-	if outputCols != "" {
-		columnsList = MakePropertyColumns(nil, strings.Split(outputCols, ","))
-		if len(columnsList) == 0 {
-			columnsList = required
-		}
-	} else {
+	if extras.shouldGetAllProps {
 		columnsList = GetUsedPropertyColumns(shares, required)
+	} else if len(properties) > 0 {
+		columnsList = properties
+	} else {
+		columnsList = required
 	}
 
 	core.PrintTableDataInspect(format, "shares", columnsList, shares)
 }
 
-func makeNfsQueryStatement(allOptions map[string]string) string {
-	var builder strings.Builder
-	builder.WriteString("[")
-
-	if name := allOptions["name"]; name != "" {
-		path := "/mnt/" + name
-		builder.WriteString("[[\"path\",\"=\",")
-		core.WriteEncloseAndEscape(&builder, path, "\"")
-		builder.WriteString("]]")
-	} else if id, _ := strconv.Atoi(allOptions["id"]); id >= 0 {
-		builder.WriteString("[[\"id\",\"=\",")
-		builder.WriteString(fmt.Sprint(id))
-		builder.WriteString("]]")
-	} else {
-		builder.WriteString("[]")
+func getNfsListInspectTypes(args []string) ([]string, error) {
+	var typeList []string
+	if len(args) == 0 {
+		return typeList, nil
 	}
 
-	//builder.WriteString(",{\"extra\":{\"properties\":[\"ro\"]}}")
-
-	builder.WriteString("]")
-	return builder.String()
-}
-
-func unpackNfsQuery(data json.RawMessage) ([]map[string]interface{}, error) {
-	var response interface{}
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("response error: %v", err)
+	typeList = make([]string, len(args), len(args))
+	for i := 0; i < len(args); i++ {
+		t := core.IdentifyObject(args[i])
+		if t == "snapshot" || t == "snapshot_only" {
+			return typeList, errors.New("querying nfs shares based on snapshot is not yet supported")
+		} else if t == "dataset" {
+			return typeList, errors.New("querying nfs shares based on dataset is not yet supported")
+		}
+		typeList[i] = t
 	}
 
-	responseMap, ok := response.(map[string]interface{})
-	if !ok {
-		return nil, errors.New("API response was not a JSON object")
-	}
-
-	resultsList, errMsg := core.ExtractJsonArrayOfMaps(responseMap, "result")
-	if errMsg != "" {
-		return nil, errors.New("API response results: " + errMsg)
-	}
-
-	return resultsList, nil
+	return typeList, nil
 }

@@ -361,7 +361,7 @@ func listDataset(api core.Session, args []string) {
 		shouldRecurse:     len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	datasets, err := RetrieveDatasetOrSnapshotInfos(api, args, idTypes, properties, extras)
+	datasets, err := QueryApi(api, args, idTypes, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
@@ -410,7 +410,7 @@ func inspectDataset(api core.Session, args []string) {
 		shouldRecurse:     core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	datasets, err := RetrieveDatasetOrSnapshotInfos(api, args, idTypes, properties, extras)
+	datasets, err := QueryApi(api, args, idTypes, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
@@ -517,7 +517,7 @@ func getDatasetListInspectTypes(args []string) ([]string, error) {
 		t := core.IdentifyObject(args[i])
 		if t == "id" || t == "share" {
 			return typeList, errors.New("querying datasets based on mount point is not yet supported")
-		} else if t == "snapshot" {
+		} else if t == "snapshot" || t == "snapshot_only" {
 			return typeList, errors.New("querying datasets based on shapshot is not yet supported")
 		} else if t == "dataset" {
 			t = "name"

@@ -264,7 +264,7 @@ func listSnapshot(api core.Session, args []string) {
 		shouldRecurse:     len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	snapshots, err := RetrieveDatasetOrSnapshotInfos(api, args, idTypes, properties, extras)
+	snapshots, err := QueryApi(api, args, idTypes, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
