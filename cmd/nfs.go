@@ -327,11 +327,15 @@ func inspectNfs(api core.Session, args []string) {
 	}
 
 	outputCols := options.allFlags["output"]
+	required := []string{"id", "path"}
 	var columnsList []string
 	if outputCols != "" {
 		columnsList = MakePropertyColumns(nil, strings.Split(outputCols, ","))
+		if len(columnsList) == 0 {
+			columnsList = required
+		}
 	} else {
-		columnsList = GetUsedPropertyColumns(shares, []string{"id", "path"})
+		columnsList = GetUsedPropertyColumns(shares, required)
 	}
 
 	core.PrintTableDataInspect(format, "shares", columnsList, shares)

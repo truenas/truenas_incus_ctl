@@ -364,11 +364,14 @@ func listDataset(api core.Session, args []string) {
 		return
 	}
 
+	required := []string{"name"}
 	var columnsList []string
 	if extras.shouldGetAllProps {
-		columnsList = GetUsedPropertyColumns(datasets, []string{"name"})
-	} else {
+		columnsList = GetUsedPropertyColumns(datasets, required)
+	} else if len(properties) > 0 {
 		columnsList = properties
+	} else {
+		columnsList = required
 	}
 
 	core.PrintTableDataList(format, "datasets", columnsList, datasets)
@@ -407,11 +410,14 @@ func inspectDataset(api core.Session, args []string) {
 		return
 	}
 
+	required := []string{"name"}
 	var columnsList []string
 	if extras.shouldGetAllProps {
-		columnsList = GetUsedPropertyColumns(datasets, []string{"name"})
-	} else {
+		columnsList = GetUsedPropertyColumns(datasets, required)
+	} else if len(properties) > 0 {
 		columnsList = properties
+	} else {
+		columnsList = required
 	}
 
 	core.PrintTableDataInspect(format, "datasets", columnsList, datasets)

@@ -267,13 +267,14 @@ func listSnapshot(api core.Session, args []string) {
 		return
 	}
 
-	shouldGetAllProps := format == "json" || core.IsValueTrue(options.allFlags, "all")
-
+	required := []string{"name"}
 	var columnsList []string
-	if shouldGetAllProps {
-		columnsList = GetUsedPropertyColumns(snapshots, []string{"name"})
-	} else {
+	if extras.shouldGetAllProps {
+		columnsList = GetUsedPropertyColumns(snapshots, required)
+	} else if len(properties) > 0 {
 		columnsList = properties
+	} else {
+		columnsList = required
 	}
 
 	core.PrintTableDataList(format, "snapshots", columnsList, snapshots)

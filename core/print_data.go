@@ -57,6 +57,10 @@ func PrintTableDataInspect(format string, jsonName string, columnsList []string,
 }
 
 func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
+	if len(propsArray) == 0 || len(columnsList) == 0 {
+		return
+	}
+
 	isFirstCol := true
 	if useHeaders {
 		for _, c := range(columnsList) {
@@ -97,6 +101,10 @@ func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{},
 }
 
 func WriteInspectCsv(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
+	if len(propsArray) == 0 || len(columnsList) == 0 {
+		return
+	}
+
 	var line strings.Builder
 	for _, c := range(columnsList) {
 		line.Reset()
@@ -128,6 +136,11 @@ func WriteInspectCsv(builder *strings.Builder, propsArray []map[string]interface
 }
 
 func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}) {
+	if len(propsArray) == 0 {
+		builder.WriteString("{}")
+		return
+	}
+
 	builder.WriteString("{")
 	for i, p := range(propsArray) {
 		if i > 0 {
@@ -158,6 +171,10 @@ func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}) {
 }
 
 func WriteListTable(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
+	if len(propsArray) == 0 || len(columnsList) == 0 {
+		return
+	}
+
 	headerInc := 0
 	if useHeaders {
 		headerInc = 1
@@ -187,6 +204,10 @@ func WriteListTable(builder *strings.Builder, propsArray []map[string]interface{
 }
 
 func WriteInspectTable(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
+	if len(propsArray) == 0 || len(columnsList) == 0 {
+		return
+	}
+
 	headerInc := 0
 	if useHeaders {
 		headerInc = 1
