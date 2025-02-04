@@ -63,7 +63,7 @@ var datasetPromoteCmd = &cobra.Command{
 }
 
 var datasetRenameCmd = &cobra.Command{
-	Use:   "rename",
+	Use:   "rename [flags]... <old dataset>[@<old snapshot>] <new dataset|new snapshot>",
 	Short: "Rename a ZFS dataset",
 	Long: `Renames the given dataset. The new target can be located anywhere in the ZFS hierarchy, with the exception of snapshots.
 Snapshots can only be re‐named within the parent file system or volume.
@@ -410,12 +410,14 @@ func renameDataset(api core.Session, args []string) {
 	builder.WriteString(",{\"new_name\":")
 	core.WriteEncloseAndEscape(&builder, args[1], "\"")
 
+	// TODO: NOTE: server does not have any functionality for updating shares.
 	if core.IsValueTrue(allOptions, "update-shares") {
 		builder.WriteString(",\"update_shares\":true")
 	}
 
 	builder.WriteString("}]")
 	stmt := builder.String()
+	DebugString(stmt)
 
 	out, err := api.CallString("zfs.dataset.rename", "10s", stmt)
 	if err != nil {
