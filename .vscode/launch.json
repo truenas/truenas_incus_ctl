@@ -109,5 +109,39 @@
           "program": "${workspaceFolder}",
           "args": ["--key-file=${workspaceFolder}/key.txt","share","nfs","list","--name","dozer/created"]
         },
+        {
+          "name": "dataset mv dozer/created/parent/child dozer/created/child",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","rename","dozer/created/parent/child","dozer/created/child"]
+        },
+        {
+          "name": "snapshot create -r dozer/created@snap",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["--key-file=${workspaceFolder}/key.txt","snapshot","create","dozer/created@snap"]
+        },
+        {
+          // snapshot listing needs to be more flexible, ie like `zfs list -t snapshot -r dozer/created`
+          "name": "snapshot ls -r dozer/created@snap",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["--key-file=${workspaceFolder}/key.txt","snapshot","ls","-r","dozer/created@snap"]
+        },
+        {
+          // snapshot listing needs to be more flexible, ie like `zfs list -t snapshot -r dozer/created`
+          "name": "snapshot rm -r dozer/created@snap",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["--key-file=${workspaceFolder}/key.txt","snapshot","delete","-r","dozer/created@snap"]
+        },
     ]
 }

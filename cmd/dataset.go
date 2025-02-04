@@ -63,7 +63,7 @@ var datasetPromoteCmd = &cobra.Command{
 }
 
 var datasetRenameCmd = &cobra.Command{
-	Use:   "rename",
+	Use:   "rename [flags]... <old dataset>[@<old snapshot>] <new dataset|new snapshot>",
 	Short: "Rename a ZFS dataset",
 	Long: `Renames the given dataset. The new target can be located anywhere in the ZFS hierarchy, with the exception of snapshots.
 Snapshots can only be re‐named within the parent file system or volume.
@@ -430,10 +430,19 @@ func renameDataset(api core.Session, args []string) {
 
 	options, _ := GetCobraFlags(datasetRenameCmd, nil)
 
-	InsertNonCobraFlag(options, "string", "new_name", args[1])
-	stmt := BuildNameStrAndPropertiesJson(options, args[0])
+	if core.IsValueTrue(options.allFlags, "update-shares") {
+		fmt.Println("TODO: implement update-shares")
+	}
 
-	fmt.Println(stmt)
+	var builder strings.Builder
+	builder.WriteString("[")
+	core.WriteEncloseAndEscape(&builder, args[0], "\"")
+	builder.WriteString(",{\"new_name\":")
+	core.WriteEncloseAndEscape(&builder, args[1], "\"")
+
+	builder.WriteString("}]")
+	stmt := builder.String()
+	DebugString(stmt)
 
 	out, err := api.CallString("zfs.dataset.rename", "10s", stmt)
 	if err != nil {
