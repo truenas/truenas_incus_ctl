@@ -31,6 +31,15 @@ func WriteEncloseAndEscape(builder *strings.Builder, original string, ends strin
 	builder.WriteString(ends)
 }
 
+func ExposeString(original string, ends string) string {
+	size := len(original)
+	endSize := len(ends)
+	if size <= 2*endSize || original[0:endSize] != ends && original[size-endSize:] != ends {
+		return original
+	}
+	return strings.ReplaceAll(original[endSize:size-endSize], "\\" + ends, ends)
+}
+
 func WriteJsonStringArray(builder *strings.Builder, valueList []string) {
 	for i, elem := range valueList {
 		if i > 0 {

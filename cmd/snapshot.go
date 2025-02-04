@@ -240,11 +240,6 @@ func listSnapshot(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	var snapshotNames []string
-	if len(args) > 0 {
-		snapshotNames = []string{args[0]}
-	}
-
 	options, err := GetCobraFlags(snapshotListCmd, g_snapshotListEnums)
 	if err != nil {
 		log.Fatal(err)
@@ -258,13 +253,15 @@ func listSnapshot(api core.Session, args []string) {
 
 	properties := EnumerateOutputProperties(options.allFlags)
 
-	extras := typeRetrieveParams{}
-	extras.retrieveType = "snapshot"
-	extras.shouldGetAllProps = true // snapshot retrieval is broken, might as well get all properties for consistency
 	// `zfs list` will "recurse" if no names are specified.
-	extras.shouldRecurse = len(snapshotNames) == 0 || core.IsValueTrue(options.allFlags, "recursive")
+	extras := typeRetrieveParams{
+		retrieveType:      "snapshot",
+		primaryColumn:     "name",
+		shouldGetAllProps: format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldRecurse:     len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+	}
 
-	snapshots, err := RetrieveDatasetOrSnapshotInfos(api, snapshotNames, properties, extras)
+	snapshots, err := RetrieveDatasetOrSnapshotInfos(api, args, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
@@ -272,18 +269,12 @@ func listSnapshot(api core.Session, args []string) {
 
 	shouldGetAllProps := format == "json" || core.IsValueTrue(options.allFlags, "all")
 
-	required := []string{"name"}
 	var columnsList []string
 	if shouldGetAllProps {
-		columnsList = GetUsedPropertyColumns(snapshots, required)
+		columnsList = GetUsedPropertyColumns(snapshots, []string{"name"})
 	} else {
-		outputCols := options.allFlags["output"]
-		var specList []string
-		if outputCols != "" {
-			specList = strings.Split(outputCols, ",")
-		}
-		columnsList = MakePropertyColumns(required, specList)
+		columnsList = properties
 	}
 
-	core.PrintTableData(format, "snapshots", columnsList, snapshots)
+	core.PrintTableDataList(format, "snapshots", columnsList, snapshots)
 }

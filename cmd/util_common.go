@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
+	//"os"
 	//"log"
 	"slices"
 	"strings"
@@ -13,6 +13,7 @@ import (
 
 type typeRetrieveParams struct {
 	retrieveType      string
+	primaryColumn     string
 	shouldGetAllProps bool
 	shouldRecurse     bool
 }
@@ -42,7 +43,7 @@ func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) string {
 	return builder.String()
 }
 
-func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
+func RetrieveDatasetOrSnapshotInfos(api core.Session, entries []string, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
 	var endpoint string
 	switch params.retrieveType {
 	case "dataset":
@@ -53,15 +54,35 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList 
 		return nil, fmt.Errorf("Unrecognised retrieve format \"" + params.retrieveType + "\"")
 	}
 
+	if params.primaryColumn == "" {
+		return nil, fmt.Errorf("Error querying " + params.retrieveType + "s: primary column was not set")
+	}
+
 	var builder strings.Builder
 	builder.WriteString("[[ ")
+
 	// first arg = query-filter
-	if len(names) == 1 {
-		builder.WriteString("[\"id\", \"=\", ")
-		core.WriteEncloseAndEscape(&builder, names[0], "\"")
+	if len(entries) > 0 {
+		builder.WriteString("[")
+		core.WriteEncloseAndEscape(&builder, params.primaryColumn, "\"")
+		if len(entries) == 1 {
+			builder.WriteString(", \"=\", ")
+			core.WriteEncloseAndEscape(&builder, entries[0], "\"")
+		} else {
+			builder.WriteString(", \"in\", ")
+			builder.WriteString("[")
+			for i, elem := range entries {
+				if i > 0 {
+					builder.WriteString(",")
+				}
+				core.WriteEncloseAndEscape(&builder, elem, "\"")
+			}
+			builder.WriteString("]")
+		}
 		builder.WriteString("]")
 	}
 	builder.WriteString("], ") // end first arg
+
 	// second arg = query-options
 	builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":")
 	builder.WriteString(fmt.Sprint(params.shouldRecurse))
@@ -89,6 +110,9 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList 
 		return nil, err
 	}
 
+	//os.Stdout.WriteString(string(data))
+	//fmt.Println("\n")
+
 	var response interface{}
 	if err = json.Unmarshal(data, &response); err != nil {
 		return nil, fmt.Errorf("response error: %v", err)
@@ -107,8 +131,8 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList 
 		return nil, nil
 	}
 
-	datasetMap := make(map[string]map[string]interface{})
-	datasetMapKeys := make([]string, 0, 0)
+	outputMap := make(map[string]map[string]interface{})
+	outputMapKeys := make([]string, 0, 0)
 
 	// Do not refactor this loop condition into a range!
 	// This loop modifies the size of resultsList as it iterates.
@@ -118,47 +142,69 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList 
 			resultsList = append(append(resultsList[0:i+1], children...), resultsList[i+1:]...)
 		}
 
-		var name string
-		if nameValue, ok := resultsList[i]["name"]; ok {
-			if nameStr, ok := nameValue.(string); ok {
-				name = nameStr
+		var primary string
+		if primaryValue, ok := resultsList[i][params.primaryColumn]; ok {
+			if primaryStr, ok := primaryValue.(string); ok {
+				primary = primaryStr
 			}
 		}
-		if len(name) == 0 {
+		if len(primary) == 0 {
 			continue
 		}
-		if _, exists := datasetMap[name]; exists {
+		if _, exists := outputMap[primary]; exists {
 			continue
 		}
 
 		dict := make(map[string]interface{})
-		dict["name"] = name
+		dict[params.primaryColumn] = primary
 
-		var propsMap map[string]interface{}
-		if props, ok := resultsList[i]["properties"]; ok {
-			propsMap, ok = props.(map[string]interface{})
-		}
-		for key, value := range propsMap {
-			if valueMap, ok := value.(map[string]interface{}); ok {
-				if actualValue, ok := valueMap["parsed"]; ok {
-					dict[key] = actualValue
-				} else if actualValue, ok := valueMap["value"]; ok {
-					dict[key] = actualValue
-				}
+		insertProperties(dict, resultsList[i], []string{params.primaryColumn, "children", "properties"})
+		if innerProps, exists := resultsList[i]["properties"]; exists {
+			if innerPropsMap, ok := innerProps.(map[string]interface{}); ok {
+				insertProperties(dict, innerPropsMap, []string{params.primaryColumn})
 			}
 		}
-		datasetMap[name] = dict
-		datasetMapKeys = append(datasetMapKeys, name)
+
+		outputMap[primary] = dict
+		outputMapKeys = append(outputMapKeys, primary)
 	}
 
-	slices.Sort(datasetMapKeys)
-	nKeys := len(datasetMapKeys)
-	datasetList := make([]map[string]interface{}, nKeys, nKeys)
-	for i, _ := range datasetMapKeys {
-		datasetList[i] = datasetMap[datasetMapKeys[i]]
+	slices.Sort(outputMapKeys)
+	nKeys := len(outputMapKeys)
+
+	outputList := make([]map[string]interface{}, nKeys, nKeys)
+	for i, _ := range outputMapKeys {
+		outputList[i] = outputMap[outputMapKeys[i]]
 	}
 
-	return datasetList, nil
+	return outputList, nil
+}
+
+func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []string) {
+	for key, value := range srcMap {
+		if _, exists := dstMap[key]; exists {
+			continue
+		}
+		shouldSkip := false
+		for _, ex := range excludeKeys {
+			if key == ex {
+				shouldSkip = true
+				break
+			}
+		}
+		if shouldSkip {
+			continue
+		}
+		if valueMap, ok := value.(map[string]interface{}); ok {
+			if actualValue, ok := valueMap["parsed"]; ok {
+				dstMap[key] = actualValue
+			} else if actualValue, ok := valueMap["value"]; ok {
+				dstMap[key] = actualValue
+			}
+		} else {
+			dstMap[key] = value
+		}
+	}
 }
 
 func EnumerateOutputProperties(properties map[string]string) []string {
@@ -177,4 +223,61 @@ func EnumerateOutputProperties(properties map[string]string) []string {
 		*/
 	}
 	return propsList
+}
+
+func MakePropertyColumns(required []string, additional []string) []string {
+	columnSet := make(map[string]bool)
+	uniqAdditional := make([]string, 0, 0)
+
+	for _, c := range required {
+		columnSet[c] = true
+	}
+	for _, c := range additional {
+		if _, exists := columnSet[c]; !exists {
+			uniqAdditional = append(uniqAdditional, c)
+		}
+		columnSet[c] = true
+	}
+
+	slices.Sort(uniqAdditional)
+
+	if len(required) > 0 {
+		return append(required, uniqAdditional...)
+	}
+	return uniqAdditional
+}
+
+func GetUsedPropertyColumns[T any](data []map[string]T, required []string) []string {
+	columnsMap := make(map[string]bool)
+	columnsList := make([]string, 0)
+
+	for _, c := range required {
+		columnsMap[c] = true
+	}
+
+	for _, d := range data {
+		for key, _ := range d {
+			if _, exists := columnsMap[key]; !exists {
+				columnsMap[key] = true
+				columnsList = append(columnsList, key)
+			}
+		}
+	}
+
+	slices.Sort(columnsList)
+	return append(required, columnsList...)
+}
+
+func GetTableFormat(properties map[string]string) (string, error) {
+	isJson := core.IsValueTrue(properties, "json")
+	isCompact := core.IsValueTrue(properties, "no_headers")
+	if isJson && isCompact {
+		return "", errors.New("--json and --no_headers cannot be used together")
+	} else if isJson {
+		return "json", nil
+	} else if isCompact {
+		return "compact", nil
+	}
+
+	return properties["format"], nil
 }

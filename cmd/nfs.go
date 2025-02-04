@@ -282,11 +282,12 @@ func listNfs(api core.Session, args []string) {
 		var specList []string
 		if outputCols != "" {
 			specList = strings.Split(outputCols, ",")
+			required = nil
 		}
 		columnsList = MakePropertyColumns(required, specList)
 	}
 
-	core.PrintTableData(format, "shares", columnsList, shares)
+	core.PrintTableDataList(format, "shares", columnsList, shares)
 }
 
 func inspectNfs(api core.Session, args []string) {
@@ -325,17 +326,15 @@ func inspectNfs(api core.Session, args []string) {
 		log.Fatal(err)
 	}
 
-	required := []string{"id", "path"}
 	outputCols := options.allFlags["output"]
-
 	var columnsList []string
 	if outputCols != "" {
-		columnsList = MakePropertyColumns(required, strings.Split(outputCols, ","))
+		columnsList = MakePropertyColumns(nil, strings.Split(outputCols, ","))
 	} else {
-		columnsList = GetUsedPropertyColumns(shares, required)
+		columnsList = GetUsedPropertyColumns(shares, []string{"id", "path"})
 	}
 
-	core.PrintTableData(format, "shares", columnsList, shares)
+	core.PrintTableDataInspect(format, "shares", columnsList, shares)
 }
 
 func makeNfsQueryStatement(allOptions map[string]string) string {

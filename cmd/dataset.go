@@ -336,11 +336,6 @@ func listDataset(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	var datasetNames []string
-	if len(args) > 0 {
-		datasetNames = []string{args[0]}
-	}
-
 	options, err := GetCobraFlags(datasetListCmd, g_datasetListInspectEnums)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -355,20 +350,28 @@ func listDataset(api core.Session, args []string) {
 
 	properties := EnumerateOutputProperties(options.allFlags)
 
-	extras := typeRetrieveParams{}
-	extras.retrieveType = "dataset"
-	extras.shouldGetAllProps = format == "json" || core.IsValueTrue(options.allFlags, "all")
 	// `zfs list` will "recurse" if no names are specified.
-	extras.shouldRecurse = len(datasetNames) == 0 || core.IsValueTrue(options.allFlags, "recursive")
+	extras := typeRetrieveParams{
+		retrieveType:      "dataset",
+		primaryColumn:     "name",
+		shouldGetAllProps: format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldRecurse:     len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+	}
 
-	datasets, err := RetrieveDatasetOrSnapshotInfos(api, datasetNames, properties, extras)
+	datasets, err := RetrieveDatasetOrSnapshotInfos(api, args, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
 	}
 
-	columnsList := GetUsedPropertyColumns(datasets, []string{"name"})
-	core.PrintTableData(format, "datasets", columnsList, datasets)
+	var columnsList []string
+	if extras.shouldGetAllProps {
+		columnsList = GetUsedPropertyColumns(datasets, []string{"name"})
+	} else {
+		columnsList = properties
+	}
+
+	core.PrintTableDataList(format, "datasets", columnsList, datasets)
 }
 
 func inspectDataset(api core.Session, args []string) {
@@ -391,10 +394,12 @@ func inspectDataset(api core.Session, args []string) {
 
 	properties := EnumerateOutputProperties(options.allFlags)
 
-	extras := typeRetrieveParams{}
-	extras.retrieveType = "dataset"
-	extras.shouldGetAllProps = format == "json" || len(properties) == 0
-	extras.shouldRecurse = core.IsValueTrue(options.allFlags, "recursive")
+	extras := typeRetrieveParams{
+		retrieveType:      "dataset",
+		primaryColumn:     "name",
+		shouldGetAllProps: format == "json" || len(properties) == 0,
+		shouldRecurse:     core.IsValueTrue(options.allFlags, "recursive"),
+	}
 
 	datasets, err := RetrieveDatasetOrSnapshotInfos(api, args, properties, extras)
 	if err != nil {
@@ -402,8 +407,14 @@ func inspectDataset(api core.Session, args []string) {
 		return
 	}
 
-	columnsList := GetUsedPropertyColumns(datasets, []string{"name"})
-	core.PrintTableData(format, "datasets", columnsList, datasets)
+	var columnsList []string
+	if extras.shouldGetAllProps {
+		columnsList = GetUsedPropertyColumns(datasets, []string{"name"})
+	} else {
+		columnsList = properties
+	}
+
+	core.PrintTableDataInspect(format, "datasets", columnsList, datasets)
 }
 
 func promoteDataset(api core.Session, args []string) {

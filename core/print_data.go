@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func PrintTableData(format string, jsonName string, columnsList []string, data []map[string]interface{}) {
+func PrintTableDataList(format string, jsonName string, columnsList []string, data []map[string]interface{}) {
 	var table strings.Builder
 	f := strings.ToLower(format)
 
@@ -31,6 +31,31 @@ func PrintTableData(format string, jsonName string, columnsList []string, data [
 	os.Stdout.WriteString(table.String())
 }
 
+func PrintTableDataInspect(format string, jsonName string, columnsList []string, data []map[string]interface{}) {
+	var table strings.Builder
+	f := strings.ToLower(format)
+
+	switch f {
+	case "compact":
+		WriteInspectCsv(&table, data, columnsList, false)
+	case "csv":
+		WriteInspectCsv(&table, data, columnsList, true)
+	case "json":
+		table.WriteString("{")
+		WriteEncloseAndEscape(&table, jsonName, "\"")
+		table.WriteString(":")
+		WriteJson(&table, data)
+		table.WriteString("}\n")
+	case "table":
+		WriteInspectTable(&table, data, columnsList, true)
+	default:
+		fmt.Fprintln(os.Stderr, "Unrecognised table format", f)
+		return
+	}
+
+	os.Stdout.WriteString(table.String())
+}
+
 func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
 	isFirstCol := true
 	if useHeaders {
@@ -43,48 +68,62 @@ func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{},
 		}
 		builder.WriteString("\n")
 	}
+	var line strings.Builder
 	for i := 0; i < len(propsArray); i++ {
+		line.Reset()
 		isFirstCol = true
+		hits := 0
 		for _, c := range(columnsList) {
 			if !isFirstCol {
-				builder.WriteString("\t")
+				line.WriteString("\t")
 			}
 			if value, ok := propsArray[i][c]; ok {
 				if valueStr, ok := value.(string); ok {
-					builder.WriteString(valueStr)
+					line.WriteString(valueStr)
 				} else {
-					builder.WriteString(fmt.Sprintf("%v", value))
+					line.WriteString(fmt.Sprintf("%v", value))
 				}
+				hits++
 			} else {
-				builder.WriteString("-")
+				line.WriteString("-")
 			}
 			isFirstCol = false
 		}
-		builder.WriteString("\n")
+		if hits > 0 {
+			builder.WriteString(line.String())
+			builder.WriteString("\n")
+		}
 	}
 }
 
 func WriteInspectCsv(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
+	var line strings.Builder
 	for _, c := range(columnsList) {
+		line.Reset()
+		hits := 0
 		if useHeaders {
-			builder.WriteString(c)
-			builder.WriteString("\t")
+			line.WriteString(c)
+			line.WriteString("\t")
 		}
 		for j := 0; j < len(propsArray); j++ {
 			if j > 0 {
-				builder.WriteString("\t")
+				line.WriteString("\t")
 			}
 			if value, ok := propsArray[j][c]; ok {
 				if valueStr, ok := value.(string); ok {
-					builder.WriteString(valueStr)
+					line.WriteString(valueStr)
 				} else {
-					builder.WriteString(fmt.Sprintf("%v", value))
+					line.WriteString(fmt.Sprintf("%v", value))
 				}
+				hits++
 			} else {
-				builder.WriteString("-")
+				line.WriteString("-")
 			}
 		}
-		builder.WriteString("\n")
+		if hits > 0 {
+			builder.WriteString(line.String())
+			builder.WriteString("\n")
+		}
 	}
 }
 
@@ -203,41 +242,52 @@ func writeTable(builder *strings.Builder, allStrings []string, nRows int, nCols 
 		bufHyphens[i] = 0x2d; // -
 	}
 
-	isFirstCol := true
+	var line strings.Builder
 	for i := 0; i < nRows; i++ {
-		isFirstCol = true
+		line.Reset()
+		hits := 0
+		isFirstCol := true
 		for j := 0; j < nCols; j++ {
 			idx := i * nCols + j
 			sp := columnWidths[j] - len(allStrings[idx])
 
 			if !isFirstCol {
-				builder.WriteString("|")
+				line.WriteString("|")
 			}
-			builder.WriteString(" ")
+			line.WriteString(" ")
 			if useHeaders && i == 0 {
-				builder.Write(bufSpaces[0:sp/2])
-				builder.WriteString(allStrings[idx])
-				builder.Write(bufSpaces[0:sp/2+(sp%2)])
+				line.Write(bufSpaces[0:sp/2])
+				line.WriteString(allStrings[idx])
+				line.Write(bufSpaces[0:sp/2+(sp%2)])
+				hits++
 			} else {
-				builder.WriteString(allStrings[idx])
-				builder.Write(bufSpaces[0:sp])
+				line.WriteString(allStrings[idx])
+				line.Write(bufSpaces[0:sp])
+				if allStrings[idx] != "" {
+					hits++
+				}
 			}
-			builder.WriteString(" ")
+			line.WriteString(" ")
 
 			isFirstCol = false
 		}
 		if useHeaders && i == 0 {
-			builder.WriteString("\n")
+			line.WriteString("\n")
 
 			isFirstCol = true
 			for i := 0; i < nCols; i++ {
 				if !isFirstCol {
-					builder.WriteString("+")
+					line.WriteString("+")
 				}
-				builder.Write(bufHyphens[0:columnWidths[i]+2])
+				line.Write(bufHyphens[0:columnWidths[i]+2])
 				isFirstCol = false
 			}
+			// ensures the column headers and separating line are not culled
+			hits++
 		}
-		builder.WriteString("\n")
+		if hits > 0 {
+			builder.WriteString(line.String())
+			builder.WriteString("\n")
+		}
 	}
 }
