@@ -63,7 +63,7 @@ var datasetPromoteCmd = &cobra.Command{
 }
 
 var datasetRenameCmd = &cobra.Command{
-	Use:   "rename",
+	Use:   "rename [flags]... <old dataset>[@<old snapshot>] <new dataset|new snapshot>",
 	Short: "Rename a ZFS dataset",
 	Long: `Renames the given dataset. The new target can be located anywhere in the ZFS hierarchy, with the exception of snapshots.
 Snapshots can only be re‐named within the parent file system or volume.
