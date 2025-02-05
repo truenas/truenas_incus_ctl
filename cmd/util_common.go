@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
+	//"os"
 	//"log"
 	"slices"
+	"strconv"
 	"strings"
 	"truenas/admin-tool/core"
 )
@@ -42,44 +43,33 @@ func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) string {
 	return builder.String()
 }
 
-func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
+func QueryApi(api core.Session, entries, entryTypes, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
 	var endpoint string
 	switch params.retrieveType {
 	case "dataset":
 		endpoint = "pool.dataset.query"
 	case "snapshot":
 		endpoint = "zfs.snapshot.query"
+	case "nfs":
+		endpoint = "sharing.nfs.query"
 	default:
 		return nil, fmt.Errorf("Unrecognised retrieve format \"" + params.retrieveType + "\"")
 	}
 
+	if len(entryTypes) != len(entries) {
+		return nil, fmt.Errorf("Length mismatch between entries and entry types:", len(entries), "!=", len(entryTypes))
+	}
+
 	var builder strings.Builder
-	builder.WriteString("[[ ")
-	// first arg = query-filter
-	if len(names) == 1 {
-		builder.WriteString("[\"id\", \"=\", ")
-		core.WriteEncloseAndEscape(&builder, names[0], "\"")
-		builder.WriteString("]")
+	builder.WriteString("[")
+
+	writeQueryFilter(&builder, entries, entryTypes)
+	if params.retrieveType != "nfs" {
+		builder.WriteString(", ")
+		writeQueryOptions(&builder, propsList, params)
 	}
-	builder.WriteString("], ") // end first arg
-	// second arg = query-options
-	builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":")
-	builder.WriteString(fmt.Sprint(params.shouldRecurse))
-	builder.WriteString(", \"properties\":")
-	if params.shouldGetAllProps {
-		builder.WriteString("null")
-	} else {
-		builder.WriteString("[")
-		if len(propsList) > 0 {
-			core.WriteEncloseAndEscape(&builder, propsList[0], "\"")
-			for i := 1; i < len(propsList); i++ {
-				builder.WriteString(",")
-				core.WriteEncloseAndEscape(&builder, propsList[i], "\"")
-			}
-		}
-		builder.WriteString("]")
-	}
-	builder.WriteString(", \"user_properties\":false }} ]")
+
+	builder.WriteString("]")
 
 	query := builder.String()
 	DebugString(query)
@@ -88,6 +78,9 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList 
 	if err != nil {
 		return nil, err
 	}
+
+	//os.Stdout.WriteString(string(data))
+	//fmt.Println("\n")
 
 	var response interface{}
 	if err = json.Unmarshal(data, &response); err != nil {
@@ -104,11 +97,13 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList 
 		return nil, errors.New("API response results: " + errMsg)
 	}
 	if len(resultsList) == 0 {
+		DebugString("resultsList was empty")
 		return nil, nil
 	}
 
-	datasetMap := make(map[string]map[string]interface{})
-	datasetMapKeys := make([]string, 0, 0)
+	outputMap := make(map[string]map[string]interface{})
+	outputMapIntKeys := make([]int, 0, 0)
+	outputMapStrKeys := make([]string, 0, 0)
 
 	// Do not refactor this loop condition into a range!
 	// This loop modifies the size of resultsList as it iterates.
@@ -118,47 +113,148 @@ func RetrieveDatasetOrSnapshotInfos(api core.Session, names []string, propsList 
 			resultsList = append(append(resultsList[0:i+1], children...), resultsList[i+1:]...)
 		}
 
-		var name string
-		if nameValue, ok := resultsList[i]["name"]; ok {
-			if nameStr, ok := nameValue.(string); ok {
-				name = nameStr
+		var primary string
+		if primaryValue, ok := resultsList[i]["id"]; ok {
+			if primaryStr, ok := primaryValue.(string); ok {
+				primary = primaryStr
+			} else {
+				primary = fmt.Sprint(primaryValue)
 			}
 		}
-		if len(name) == 0 {
+		if len(primary) == 0 {
 			continue
 		}
-		if _, exists := datasetMap[name]; exists {
+		if _, exists := outputMap[primary]; exists {
 			continue
 		}
 
 		dict := make(map[string]interface{})
-		dict["name"] = name
+		dict["id"] = primary
 
-		var propsMap map[string]interface{}
-		if props, ok := resultsList[i]["properties"]; ok {
-			propsMap, ok = props.(map[string]interface{})
-		}
-		for key, value := range propsMap {
-			if valueMap, ok := value.(map[string]interface{}); ok {
-				if actualValue, ok := valueMap["parsed"]; ok {
-					dict[key] = actualValue
-				} else if actualValue, ok := valueMap["value"]; ok {
-					dict[key] = actualValue
-				}
+		insertProperties(dict, resultsList[i], []string{"id", "children", "properties"})
+		if innerProps, exists := resultsList[i]["properties"]; exists {
+			if innerPropsMap, ok := innerProps.(map[string]interface{}); ok {
+				insertProperties(dict, innerPropsMap, nil)
 			}
 		}
-		datasetMap[name] = dict
-		datasetMapKeys = append(datasetMapKeys, name)
+
+		outputMap[primary] = dict
+		if primaryInt, errNotNumber := strconv.Atoi(primary); errNotNumber == nil {
+			outputMapIntKeys = append(outputMapIntKeys, primaryInt)
+		} else {
+			outputMapStrKeys = append(outputMapStrKeys, primary)
+		}
 	}
 
-	slices.Sort(datasetMapKeys)
-	nKeys := len(datasetMapKeys)
-	datasetList := make([]map[string]interface{}, nKeys, nKeys)
-	for i, _ := range datasetMapKeys {
-		datasetList[i] = datasetMap[datasetMapKeys[i]]
+	slices.Sort(outputMapIntKeys)
+	slices.Sort(outputMapStrKeys)
+	nKeys := len(outputMapIntKeys) + len(outputMapStrKeys)
+
+	outputList := make([]map[string]interface{}, nKeys, nKeys)
+	for i, _ := range outputMapIntKeys {
+		outputList[i] = outputMap[strconv.Itoa(outputMapIntKeys[i])]
+	}
+	for i, _ := range outputMapStrKeys {
+		outputList[len(outputMapIntKeys) + i] = outputMap[outputMapStrKeys[i]]
 	}
 
-	return datasetList, nil
+	return outputList, nil
+}
+
+func writeQueryFilter(builder *strings.Builder, entries, entryTypes []string) {
+	builder.WriteString("[")
+
+	// first arg = query-filter
+	if len(entries) == 1 {
+		builder.WriteString("[")
+		core.WriteEncloseAndEscape(builder, entryTypes[0], "\"")
+		builder.WriteString(",\"=\",")
+		core.WriteEncloseAndEscape(builder, entries[0], "\"")
+		builder.WriteString("]")
+	} else if len(entries) > 1 {
+		typeEntriesMap := make(map[string][]string)
+		uniqTypes := make([]string, 0, 0)
+		for i := 0; i < len(entries); i++ {
+			if _, exists := typeEntriesMap[entryTypes[i]]; !exists {
+				typeEntriesMap[entryTypes[i]] = make([]string, 0, 0)
+				uniqTypes = append(uniqTypes, entryTypes[i])
+			}
+			typeEntriesMap[entryTypes[i]] = append(typeEntriesMap[entryTypes[i]], entries[i])
+		}
+
+		for i := 0; i < len(uniqTypes) - 1; i++ {
+			builder.WriteString("[\"OR\",[")
+		}
+
+		writeKeyAndArray(builder, uniqTypes[0], typeEntriesMap[uniqTypes[0]])
+		for i := 1; i < len(uniqTypes); i++ {
+			builder.WriteString(",")
+			writeKeyAndArray(builder, uniqTypes[i], typeEntriesMap[uniqTypes[i]])
+			builder.WriteString("]]")
+		}
+	}
+	builder.WriteString("]")
+}
+
+func writeKeyAndArray(builder *strings.Builder, key string, array []string) {
+	builder.WriteString("[")
+	core.WriteEncloseAndEscape(builder, key, "\"")
+	builder.WriteString(",\"in\",[")
+	for j, elem := range array {
+		if j > 0 {
+			builder.WriteString(",")
+		}
+		core.WriteEncloseAndEscape(builder, elem, "\"")
+	}
+	builder.WriteString("]]")
+}
+
+func writeQueryOptions(builder *strings.Builder, propsList []string, params typeRetrieveParams) {
+	// second arg = query-options
+	builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":")
+	builder.WriteString(fmt.Sprint(params.shouldRecurse))
+	builder.WriteString(", \"properties\":")
+	if params.shouldGetAllProps {
+		builder.WriteString("null")
+	} else {
+		builder.WriteString("[")
+		if len(propsList) > 0 {
+			core.WriteEncloseAndEscape(builder, propsList[0], "\"")
+			for i := 1; i < len(propsList); i++ {
+				builder.WriteString(",")
+				core.WriteEncloseAndEscape(builder, propsList[i], "\"")
+			}
+		}
+		builder.WriteString("]")
+	}
+	builder.WriteString(", \"user_properties\":false }} ")
+}
+
+func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []string) {
+	for key, value := range srcMap {
+		if _, exists := dstMap[key]; exists {
+			continue
+		}
+		shouldSkip := false
+		for _, ex := range excludeKeys {
+			if key == ex {
+				shouldSkip = true
+				break
+			}
+		}
+		if shouldSkip {
+			continue
+		}
+		if valueMap, ok := value.(map[string]interface{}); ok {
+			if actualValue, ok := valueMap["parsed"]; ok {
+				dstMap[key] = actualValue
+			} else if actualValue, ok := valueMap["value"]; ok {
+				dstMap[key] = actualValue
+			}
+		} else {
+			dstMap[key] = value
+		}
+	}
 }
 
 func EnumerateOutputProperties(properties map[string]string) []string {
@@ -177,4 +273,61 @@ func EnumerateOutputProperties(properties map[string]string) []string {
 		*/
 	}
 	return propsList
+}
+
+func MakePropertyColumns(required []string, additional []string) []string {
+	columnSet := make(map[string]bool)
+	uniqAdditional := make([]string, 0, 0)
+
+	for _, c := range required {
+		columnSet[c] = true
+	}
+	for _, c := range additional {
+		if _, exists := columnSet[c]; !exists {
+			uniqAdditional = append(uniqAdditional, c)
+		}
+		columnSet[c] = true
+	}
+
+	slices.Sort(uniqAdditional)
+
+	if len(required) > 0 {
+		return append(required, uniqAdditional...)
+	}
+	return uniqAdditional
+}
+
+func GetUsedPropertyColumns[T any](data []map[string]T, required []string) []string {
+	columnsMap := make(map[string]bool)
+	columnsList := make([]string, 0)
+
+	for _, c := range required {
+		columnsMap[c] = true
+	}
+
+	for _, d := range data {
+		for key, _ := range d {
+			if _, exists := columnsMap[key]; !exists {
+				columnsMap[key] = true
+				columnsList = append(columnsList, key)
+			}
+		}
+	}
+
+	slices.Sort(columnsList)
+	return append(required, columnsList...)
+}
+
+func GetTableFormat(properties map[string]string) (string, error) {
+	isJson := core.IsValueTrue(properties, "json")
+	isCompact := core.IsValueTrue(properties, "no_headers")
+	if isJson && isCompact {
+		return "", errors.New("--json and --no_headers cannot be used together")
+	} else if isJson {
+		return "json", nil
+	} else if isCompact {
+		return "compact", nil
+	}
+
+	return properties["format"], nil
 }

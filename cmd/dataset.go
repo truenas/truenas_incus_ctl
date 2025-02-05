@@ -73,20 +73,20 @@ Renamed file systems can inherit new mount points, in which case they are unmoun
 	Aliases: []string{"mv"},
 }
 
-var g_compressionEnum = [...]string {
-	"on","off","gzip",
-	"gzip-1","gzip-9",
-	"lz4","lzjb","zle","zstd",
-	"zstd-1","zstd-2","zstd-3","zstd-4","zstd-5","zstd-6","zstd-7","zstd-8","zstd-9","zstd-10",
-	"zstd-11","zstd-12","zstd-13","zstd-14","zstd-15","zstd-16","zstd-17","zstd-18","zstd-19",
+var g_compressionEnum = [...]string{
+	"on", "off", "gzip",
+	"gzip-1", "gzip-9",
+	"lz4", "lzjb", "zle", "zstd",
+	"zstd-1", "zstd-2", "zstd-3", "zstd-4", "zstd-5", "zstd-6", "zstd-7", "zstd-8", "zstd-9", "zstd-10",
+	"zstd-11", "zstd-12", "zstd-13", "zstd-14", "zstd-15", "zstd-16", "zstd-17", "zstd-18", "zstd-19",
 	"zstd-fast",
-	"zstd-fast-1","zstd-fast-2","zstd-fast-3","zstd-fast-4","zstd-fast-5","zstd-fast-6","zstd-fast-7","zstd-fast-8","zstd-fast-9",
-	"zstd-fast-10","zstd-fast-20","zstd-fast-30","zstd-fast-40","zstd-fast-50","zstd-fast-60","zstd-fast-70","zstd-fast-80","zstd-fast-90",
-	"zstd-fast-100","zstd-fast-500","zstd-fast-1000",
+	"zstd-fast-1", "zstd-fast-2", "zstd-fast-3", "zstd-fast-4", "zstd-fast-5", "zstd-fast-6", "zstd-fast-7", "zstd-fast-8", "zstd-fast-9",
+	"zstd-fast-10", "zstd-fast-20", "zstd-fast-30", "zstd-fast-40", "zstd-fast-50", "zstd-fast-60", "zstd-fast-70", "zstd-fast-80", "zstd-fast-90",
+	"zstd-fast-100", "zstd-fast-500", "zstd-fast-1000",
 }
 
 var g_datasetCreateUpdateEnums map[string][]string
-var g_datasetListInspectEnums  map[string][]string
+var g_datasetListInspectEnums map[string][]string
 
 func init() {
 	datasetCreateCmd.Run = func(cmd *cobra.Command, args []string) {
@@ -120,16 +120,16 @@ func init() {
 	createUpdateCmds := []*cobra.Command{datasetCreateCmd, datasetUpdateCmd}
 	for _, cmd := range createUpdateCmds {
 		cmd.Flags().String("comments", "", "User defined comments")
-		cmd.Flags().String("sync", "standard", "Controls the behavior of synchronous requests " +
-			AddFlagsEnum(&g_datasetCreateUpdateEnums, "sync", []string{"standard","always","disabled"}))
-		cmd.Flags().String("snapdir", "hidden", "Controls whether the .zfs directory is disabled, hidden or visible " +
-			AddFlagsEnum(&g_datasetCreateUpdateEnums, "snapdir", []string{"hidden","visible"}))
-		cmd.Flags().String("compression", "off", "Controls the compression algorithm used for this dataset\n" +
+		cmd.Flags().String("sync", "standard", "Controls the behavior of synchronous requests "+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "sync", []string{"standard", "always", "disabled"}))
+		cmd.Flags().String("snapdir", "hidden", "Controls whether the .zfs directory is disabled, hidden or visible "+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "snapdir", []string{"hidden", "visible"}))
+		cmd.Flags().String("compression", "off", "Controls the compression algorithm used for this dataset\n"+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "compression", g_compressionEnum[:]))
-		cmd.Flags().String("atime", "off", "Controls whether the access time for files is updated when they are read " +
-			AddFlagsEnum(&g_datasetCreateUpdateEnums, "atime", []string{"on","off"}))
-		cmd.Flags().String("exec", "inherit", "Controls whether processes can be executed from within this file system " +
-			AddFlagsEnum(&g_datasetCreateUpdateEnums, "exec", []string{"inherit","on","off"}))
+		cmd.Flags().String("atime", "off", "Controls whether the access time for files is updated when they are read "+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "atime", []string{"on", "off"}))
+		cmd.Flags().String("exec", "inherit", "Controls whether processes can be executed from within this file system "+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "exec", []string{"inherit", "on", "off"}))
 		cmd.Flags().String("managedby", "truenas-admin", "Manager of this dataset, must not be empty")
 		cmd.Flags().Bool("quota", false, "")
 		//cmd.Flags().Bool("quota_warning", false, "")
@@ -156,8 +156,8 @@ func init() {
 		cmd.Flags().StringP("volblocksize", "b", "512", "Volume block size (\"512\",\"1K\",\"2K\",\"4K\",\"8K\",\"16K\",\"32K\",\"64K\",\"128K\")")
 		cmd.Flags().BoolP("sparse", "s", false, "Creates a sparse volume with no reservation")
 		cmd.Flags().Bool("force_size", false, "")
-		cmd.Flags().String("snapdev", "hidden", "Controls whether the volume snapshot devices are hidden or visible " +
-			AddFlagsEnum(&g_datasetCreateUpdateEnums, "snapdev", []string{"hidden","visible"}))
+		cmd.Flags().String("snapdev", "hidden", "Controls whether the volume snapshot devices are hidden or visible "+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "snapdev", []string{"hidden", "visible"}))
 	}
 
 	datasetDeleteCmd.Flags().BoolP("recursive", "r", false, "Also delete/destroy all children datasets. When the root dataset is specified,\n"+
@@ -170,8 +170,8 @@ func init() {
 		cmd.Flags().BoolP("user-properties", "u", false, "Include user-properties")
 		cmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 		cmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
-		cmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" " +
-			AddFlagsEnum(&g_datasetListInspectEnums, "format", []string{"csv","json","table","compact"}))
+		cmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
+			AddFlagsEnum(&g_datasetListInspectEnums, "format", []string{"csv", "json", "table", "compact"}))
 		cmd.Flags().StringP("output", "o", "", "Output property list")
 		cmd.Flags().BoolP("all", "a", false, "Output all properties")
 		//cmd.Flags().BoolP("parseable", "p", false, "")
@@ -336,11 +336,6 @@ func listDataset(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	var datasetNames []string
-	if len(args) > 0 {
-		datasetNames = []string{args[0]}
-	}
-
 	options, err := GetCobraFlags(datasetListCmd, g_datasetListInspectEnums)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -354,21 +349,35 @@ func listDataset(api core.Session, args []string) {
 	}
 
 	properties := EnumerateOutputProperties(options.allFlags)
+	idTypes, err := getDatasetListInspectTypes(args)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	extras := typeRetrieveParams{}
-	extras.retrieveType = "dataset"
-	extras.shouldGetAllProps = format == "json" || core.IsValueTrue(options.allFlags, "all")
 	// `zfs list` will "recurse" if no names are specified.
-	extras.shouldRecurse = len(datasetNames) == 0 || core.IsValueTrue(options.allFlags, "recursive")
+	extras := typeRetrieveParams{
+		retrieveType:      "dataset",
+		shouldGetAllProps: format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldRecurse:     len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+	}
 
-	datasets, err := RetrieveDatasetOrSnapshotInfos(api, datasetNames, properties, extras)
+	datasets, err := QueryApi(api, args, idTypes, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
 	}
 
-	columnsList := GetUsedPropertyColumns(datasets, []string{"name"})
-	core.PrintTableData(format, "datasets", columnsList, datasets)
+	required := []string{"name"}
+	var columnsList []string
+	if extras.shouldGetAllProps {
+		columnsList = GetUsedPropertyColumns(datasets, required)
+	} else if len(properties) > 0 {
+		columnsList = properties
+	} else {
+		columnsList = required
+	}
+
+	core.PrintTableDataList(format, "datasets", columnsList, datasets)
 }
 
 func inspectDataset(api core.Session, args []string) {
@@ -390,20 +399,34 @@ func inspectDataset(api core.Session, args []string) {
 	}
 
 	properties := EnumerateOutputProperties(options.allFlags)
+	idTypes, err := getDatasetListInspectTypes(args)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	extras := typeRetrieveParams{}
-	extras.retrieveType = "dataset"
-	extras.shouldGetAllProps = format == "json" || len(properties) == 0
-	extras.shouldRecurse = core.IsValueTrue(options.allFlags, "recursive")
+	extras := typeRetrieveParams{
+		retrieveType:      "dataset",
+		shouldGetAllProps: format == "json" || len(properties) == 0,
+		shouldRecurse:     core.IsValueTrue(options.allFlags, "recursive"),
+	}
 
-	datasets, err := RetrieveDatasetOrSnapshotInfos(api, args, properties, extras)
+	datasets, err := QueryApi(api, args, idTypes, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
 	}
 
-	columnsList := GetUsedPropertyColumns(datasets, []string{"name"})
-	core.PrintTableData(format, "datasets", columnsList, datasets)
+	required := []string{"name"}
+	var columnsList []string
+	if extras.shouldGetAllProps {
+		columnsList = GetUsedPropertyColumns(datasets, required)
+	} else if len(properties) > 0 {
+		columnsList = properties
+	} else {
+		columnsList = required
+	}
+
+	core.PrintTableDataInspect(format, "datasets", columnsList, datasets)
 }
 
 func promoteDataset(api core.Session, args []string) {
@@ -481,4 +504,26 @@ func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
 		array = append(array, prop, value)
 	}
 	return array, nil
+}
+
+func getDatasetListInspectTypes(args []string) ([]string, error) {
+	var typeList []string
+	if len(args) == 0 {
+		return typeList, nil
+	}
+
+	typeList = make([]string, len(args), len(args))
+	for i := 0; i < len(args); i++ {
+		t := core.IdentifyObject(args[i])
+		if t == "id" || t == "share" {
+			return typeList, errors.New("querying datasets based on mount point is not yet supported")
+		} else if t == "snapshot" || t == "snapshot_only" {
+			return typeList, errors.New("querying datasets based on shapshot is not yet supported")
+		} else if t == "dataset" {
+			t = "name"
+		}
+		typeList[i] = t
+	}
+
+	return typeList, nil
 }

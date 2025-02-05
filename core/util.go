@@ -2,9 +2,27 @@ package core
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"slices"
 )
+
+func IdentifyObject(obj string) string {
+	if obj == "" {
+		return ""
+	} else if _, errNotNumber := strconv.Atoi(obj); errNotNumber == nil {
+		return "id"
+	} else if obj[0] == '/' {
+		return "share"
+	} else if obj[0] == '@' {
+		return "snapshot_only"
+	} else if strings.Index(obj, "@") >= 1 {
+		return "snapshot"
+	} else if strings.Index(obj, "/") >= 1 {
+		return "dataset"
+	}
+	return "pool"
+}
 
 func EncloseAndEscape(original string, ends string) string {
 	var builder strings.Builder
@@ -29,6 +47,15 @@ func WriteEncloseAndEscape(builder *strings.Builder, original string, ends strin
 		off += idx + 1
 	}
 	builder.WriteString(ends)
+}
+
+func ExposeString(original string, ends string) string {
+	size := len(original)
+	endSize := len(ends)
+	if size <= 2*endSize || original[0:endSize] != ends && original[size-endSize:] != ends {
+		return original
+	}
+	return strings.ReplaceAll(original[endSize:size-endSize], "\\" + ends, ends)
 }
 
 func WriteJsonStringArray(builder *strings.Builder, valueList []string) {

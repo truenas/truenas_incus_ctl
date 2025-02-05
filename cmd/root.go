@@ -1,11 +1,9 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"os"
-	"slices"
 	"truenas/admin-tool/core"
 
 	"github.com/spf13/cobra"
@@ -74,59 +72,6 @@ func ValidateAndLogin() core.Session {
 	}
 
 	return api
-}
-
-func MakePropertyColumns(required []string, additional []string) []string {
-	columnSet := make(map[string]bool)
-	uniqAdditional := make([]string, 0, 0)
-
-	for _, c := range required {
-		columnSet[c] = true
-	}
-	for _, c := range additional {
-		if _, exists := columnSet[c]; !exists {
-			uniqAdditional = append(uniqAdditional, c)
-		}
-		columnSet[c] = true
-	}
-
-	slices.Sort(uniqAdditional)
-	return append(required, uniqAdditional...)
-}
-
-func GetUsedPropertyColumns(data []map[string]interface{}, required []string) []string {
-	columnsMap := make(map[string]bool)
-	columnsList := make([]string, 0)
-
-	for _, c := range required {
-		columnsMap[c] = true
-	}
-
-	for _, d := range data {
-		for key, _ := range d {
-			if _, exists := columnsMap[key]; !exists {
-				columnsMap[key] = true
-				columnsList = append(columnsList, key)
-			}
-		}
-	}
-
-	slices.Sort(columnsList)
-	return append(required, columnsList...)
-}
-
-func GetTableFormat(properties map[string]string) (string, error) {
-	isJson := core.IsValueTrue(properties, "json")
-	isCompact := core.IsValueTrue(properties, "no_headers")
-	if isJson && isCompact {
-		return "", errors.New("--json and --no_headers cannot be used together")
-	} else if isJson {
-		return "json", nil
-	} else if isCompact {
-		return "compact", nil
-	}
-
-	return properties["format"], nil
 }
 
 func DebugString(str string) {

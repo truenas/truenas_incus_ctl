@@ -240,11 +240,6 @@ func listSnapshot(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	var snapshotNames []string
-	if len(args) > 0 {
-		snapshotNames = []string{args[0]}
-	}
-
 	options, err := GetCobraFlags(snapshotListCmd, g_snapshotListEnums)
 	if err != nil {
 		log.Fatal(err)
@@ -257,33 +252,56 @@ func listSnapshot(api core.Session, args []string) {
 	}
 
 	properties := EnumerateOutputProperties(options.allFlags)
+	idTypes, err := getSnapshotListTypes(args)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	extras := typeRetrieveParams{}
-	extras.retrieveType = "snapshot"
-	extras.shouldGetAllProps = true // snapshot retrieval is broken, might as well get all properties for consistency
 	// `zfs list` will "recurse" if no names are specified.
-	extras.shouldRecurse = len(snapshotNames) == 0 || core.IsValueTrue(options.allFlags, "recursive")
+	extras := typeRetrieveParams{
+		retrieveType:      "snapshot",
+		shouldGetAllProps: format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldRecurse:     len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+	}
 
-	snapshots, err := RetrieveDatasetOrSnapshotInfos(api, snapshotNames, properties, extras)
+	snapshots, err := QueryApi(api, args, idTypes, properties, extras)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
 	}
 
-	shouldGetAllProps := format == "json" || core.IsValueTrue(options.allFlags, "all")
-
 	required := []string{"name"}
 	var columnsList []string
-	if shouldGetAllProps {
+	if extras.shouldGetAllProps {
 		columnsList = GetUsedPropertyColumns(snapshots, required)
+	} else if len(properties) > 0 {
+		columnsList = properties
 	} else {
-		outputCols := options.allFlags["output"]
-		var specList []string
-		if outputCols != "" {
-			specList = strings.Split(outputCols, ",")
-		}
-		columnsList = MakePropertyColumns(required, specList)
+		columnsList = required
 	}
 
-	core.PrintTableData(format, "snapshots", columnsList, snapshots)
+	core.PrintTableDataList(format, "snapshots", columnsList, snapshots)
+}
+
+func getSnapshotListTypes(args []string) ([]string, error) {
+	var typeList []string
+	if len(args) == 0 {
+		return typeList, nil
+	}
+
+	typeList = make([]string, len(args), len(args))
+	for i := 0; i < len(args); i++ {
+		t := core.IdentifyObject(args[i])
+		if t == "id" || t == "share" {
+			return typeList, errors.New("querying snapshots based on mount point is not yet supported")
+		} else if t == "snapshot" {
+			t = "name"
+		} else if t == "snapshot_only" {
+			t = "snapshot_name"
+			args[i] = args[i][1:]
+		}
+		typeList[i] = t
+	}
+
+	return typeList, nil
 }
