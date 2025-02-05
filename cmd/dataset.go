@@ -453,10 +453,6 @@ func renameDataset(api core.Session, args []string) {
 
 	options, _ := GetCobraFlags(datasetRenameCmd, nil)
 
-	if core.IsValueTrue(options.allFlags, "update-shares") {
-		fmt.Println("TODO: implement update-shares")
-	}
-
 	var builder strings.Builder
 	builder.WriteString("[")
 	core.WriteEncloseAndEscape(&builder, args[0], "\"")
@@ -473,7 +469,37 @@ func renameDataset(api core.Session, args []string) {
 		return
 	}
 
-	os.Stdout.WriteString(string(out))
+	if errMsg := core.ExtractApiError(out); errMsg != "" {
+		fmt.Fprintln(os.Stderr, "API response error: ", errMsg)
+		return
+	}
+
+	if core.IsValueTrue(options.allFlags, "update_shares") {
+		idStr, _, err := getNfsShare(api, args[0])
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		var nfsBuilder strings.Builder
+		nfsBuilder.WriteString("[")
+		nfsBuilder.WriteString(idStr)
+		nfsBuilder.WriteString(",{\"path\":")
+		core.WriteEncloseAndEscape(&nfsBuilder, "/mnt/" + args[1], "\"")
+		nfsBuilder.WriteString("}]")
+
+		nfsStmt := nfsBuilder.String()
+		DebugString(nfsStmt)
+
+		out, err = api.CallString("sharing.nfs.update", "10s", nfsStmt)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if errMsg := core.ExtractApiError(out); errMsg != "" {
+			fmt.Fprintln(os.Stderr, "API response error: ", errMsg)
+			return
+		}
+	}
 }
 
 func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
@@ -504,6 +530,62 @@ func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
 		array = append(array, prop, value)
 	}
 	return array, nil
+}
+
+func getNfsShare(api core.Session, datasetName string) (string, string, error) {
+	extras := typeRetrieveParams{
+		retrieveType:      "dataset",
+		shouldGetAllProps: false,
+		shouldRecurse:     false,
+	}
+
+	/*
+	datasets, err := QueryApi(api, []string{datasetName}, []string{"name"}, []string{"id", "mountpoint"}, extras)
+	if err != nil {
+		return "", "", errors.New("API error: " + fmt.Sprint(err))
+	}
+	if len(datasets) == 0 {
+		return "", "", errors.New("Dataset \"" + datasetName + "\" was not found")
+	}
+
+	var path string
+	if value, exists := datasets[0]["mountpoint"]; exists {
+		if valueStr, ok := value.(string); ok {
+			path = valueStr
+		}
+	}
+	if path == "" {
+		return "", "", errors.New("Could not find mountpoint for dataset \"" + datasetName + "\"")
+	}
+	*/
+	path := "/mnt/" + datasetName
+
+	extras.retrieveType = "nfs"
+	shares, err := QueryApi(api, []string{path}, []string{"path"}, []string{"id", "path"}, extras)
+	if err != nil {
+		return "", "", errors.New("API error: " + fmt.Sprint(err))
+	}
+	if len(shares) == 0 {
+		return "", "", errors.New("NFS share for path \"" + path + "\" was not found")
+	}
+
+	var idStr string
+	if value, exists := shares[0]["id"]; exists {
+		if valueStr, ok := value.(string); ok {
+			if _, errNotNumber := strconv.Atoi(valueStr); errNotNumber == nil {
+				idStr = valueStr
+			} else {
+				idStr = core.EncloseAndEscape(valueStr, "\"")
+			}
+		} else {
+			idStr = fmt.Sprint(value)
+		}
+	}
+	if idStr == "" {
+		return "", "", errors.New("Could not find id for NFS share \"" + path + "\" (dataset \"" + datasetName + "\")")
+	}
+
+	return idStr, path, nil
 }
 
 func getDatasetListInspectTypes(args []string) ([]string, error) {

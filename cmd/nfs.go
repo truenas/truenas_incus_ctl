@@ -350,6 +350,8 @@ func getNfsListInspectTypes(args []string) ([]string, error) {
 			return typeList, errors.New("querying nfs shares based on snapshot is not yet supported")
 		} else if t == "dataset" {
 			return typeList, errors.New("querying nfs shares based on dataset is not yet supported")
+		} else if t == "share" {
+			t = "path"
 		}
 		typeList[i] = t
 	}
