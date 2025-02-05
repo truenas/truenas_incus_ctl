@@ -12,8 +12,9 @@ import (
 0.1.2 added `share nfs` functionality
 0.1.3 improved querying, removed --name and --id from `share nfs list`
 0.1.4 added `--update-shares` to `dataset rename`
+0.1.5 removed inspect command
 */
-const VERSION = "0.1.4"
+const VERSION = "0.1.5"
 
 var versionCmd = &cobra.Command{
 	Use: "version",
