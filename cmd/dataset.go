@@ -234,6 +234,9 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 				builder.WriteString(key)
 				builder.WriteString(":")
 				value := paramsKV[j+1]
+				if key == "\"exec\"" {
+					value = strings.ToUpper(value)
+				}
 				builder.WriteString(value)
 				nProps++
 				if paramsKV[j] == "\"create_ancestors\"" {
@@ -249,6 +252,11 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 			}
 			core.WriteEncloseAndEscape(&builder, propName, "\"")
 			builder.WriteString(":")
+
+			// TODO: need a better solution for enum mapping.
+			if propName == "exec" {
+				valueStr = strings.ToUpper(valueStr)
+			}
 
 			if t, exists := options.allTypes[propName]; exists && t == "string" {
 				valueStr = core.EncloseAndEscape(valueStr, "\"")
