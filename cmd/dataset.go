@@ -49,13 +49,6 @@ var datasetListCmd = &cobra.Command{
 	Aliases: []string{"ls"},
 }
 
-var datasetInspectCmd = &cobra.Command{
-	Use:     "inspect",
-	Short:   "Prints properties of a dataset/zvol.",
-	Args:    cobra.MinimumNArgs(1),
-	Aliases: []string{"get"},
-}
-
 var datasetPromoteCmd = &cobra.Command{
 	Use:   "promote",
 	Short: "Promote a clone dataset to no longer depend on the origin snapshot.",
@@ -86,7 +79,7 @@ var g_compressionEnum = [...]string{
 }
 
 var g_datasetCreateUpdateEnums map[string][]string
-var g_datasetListInspectEnums map[string][]string
+var g_datasetListEnums map[string][]string
 
 func init() {
 	datasetCreateCmd.Run = func(cmd *cobra.Command, args []string) {
@@ -103,10 +96,6 @@ func init() {
 
 	datasetListCmd.Run = func(cmd *cobra.Command, args []string) {
 		listDataset(ValidateAndLogin(), args)
-	}
-
-	datasetInspectCmd.Run = func(cmd *cobra.Command, args []string) {
-		inspectDataset(ValidateAndLogin(), args)
 	}
 
 	datasetPromoteCmd.Run = func(cmd *cobra.Command, args []string) {
@@ -164,22 +153,19 @@ func init() {
 		"it will destroy all the children of the root dataset present leaving root dataset intact")
 	datasetDeleteCmd.Flags().BoolP("force", "f", false, "Force delete busy datasets")
 
-	listInspectCmds := []*cobra.Command{datasetListCmd, datasetInspectCmd}
-	for _, cmd := range listInspectCmds {
-		cmd.Flags().BoolP("recursive", "r", false, "Retrieves properties for children")
-		cmd.Flags().BoolP("user-properties", "u", false, "Include user-properties")
-		cmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
-		cmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
-		cmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
-			AddFlagsEnum(&g_datasetListInspectEnums, "format", []string{"csv", "json", "table", "compact"}))
-		cmd.Flags().StringP("output", "o", "", "Output property list")
-		cmd.Flags().BoolP("all", "a", false, "Output all properties")
-		//cmd.Flags().BoolP("parseable", "p", false, "")
-		cmd.Flags().StringP("source", "s", "default", "A comma-separated list of sources to display.\n"+
-			"Those properties coming from a source other than those in this list are ignored.\n"+
-			"Each source must be one of the following: local, default, inherited, temporary, received, or none.\n"+
-			"The default value is all sources.")
-	}
+	datasetListCmd.Flags().BoolP("recursive", "r", false, "Retrieves properties for children")
+	datasetListCmd.Flags().BoolP("user-properties", "u", false, "Include user-properties")
+	datasetListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
+	datasetListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
+	datasetListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
+		AddFlagsEnum(&g_datasetListEnums, "format", []string{"csv", "json", "table", "compact"}))
+	datasetListCmd.Flags().StringP("output", "o", "", "Output property list")
+	datasetListCmd.Flags().BoolP("all", "a", false, "Output all properties")
+	//datasetListCmd.Flags().BoolP("parseable", "p", false, "")
+	datasetListCmd.Flags().StringP("source", "s", "default", "A comma-separated list of sources to display.\n"+
+		"Those properties coming from a source other than those in this list are ignored.\n"+
+		"Each source must be one of the following: local, default, inherited, temporary, received, or none.\n"+
+		"The default value is all sources.")
 
 	datasetRenameCmd.Flags().BoolP("update-shares", "s", false, "Will update any shares as part of rename")
 
@@ -187,7 +173,6 @@ func init() {
 	datasetCmd.AddCommand(datasetUpdateCmd)
 	datasetCmd.AddCommand(datasetDeleteCmd)
 	datasetCmd.AddCommand(datasetListCmd)
-	datasetCmd.AddCommand(datasetInspectCmd)
 	datasetCmd.AddCommand(datasetPromoteCmd)
 	datasetCmd.AddCommand(datasetRenameCmd)
 	rootCmd.AddCommand(datasetCmd)
@@ -336,7 +321,7 @@ func listDataset(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	options, err := GetCobraFlags(datasetListCmd, g_datasetListInspectEnums)
+	options, err := GetCobraFlags(datasetListCmd, g_datasetListEnums)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return
@@ -349,7 +334,7 @@ func listDataset(api core.Session, args []string) {
 	}
 
 	properties := EnumerateOutputProperties(options.allFlags)
-	idTypes, err := getDatasetListInspectTypes(args)
+	idTypes, err := getDatasetListTypes(args)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -378,55 +363,6 @@ func listDataset(api core.Session, args []string) {
 	}
 
 	core.PrintTableDataList(format, "datasets", columnsList, datasets)
-}
-
-func inspectDataset(api core.Session, args []string) {
-	if api == nil {
-		return
-	}
-	defer api.Close()
-
-	options, err := GetCobraFlags(datasetListCmd, g_datasetListInspectEnums)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return
-	}
-
-	format, err := GetTableFormat(options.allFlags)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return
-	}
-
-	properties := EnumerateOutputProperties(options.allFlags)
-	idTypes, err := getDatasetListInspectTypes(args)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	extras := typeRetrieveParams{
-		retrieveType:      "dataset",
-		shouldGetAllProps: format == "json" || len(properties) == 0,
-		shouldRecurse:     core.IsValueTrue(options.allFlags, "recursive"),
-	}
-
-	datasets, err := QueryApi(api, args, idTypes, properties, extras)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "API error:", err)
-		return
-	}
-
-	required := []string{"name"}
-	var columnsList []string
-	if extras.shouldGetAllProps {
-		columnsList = GetUsedPropertyColumns(datasets, required)
-	} else if len(properties) > 0 {
-		columnsList = properties
-	} else {
-		columnsList = required
-	}
-
-	core.PrintTableDataInspect(format, "datasets", columnsList, datasets)
 }
 
 func promoteDataset(api core.Session, args []string) {
@@ -536,34 +472,13 @@ func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
 }
 
 func getNfsShare(api core.Session, datasetName string) (string, string, error) {
+	path := "/mnt/" + datasetName
 	extras := typeRetrieveParams{
-		retrieveType:      "dataset",
+		retrieveType:      "nfs",
 		shouldGetAllProps: false,
 		shouldRecurse:     false,
 	}
 
-	/*
-		datasets, err := QueryApi(api, []string{datasetName}, []string{"name"}, []string{"id", "mountpoint"}, extras)
-		if err != nil {
-			return "", "", errors.New("API error: " + fmt.Sprint(err))
-		}
-		if len(datasets) == 0 {
-			return "", "", errors.New("Dataset \"" + datasetName + "\" was not found")
-		}
-
-		var path string
-		if value, exists := datasets[0]["mountpoint"]; exists {
-			if valueStr, ok := value.(string); ok {
-				path = valueStr
-			}
-		}
-		if path == "" {
-			return "", "", errors.New("Could not find mountpoint for dataset \"" + datasetName + "\"")
-		}
-	*/
-	path := "/mnt/" + datasetName
-
-	extras.retrieveType = "nfs"
 	shares, err := QueryApi(api, []string{path}, []string{"path"}, []string{"id", "path"}, extras)
 	if err != nil {
 		return "", "", errors.New("API error: " + fmt.Sprint(err))
@@ -591,7 +506,7 @@ func getNfsShare(api core.Session, datasetName string) (string, string, error) {
 	return idStr, path, nil
 }
 
-func getDatasetListInspectTypes(args []string) ([]string, error) {
+func getDatasetListTypes(args []string) ([]string, error) {
 	var typeList []string
 	if len(args) == 0 {
 		return typeList, nil

@@ -55,14 +55,7 @@ var nfsListCmd = &cobra.Command{
 	Aliases: []string{"ls"},
 }
 
-var nfsInspectCmd = &cobra.Command{
-	Use:     "inspect",
-	Short:   "Prints properties of a nfs share.",
-	Args:    cobra.MinimumNArgs(1),
-	Aliases: []string{"get"},
-}
-
-var g_nfsListInspectEnums map[string][]string
+var g_nfsListEnums map[string][]string
 
 func init() {
 	nfsCreateCmd.Run = func(cmd *cobra.Command, args []string) {
@@ -79,10 +72,6 @@ func init() {
 
 	nfsListCmd.Run = func(cmd *cobra.Command, args []string) {
 		listNfs(ValidateAndLogin(), args)
-	}
-
-	nfsInspectCmd.Run = func(cmd *cobra.Command, args []string) {
-		inspectNfs(ValidateAndLogin(), args)
 	}
 
 	nfsUpdateCmd.Flags().String("path", "", "Mount path")
@@ -103,21 +92,17 @@ func init() {
 		cmd.Flags().Bool("enabled", false, "")
 	}
 
-	listInspectCmds := []*cobra.Command{nfsListCmd, nfsInspectCmd}
-	for _, cmd := range listInspectCmds {
-		cmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
-		cmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
-		cmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" " +
-			AddFlagsEnum(&g_nfsListInspectEnums, "format", []string{"csv","json","table","compact"}))
-		cmd.Flags().StringP("output", "o", "", "Output property list")
-		cmd.Flags().BoolP("all", "a", false, "Output all properties")
-	}
+	nfsListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
+	nfsListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
+	nfsListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" " +
+		AddFlagsEnum(&g_nfsListEnums, "format", []string{"csv","json","table","compact"}))
+	nfsListCmd.Flags().StringP("output", "o", "", "Output property list")
+	nfsListCmd.Flags().BoolP("all", "a", false, "Output all properties")
 
 	nfsCmd.AddCommand(nfsCreateCmd)
 	nfsCmd.AddCommand(nfsUpdateCmd)
 	nfsCmd.AddCommand(nfsDeleteCmd)
 	nfsCmd.AddCommand(nfsListCmd)
-	nfsCmd.AddCommand(nfsInspectCmd)
 
 	shareCmd.AddCommand(nfsCmd)
 }
@@ -247,7 +232,7 @@ func listNfs(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	options, err := GetCobraFlags(nfsListCmd, g_nfsListInspectEnums)
+	options, err := GetCobraFlags(nfsListCmd, g_nfsListEnums)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return
@@ -259,7 +244,7 @@ func listNfs(api core.Session, args []string) {
 	}
 
 	properties := EnumerateOutputProperties(options.allFlags)
-	idTypes, err := getNfsListInspectTypes(args)
+	idTypes, err := getNfsListTypes(args)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -289,55 +274,7 @@ func listNfs(api core.Session, args []string) {
 	core.PrintTableDataList(format, "shares", columnsList, shares)
 }
 
-func inspectNfs(api core.Session, args []string) {
-	if api == nil {
-		return
-	}
-	defer api.Close()
-
-	options, err := GetCobraFlags(nfsListCmd, g_nfsListInspectEnums)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return
-	}
-
-	format, err := GetTableFormat(options.allFlags)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	properties := EnumerateOutputProperties(options.allFlags)
-	idTypes, err := getNfsListInspectTypes(args)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	extras := typeRetrieveParams{
-		retrieveType:      "nfs",
-		shouldGetAllProps: format == "json" || len(properties) == 0,
-		shouldRecurse:     core.IsValueTrue(options.allFlags, "recursive"),
-	}
-
-	shares, err := QueryApi(api, args, idTypes, properties, extras)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "API error:", err)
-		return
-	}
-
-	required := []string{"id", "path"}
-	var columnsList []string
-	if extras.shouldGetAllProps {
-		columnsList = GetUsedPropertyColumns(shares, required)
-	} else if len(properties) > 0 {
-		columnsList = properties
-	} else {
-		columnsList = required
-	}
-
-	core.PrintTableDataInspect(format, "shares", columnsList, shares)
-}
-
-func getNfsListInspectTypes(args []string) ([]string, error) {
+func getNfsListTypes(args []string) ([]string, error) {
 	var typeList []string
 	if len(args) == 0 {
 		return typeList, nil
