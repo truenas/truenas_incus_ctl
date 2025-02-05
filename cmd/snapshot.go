@@ -211,7 +211,7 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	}
 	defer api.Close()
 
-	cmdType := cmd.Use
+	cmdType := strings.Split(cmd.Use, " ")[0]
 	if cmdType != "delete" && cmdType != "rollback" {
 		log.Fatal(errors.New("cmdType was not delete or rollback"))
 	}

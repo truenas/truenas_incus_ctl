@@ -184,7 +184,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	}
 	defer api.Close()
 
-	cmdType := cmd.Use
+	cmdType := strings.Split(cmd.Use, " ")[0]
 	if cmdType != "create" && cmdType != "update" {
 		log.Fatal(errors.New("cmdType was not create or update"))
 	}
