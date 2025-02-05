@@ -11,7 +11,7 @@
             "request": "launch",
             "mode": "debug",
             "program": "${workspaceFolder}",
-            "args": ["--key-file=${workspaceFolder}/key.txt","dataset","list"]
+            "args": ["--debug","--key-file=${workspaceFolder}/key.txt","dataset","list"]
         },
         {
           "name": "ds ls -r",
@@ -19,7 +19,7 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","list","--recursive"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","dataset","list","--recursive"]
         },
         {
             "name": "dataset list dozer",
@@ -27,7 +27,7 @@
             "request": "launch",
             "mode": "debug",
             "program": "${workspaceFolder}",
-            "args": ["--key-file=${workspaceFolder}/key.txt","dataset","list","dozer"]
+            "args": ["--debug","--key-file=${workspaceFolder}/key.txt","dataset","list","dozer"]
         },
         {
           "name": "dataset ls -r dozer",
@@ -35,7 +35,7 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","ls","-r","dozer"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","dataset","ls","-r","dozer"]
         },
         {
           "name": "dataset create dozer/created",
@@ -43,7 +43,7 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","create","dozer/created"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","dataset","create","dozer/created"]
         },
         {
           "name": "dataset create --exec=off dozer/created",
@@ -51,23 +51,15 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","create","--exec=off","dozer/created"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","dataset","create","--exec=off","dozer/created"]
         },
         {
-          "name": "dataset update --exec=off dozer/created",
+          "name": "dataset create -o exec=off dozer/created",
           "type": "go",
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","update","--exec=off","dozer/created"]
-        },
-        {
-          "name": "dataset update -o exec=off dozer/created",
-          "type": "go",
-          "request": "launch",
-          "mode": "debug",
-          "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","update","-o","exec=off","dozer/created"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","dataset","create","-o","exec=off","dozer/created"]
         },
         {
           "name": "dataset create -p dozer/created/parent/child",
@@ -75,7 +67,23 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","create","--create_parents","dozer/created/parent/child"]  // -p also works.
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","dataset","create","--create_parents","dozer/created/parent/child"]  // -p also works.
+        },
+        {
+          "name": "dataset update --exec=off dozer/created",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","dataset","update","--exec=off","dozer/created"]
+        },
+        {
+          "name": "dataset update -o exec=off dozer/created",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug",
+          "program": "${workspaceFolder}",
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","dataset","update","-o","exec=off","dozer/created"]
         },
         {
           "name": "dataset rm dozer/created",
@@ -83,7 +91,7 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","delete","dozer/created"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","dataset","delete","dozer/created"]
         },
         {
           "name": "dataset rm -r dozer/created",
@@ -91,7 +99,7 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","delete","-r","dozer/created"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","dataset","delete","-r","dozer/created"]
         },
          {
           "name": "dataset share nfs create dozer/created",
@@ -99,7 +107,7 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","share","nfs","create","--comment","made with admin-tool","--maproot-user=root", "--maproot-group","root","dozer/created"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","share","nfs","create","--comment","made with admin-tool","--maproot-user=root", "--maproot-group","root","dozer/created"]
         },
         {
           "name": "dataset share nfs list dozer/created",
@@ -107,7 +115,7 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","share","nfs","list","--name","dozer/created"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","share","nfs","list","--name","dozer/created"]
         },
         {
           "name": "dataset mv dozer/created/parent/child dozer/created/child",
@@ -115,7 +123,7 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","dataset","rename","dozer/created/parent/child","dozer/created/child"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","dataset","rename","dozer/created/parent/child","dozer/created/child"]
         },
         {
           "name": "snapshot create -r dozer/created@snap",
@@ -123,7 +131,7 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","snapshot","create","dozer/created@snap"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","snapshot","create","dozer/created@snap"]
         },
         {
           // snapshot listing needs to be more flexible, ie like `zfs list -t snapshot -r dozer/created`
@@ -132,7 +140,7 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","snapshot","ls","-r","dozer/created@snap"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","snapshot","ls","-r","dozer/created@snap"]
         },
         {
           // snapshot listing needs to be more flexible, ie like `zfs list -t snapshot -r dozer/created`
@@ -141,7 +149,7 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--key-file=${workspaceFolder}/key.txt","snapshot","delete","-r","dozer/created@snap"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","snapshot","delete","-r","dozer/created@snap"]
         },
     ]
 }
