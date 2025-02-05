@@ -63,7 +63,7 @@ func QueryApi(api core.Session, entries, entryTypes, propsList []string, params 
 	var builder strings.Builder
 	builder.WriteString("[")
 
-	writeQueryFilter(&builder, entries, entryTypes)
+	writeQueryFilter(&builder, entries, entryTypes, params)
 	if params.retrieveType != "nfs" {
 		builder.WriteString(", ")
 		writeQueryOptions(&builder, propsList, params)
@@ -161,16 +161,12 @@ func QueryApi(api core.Session, entries, entryTypes, propsList []string, params 
 	return outputList, nil
 }
 
-func writeQueryFilter(builder *strings.Builder, entries, entryTypes []string) {
+func writeQueryFilter(builder *strings.Builder, entries, entryTypes []string, params typeRetrieveParams) {
 	builder.WriteString("[")
 
 	// first arg = query-filter
 	if len(entries) == 1 {
-		builder.WriteString("[")
-		core.WriteEncloseAndEscape(builder, entryTypes[0], "\"")
-		builder.WriteString(",\"=\",")
-		core.WriteEncloseAndEscape(builder, entries[0], "\"")
-		builder.WriteString("]")
+		writeIndividualFilter(builder, entryTypes[0], []string{entries[0]}, params.shouldRecurse)
 	} else if len(entries) > 1 {
 		typeEntriesMap := make(map[string][]string)
 		uniqTypes := make([]string, 0, 0)
@@ -186,14 +182,22 @@ func writeQueryFilter(builder *strings.Builder, entries, entryTypes []string) {
 			builder.WriteString("[\"OR\",[")
 		}
 
-		writeKeyAndArray(builder, uniqTypes[0], typeEntriesMap[uniqTypes[0]])
+		writeIndividualFilter(builder, uniqTypes[0], typeEntriesMap[uniqTypes[0]], params.shouldRecurse)
 		for i := 1; i < len(uniqTypes); i++ {
 			builder.WriteString(",")
-			writeKeyAndArray(builder, uniqTypes[i], typeEntriesMap[uniqTypes[i]])
+			writeIndividualFilter(builder, uniqTypes[i], typeEntriesMap[uniqTypes[i]], params.shouldRecurse)
 			builder.WriteString("]]")
 		}
 	}
 	builder.WriteString("]")
+}
+
+func writeIndividualFilter(builder *strings.Builder, key string, array []string, isRecursive bool) {
+	if isRecursive && (key == "dataset" /* || key == "pool"*/) {
+		writeKeyAndRecursivePaths(builder, key, array)
+	} else {
+		writeKeyAndArray(builder, key, array)
+	}
 }
 
 func writeKeyAndArray(builder *strings.Builder, key string, array []string) {
@@ -207,6 +211,33 @@ func writeKeyAndArray(builder *strings.Builder, key string, array []string) {
 		core.WriteEncloseAndEscape(builder, elem, "\"")
 	}
 	builder.WriteString("]]")
+}
+
+func writeKeyAndRecursivePaths(builder *strings.Builder, key string, array []string) {
+	nFilters := len(array) * 2
+	for i := 0; i < nFilters - 1; i++ {
+		builder.WriteString("[\"OR\",[")
+	}
+
+	writeRecursivePathFilter(builder, key, array[0], false)
+	for i := 1; i < nFilters; i++ {
+		builder.WriteString(",")
+		writeRecursivePathFilter(builder, key, array[i / 2], (i % 2) == 1)
+		builder.WriteString("]]")
+	}
+}
+
+func writeRecursivePathFilter(builder *strings.Builder, key, path string, isStartsWith bool) {
+	builder.WriteString("[")
+	core.WriteEncloseAndEscape(builder, key, "\"")
+	if isStartsWith {
+		builder.WriteString(",\"^\",")
+		core.WriteEncloseAndEscape(builder, path, "\"")
+	} else {
+		builder.WriteString(",\"=\",")
+		core.WriteEncloseAndEscape(builder, path + "/", "\"")
+	}
+	builder.WriteString("]")
 }
 
 func writeQueryOptions(builder *strings.Builder, propsList []string, params typeRetrieveParams) {

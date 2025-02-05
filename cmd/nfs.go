@@ -115,8 +115,6 @@ func createNfs(api core.Session, args []string) {
 	var sharePath string
 
 	switch core.IdentifyObject(args[0]) {
-	case "snapshot":
-		sharePath = "/mnt/" + args[0][0:strings.Index(args[0], "@")]
 	case "dataset":
 		sharePath = "/mnt/" + args[0]
 	case "share":
@@ -164,8 +162,6 @@ func updateNfs(api core.Session, args []string) {
 	switch core.IdentifyObject(args[0]) {
 	case "id":
 		idStr = args[0]
-	case "snapshot":
-		sharePath = "/mnt/" + args[0][0:strings.Index(args[0], "@")]
 	case "dataset":
 		sharePath = "/mnt/" + args[0]
 	case "share":
@@ -247,8 +243,6 @@ func deleteNfs(api core.Session, args []string) {
 	switch core.IdentifyObject(args[0]) {
 	case "id":
 		idStr = args[0]
-	case "snapshot":
-		sharePath = "/mnt/" + args[0][0:strings.Index(args[0], "@")]
 	case "dataset":
 		sharePath = "/mnt/" + args[0]
 	case "share":
@@ -331,7 +325,7 @@ func getNfsListTypes(args []string) ([]string, error) {
 	for i := 0; i < len(args); i++ {
 		t := core.IdentifyObject(args[i])
 		if t == "snapshot" || t == "snapshot_only" {
-			return typeList, errors.New("querying nfs shares based on snapshot is not yet supported")
+			return typeList, errors.New("querying nfs shares based on snapshot is not supported")
 		} else if t == "dataset" {
 			return typeList, errors.New("querying nfs shares based on dataset is not yet supported")
 		} else if t == "share" {
