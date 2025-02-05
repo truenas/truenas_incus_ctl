@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"truenas/admin-tool/core"
 
@@ -113,8 +112,19 @@ func createNfs(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	datasetName := args[0]
-	sharePath := "/mnt/" + datasetName
+	var sharePath string
+
+	switch core.IdentifyObject(args[0]) {
+	case "snapshot":
+		sharePath = "/mnt/" + args[0][0:strings.Index(args[0], "@")]
+	case "dataset":
+		sharePath = "/mnt/" + args[0]
+	case "share":
+		sharePath = args[0]
+	default:
+		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \"" + args[0] + "\"")
+		return
+	}
 
 	options, _ := GetCobraFlags(nfsCreateCmd, nil)
 
@@ -148,10 +158,21 @@ func updateNfs(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	idStr := args[0]
-	_, err := strconv.Atoi(idStr)
-	if err != nil {
-		log.Fatal(fmt.Errorf("ID \"%s\" was not a number", idStr))
+	var sharePath string
+	var idStr string
+
+	switch core.IdentifyObject(args[0]) {
+	case "id":
+		idStr = args[0]
+	case "snapshot":
+		sharePath = "/mnt/" + args[0][0:strings.Index(args[0], "@")]
+	case "dataset":
+		sharePath = "/mnt/" + args[0]
+	case "share":
+		sharePath = args[0]
+	default:
+		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \"" + args[0] + "\"")
+		return
 	}
 
 	options, _ := GetCobraFlags(nfsUpdateCmd, nil)
@@ -159,6 +180,13 @@ func updateNfs(api core.Session, args []string) {
 	securityList, err := ValidateEnumArray(options.allFlags["security"], []string{"sys","krb5","krb5i","krb5p"})
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if idStr == "" {
+		idStr, err = LookupNfsIdByPath(api, sharePath)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	var builder strings.Builder
@@ -213,10 +241,29 @@ func deleteNfs(api core.Session, args []string) {
 	}
 	defer api.Close()
 
-	idStr := args[0]
-	_, err := strconv.Atoi(idStr)
-	if err != nil {
-		log.Fatal(fmt.Errorf("ID \"%s\" was not a number", idStr))
+	var sharePath string
+	var idStr string
+
+	switch core.IdentifyObject(args[0]) {
+	case "id":
+		idStr = args[0]
+	case "snapshot":
+		sharePath = "/mnt/" + args[0][0:strings.Index(args[0], "@")]
+	case "dataset":
+		sharePath = "/mnt/" + args[0]
+	case "share":
+		sharePath = args[0]
+	default:
+		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \"" + args[0] + "\"")
+		return
+	}
+
+	var err error
+	if idStr == "" {
+		idStr, err = LookupNfsIdByPath(api, sharePath)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	out, err := api.CallString("sharing.nfs.delete", "10s", "["+idStr+"]")

@@ -257,6 +257,40 @@ func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []strin
 	}
 }
 
+func LookupNfsIdByPath(api core.Session, sharePath string) (string, error) {
+	extras := typeRetrieveParams{
+		retrieveType:      "nfs",
+		shouldGetAllProps: false,
+		shouldRecurse:     false,
+	}
+
+	shares, err := QueryApi(api, []string{sharePath}, []string{"path"}, []string{"id", "path"}, extras)
+	if err != nil {
+		return "", errors.New("API error: " + fmt.Sprint(err))
+	}
+	if len(shares) == 0 {
+		return "", errors.New("NFS share for path \"" + sharePath + "\" was not found")
+	}
+
+	var idStr string
+	if value, exists := shares[0]["id"]; exists {
+		if valueStr, ok := value.(string); ok {
+			if _, errNotNumber := strconv.Atoi(valueStr); errNotNumber == nil {
+				idStr = valueStr
+			} else {
+				idStr = core.EncloseAndEscape(valueStr, "\"")
+			}
+		} else {
+			idStr = fmt.Sprint(value)
+		}
+	}
+	if idStr == "" {
+		return "", errors.New("Could not find id for NFS share \"" + sharePath + "\"")
+	}
+
+	return idStr, nil
+}
+
 func EnumerateOutputProperties(properties map[string]string) []string {
 	propsStr, exists := properties["output"]
 	if !exists || propsStr == "" {

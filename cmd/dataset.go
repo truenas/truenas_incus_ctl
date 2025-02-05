@@ -390,12 +390,13 @@ func renameDataset(api core.Session, args []string) {
 	options, _ := GetCobraFlags(datasetRenameCmd, nil)
 
 	source := args[0]
+	dest := args[1]
 
 	var builder strings.Builder
 	builder.WriteString("[")
-	core.WriteEncloseAndEscape(&builder, args[0], "\"")
+	core.WriteEncloseAndEscape(&builder, source, "\"")
 	builder.WriteString(",{\"new_name\":")
-	core.WriteEncloseAndEscape(&builder, args[1], "\"")
+	core.WriteEncloseAndEscape(&builder, dest, "\"")
 
 	builder.WriteString("}]")
 	stmt := builder.String()
@@ -414,7 +415,7 @@ func renameDataset(api core.Session, args []string) {
 
 	// no point updating the share if we're renaming a snapshot.
 	if core.IsValueTrue(options.allFlags, "update_shares") && !strings.Contains(source, "@") {
-		idStr, _, err := getNfsShare(api, args[0])
+		idStr, err := LookupNfsIdByPath(api, "/mnt/"+source)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -423,7 +424,7 @@ func renameDataset(api core.Session, args []string) {
 		nfsBuilder.WriteString("[")
 		nfsBuilder.WriteString(idStr)
 		nfsBuilder.WriteString(",{\"path\":")
-		core.WriteEncloseAndEscape(&nfsBuilder, "/mnt/"+args[1], "\"")
+		core.WriteEncloseAndEscape(&nfsBuilder, "/mnt/"+dest, "\"")
 		nfsBuilder.WriteString("}]")
 
 		nfsStmt := nfsBuilder.String()
@@ -469,41 +470,6 @@ func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
 		array = append(array, prop, value)
 	}
 	return array, nil
-}
-
-func getNfsShare(api core.Session, datasetName string) (string, string, error) {
-	path := "/mnt/" + datasetName
-	extras := typeRetrieveParams{
-		retrieveType:      "nfs",
-		shouldGetAllProps: false,
-		shouldRecurse:     false,
-	}
-
-	shares, err := QueryApi(api, []string{path}, []string{"path"}, []string{"id", "path"}, extras)
-	if err != nil {
-		return "", "", errors.New("API error: " + fmt.Sprint(err))
-	}
-	if len(shares) == 0 {
-		return "", "", errors.New("NFS share for path \"" + path + "\" was not found")
-	}
-
-	var idStr string
-	if value, exists := shares[0]["id"]; exists {
-		if valueStr, ok := value.(string); ok {
-			if _, errNotNumber := strconv.Atoi(valueStr); errNotNumber == nil {
-				idStr = valueStr
-			} else {
-				idStr = core.EncloseAndEscape(valueStr, "\"")
-			}
-		} else {
-			idStr = fmt.Sprint(value)
-		}
-	}
-	if idStr == "" {
-		return "", "", errors.New("Could not find id for NFS share \"" + path + "\" (dataset \"" + datasetName + "\")")
-	}
-
-	return idStr, path, nil
 }
 
 func getDatasetListTypes(args []string) ([]string, error) {
