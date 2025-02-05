@@ -29,21 +29,21 @@ var nfsCmd = &cobra.Command{
 }
 
 var nfsCreateCmd = &cobra.Command{
-	Use:   "create",
+	Use:   "create [flags]... <dataset|path>",
 	Short: "Creates a nfs share.",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var nfsUpdateCmd = &cobra.Command{
-	Use:     "update",
+	Use:     "update [flags]... <id|dataset|path>",
 	Short:   "Updates an existing nfs share.",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"set"},
 }
 
 var nfsDeleteCmd = &cobra.Command{
-	Use:     "delete",
-	Short:   "Deletes a nfs share.",
+	Use:     "delete [flags]... <id|dataset|path>",
+	Short:   "Deletes an nfs share.",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"rm"},
 }
@@ -93,8 +93,8 @@ func init() {
 
 	nfsListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 	nfsListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
-	nfsListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" " +
-		AddFlagsEnum(&g_nfsListEnums, "format", []string{"csv","json","table","compact"}))
+	nfsListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
+		AddFlagsEnum(&g_nfsListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	nfsListCmd.Flags().StringP("output", "o", "", "Output property list")
 	nfsListCmd.Flags().BoolP("all", "a", false, "Output all properties")
 
@@ -116,19 +116,21 @@ func createNfs(api core.Session, args []string) {
 
 	switch core.IdentifyObject(args[0]) {
 	case "snapshot":
-		sharePath = "/mnt/" + args[0][0:strings.Index(args[0], "@")]
+		//sharePath = "/mnt/" + args[0][0:strings.Index(args[0], "@")]
+		fmt.Fprintln(os.Stderr, "Can't create share from snapshot: \""+args[0]+"\"")
+		return
 	case "dataset":
 		sharePath = "/mnt/" + args[0]
 	case "share":
 		sharePath = args[0]
 	default:
-		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \"" + args[0] + "\"")
+		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \""+args[0]+"\"")
 		return
 	}
 
 	options, _ := GetCobraFlags(nfsCreateCmd, nil)
 
-	securityList, err := ValidateEnumArray(options.allFlags["security"], []string{"sys","krb5","krb5i","krb5p"})
+	securityList, err := ValidateEnumArray(options.allFlags["security"], []string{"sys", "krb5", "krb5i", "krb5p"})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -165,19 +167,21 @@ func updateNfs(api core.Session, args []string) {
 	case "id":
 		idStr = args[0]
 	case "snapshot":
-		sharePath = "/mnt/" + args[0][0:strings.Index(args[0], "@")]
+		//sharePath = "/mnt/" + args[0][0:strings.Index(args[0], "@")]
+		fmt.Fprintln(os.Stderr, "Can't update share from snapshot: \""+args[0]+"\"")
+		return
 	case "dataset":
 		sharePath = "/mnt/" + args[0]
 	case "share":
 		sharePath = args[0]
 	default:
-		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \"" + args[0] + "\"")
+		fmt.Fprintln(os.Stderr, "Unrecognized nfs update spec \""+args[0]+"\"")
 		return
 	}
 
 	options, _ := GetCobraFlags(nfsUpdateCmd, nil)
 
-	securityList, err := ValidateEnumArray(options.allFlags["security"], []string{"sys","krb5","krb5i","krb5p"})
+	securityList, err := ValidateEnumArray(options.allFlags["security"], []string{"sys", "krb5", "krb5i", "krb5p"})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -248,13 +252,15 @@ func deleteNfs(api core.Session, args []string) {
 	case "id":
 		idStr = args[0]
 	case "snapshot":
-		sharePath = "/mnt/" + args[0][0:strings.Index(args[0], "@")]
+		//sharePath = "/mnt/" + args[0][0:strings.Index(args[0], "@")]
+		fmt.Fprintln(os.Stderr, "Can't delete share by snapshot: \""+args[0]+"\"")
+		return
 	case "dataset":
 		sharePath = "/mnt/" + args[0]
 	case "share":
 		sharePath = args[0]
 	default:
-		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \"" + args[0] + "\"")
+		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \""+args[0]+"\"")
 		return
 	}
 
