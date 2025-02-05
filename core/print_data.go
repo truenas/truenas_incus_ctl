@@ -31,31 +31,6 @@ func PrintTableDataList(format string, jsonName string, columnsList []string, da
 	os.Stdout.WriteString(table.String())
 }
 
-func PrintTableDataInspect(format string, jsonName string, columnsList []string, data []map[string]interface{}) {
-	var table strings.Builder
-	f := strings.ToLower(format)
-
-	switch f {
-	case "compact":
-		WriteInspectCsv(&table, data, columnsList, false)
-	case "csv":
-		WriteInspectCsv(&table, data, columnsList, true)
-	case "json":
-		table.WriteString("{")
-		WriteEncloseAndEscape(&table, jsonName, "\"")
-		table.WriteString(":")
-		WriteJson(&table, data)
-		table.WriteString("}\n")
-	case "table":
-		WriteInspectTable(&table, data, columnsList, true)
-	default:
-		fmt.Fprintln(os.Stderr, "Unrecognised table format", f)
-		return
-	}
-
-	os.Stdout.WriteString(table.String())
-}
-
 func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
 	if len(propsArray) == 0 || len(columnsList) == 0 {
 		return
@@ -92,41 +67,6 @@ func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{},
 				line.WriteString("-")
 			}
 			isFirstCol = false
-		}
-		if hits > 0 {
-			builder.WriteString(line.String())
-			builder.WriteString("\n")
-		}
-	}
-}
-
-func WriteInspectCsv(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
-	if len(propsArray) == 0 || len(columnsList) == 0 {
-		return
-	}
-
-	var line strings.Builder
-	for _, c := range(columnsList) {
-		line.Reset()
-		hits := 0
-		if useHeaders {
-			line.WriteString(c)
-			line.WriteString("\t")
-		}
-		for j := 0; j < len(propsArray); j++ {
-			if j > 0 {
-				line.WriteString("\t")
-			}
-			if value, ok := propsArray[j][c]; ok {
-				if valueStr, ok := value.(string); ok {
-					line.WriteString(valueStr)
-				} else {
-					line.WriteString(fmt.Sprintf("%v", value))
-				}
-				hits++
-			} else {
-				line.WriteString("-")
-			}
 		}
 		if hits > 0 {
 			builder.WriteString(line.String())
@@ -201,41 +141,6 @@ func WriteListTable(builder *strings.Builder, propsArray []map[string]interface{
 	}
 
 	writeTable(builder, allStrings, headerInc + len(propsArray), len(columnsList), useHeaders)
-}
-
-func WriteInspectTable(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
-	if len(propsArray) == 0 || len(columnsList) == 0 {
-		return
-	}
-
-	headerInc := 0
-	if useHeaders {
-		headerInc = 1
-	}
-
-	nRows := len(columnsList)
-	nCols := headerInc + len(propsArray)
-	nStrings := nRows * nCols
-	allStrings := make([]string, nStrings, nStrings)
-
-	for i := 0; i < len(columnsList); i++ {
-		if useHeaders {
-			allStrings[i * nCols] = columnsList[i]
-		}
-		for j := 0; j < len(propsArray); j++ {
-			var str string
-			if value, ok := propsArray[j][columnsList[i]]; ok {
-				if valueStr, ok := value.(string); ok {
-					str = valueStr
-				} else {
-					str = fmt.Sprintf("%v", value)
-				}
-			}
-			allStrings[i * nCols + (headerInc + j)] = str
-		}
-	}
-
-	writeTable(builder, allStrings, len(columnsList), headerInc + len(propsArray), false)
 }
 
 func writeTable(builder *strings.Builder, allStrings []string, nRows int, nCols int, useHeaders bool) {
