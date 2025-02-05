@@ -85,6 +85,8 @@ func init() {
 		inspectNfs(ValidateAndLogin(), args)
 	}
 
+	nfsUpdateCmd.Flags().String("path", "", "Mount path")
+
 	createUpdateCmds := []*cobra.Command{nfsCreateCmd, nfsUpdateCmd}
 	for _, cmd := range createUpdateCmds {
 		cmd.Flags().Bool("read-only", false, "Export as write protected, default false")
@@ -141,7 +143,7 @@ func createNfs(api core.Session, args []string) {
 	core.WriteEncloseAndEscape(&builder, sharePath, "\"")
 	builder.WriteString(",")
 
-	writeCreateUpdateProperties(&builder, options, securityList)
+	writeNfsCreateUpdateProperties(&builder, options, securityList)
 
 	builder.WriteString("}]")
 
@@ -179,7 +181,7 @@ func updateNfs(api core.Session, args []string) {
 	builder.WriteString(idStr)
 	builder.WriteString(",{")
 
-	writeCreateUpdateProperties(&builder, options, securityList)
+	writeNfsCreateUpdateProperties(&builder, options, securityList)
 
 	builder.WriteString("}]")
 
@@ -193,7 +195,7 @@ func updateNfs(api core.Session, args []string) {
 	fmt.Println(string(out))
 }
 
-func writeCreateUpdateProperties(builder *strings.Builder, options FlagMap, securityList []string) {
+func writeNfsCreateUpdateProperties(builder *strings.Builder, options FlagMap, securityList []string) {
 	nProps := 0
 	for propName, valueStr := range options.usedFlags {
 		if propName == "security" {
