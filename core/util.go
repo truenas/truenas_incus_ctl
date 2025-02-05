@@ -1,6 +1,8 @@
 package core
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -108,6 +110,65 @@ func IsValueTrue(dict map[string]string, key string) bool {
 		return valueStr == "true"
 	}
 	return false
+}
+
+func ExtractApiError(data json.RawMessage) string {
+	if len(data) == 0 {
+		return ""
+	}
+
+	var response interface{}
+	if err := json.Unmarshal(data, &response); err != nil {
+		return "\n" + err.Error()
+	}
+
+	responseMap, ok := response.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+
+	// {"jsonrpc": "2.0", "error": {"code": -32602, "message": "Invalid params", "data": {"error": 22, "errname": "EINVAL", "reason": "[EINVAL] query-filters: Invalid operation: O\n" ...
+	errorValue, exists := responseMap["error"]
+	if !exists {
+		return ""
+	}
+
+	var codeStr string
+	var messageStr string
+	var reasonStr string
+
+	if errorObj, ok := errorValue.(map[string]interface{}); ok {
+		if codeValue, exists := errorObj["code"]; exists {
+			codeStr = fmt.Sprint(codeValue)
+		}
+		if messageValue, exists := errorObj["message"]; exists {
+			messageStr = fmt.Sprint(messageValue)
+		}
+		if dataValue, exists := errorObj["data"]; exists {
+			if dataObj, ok := dataValue.(map[string]interface{}); ok {
+				if reasonValue, exists := dataObj["reason"]; exists {
+					reasonStr = fmt.Sprint(reasonValue)
+				}
+			}
+		}
+	}
+
+	var builder strings.Builder
+	builder.WriteString("\nError ")
+	if codeStr != "" {
+		builder.WriteString(codeStr)
+		builder.WriteString("\n")
+	}
+	if messageStr != "" {
+		builder.WriteString(messageStr)
+		builder.WriteString("\n")
+	}
+	if reasonStr != "" {
+		builder.WriteString(reasonStr)
+		builder.WriteString("\n")
+	}
+
+	return builder.String()
 }
 
 type ReadAllWriteAll interface {
