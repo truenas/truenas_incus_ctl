@@ -453,6 +453,8 @@ func renameDataset(api core.Session, args []string) {
 
 	options, _ := GetCobraFlags(datasetRenameCmd, nil)
 
+	source := args[0]
+
 	var builder strings.Builder
 	builder.WriteString("[")
 	core.WriteEncloseAndEscape(&builder, args[0], "\"")
@@ -474,7 +476,8 @@ func renameDataset(api core.Session, args []string) {
 		return
 	}
 
-	if core.IsValueTrue(options.allFlags, "update_shares") {
+	// no point updating the share if we're renaming a snapshot.
+	if core.IsValueTrue(options.allFlags, "update_shares") && !strings.Contains(source, "@") {
 		idStr, _, err := getNfsShare(api, args[0])
 		if err != nil {
 			log.Fatal(err)
@@ -484,7 +487,7 @@ func renameDataset(api core.Session, args []string) {
 		nfsBuilder.WriteString("[")
 		nfsBuilder.WriteString(idStr)
 		nfsBuilder.WriteString(",{\"path\":")
-		core.WriteEncloseAndEscape(&nfsBuilder, "/mnt/" + args[1], "\"")
+		core.WriteEncloseAndEscape(&nfsBuilder, "/mnt/"+args[1], "\"")
 		nfsBuilder.WriteString("}]")
 
 		nfsStmt := nfsBuilder.String()
@@ -540,23 +543,23 @@ func getNfsShare(api core.Session, datasetName string) (string, string, error) {
 	}
 
 	/*
-	datasets, err := QueryApi(api, []string{datasetName}, []string{"name"}, []string{"id", "mountpoint"}, extras)
-	if err != nil {
-		return "", "", errors.New("API error: " + fmt.Sprint(err))
-	}
-	if len(datasets) == 0 {
-		return "", "", errors.New("Dataset \"" + datasetName + "\" was not found")
-	}
-
-	var path string
-	if value, exists := datasets[0]["mountpoint"]; exists {
-		if valueStr, ok := value.(string); ok {
-			path = valueStr
+		datasets, err := QueryApi(api, []string{datasetName}, []string{"name"}, []string{"id", "mountpoint"}, extras)
+		if err != nil {
+			return "", "", errors.New("API error: " + fmt.Sprint(err))
 		}
-	}
-	if path == "" {
-		return "", "", errors.New("Could not find mountpoint for dataset \"" + datasetName + "\"")
-	}
+		if len(datasets) == 0 {
+			return "", "", errors.New("Dataset \"" + datasetName + "\" was not found")
+		}
+
+		var path string
+		if value, exists := datasets[0]["mountpoint"]; exists {
+			if valueStr, ok := value.(string); ok {
+				path = valueStr
+			}
+		}
+		if path == "" {
+			return "", "", errors.New("Could not find mountpoint for dataset \"" + datasetName + "\"")
+		}
 	*/
 	path := "/mnt/" + datasetName
 
