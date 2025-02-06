@@ -349,9 +349,10 @@ func listDataset(api core.Session, args []string) error {
 
 	// `zfs list` will "recurse" if no names are specified.
 	extras := typeRetrieveParams{
-		retrieveType:      "dataset",
-		shouldGetAllProps: format == "json" || core.IsValueTrue(options.allFlags, "all"),
-		shouldRecurse:     len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+		retrieveType:       "dataset",
+		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldGetUserProps: false,
+		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
 	datasets, err := QueryApi(api, args, idTypes, properties, extras)

@@ -131,6 +131,7 @@ func createNfs(api core.Session, args []string) error {
 	options, _ := GetCobraFlags(nfsCreateCmd, nil)
 
 	options.usedFlags["path"] = sharePath
+	options.allTypes["path"] = "string"
 
 	var builder strings.Builder
 	builder.WriteString("[")
@@ -208,6 +209,7 @@ func updateNfs(api core.Session, args []string) error {
 
 	if shouldCreate {
 		options.usedFlags["path"] = sharePath
+		options.allTypes["path"] = "string"
 	} else {
 		// ideally, we'd examine the props we already retreived when inspecting the id (if we did), and only
 		// if there are changes to be made, would we do another update.
@@ -359,9 +361,10 @@ func listNfs(api core.Session, args []string) error {
 	}
 
 	extras := typeRetrieveParams{
-		retrieveType:      "nfs",
-		shouldGetAllProps: format == "json" || core.IsValueTrue(options.allFlags, "all"),
-		shouldRecurse:     len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+		retrieveType:       "nfs",
+		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldGetUserProps: false,
+		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
 	shares, err := QueryApi(api, args, idTypes, properties, extras)
