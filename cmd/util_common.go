@@ -139,6 +139,11 @@ func QueryApi(api core.Session, entries, entryTypes, propsList []string, params 
 				insertProperties(dict, innerPropsMap, nil)
 			}
 		}
+		if innerProps, exists := resultsList[i]["user_properties"]; exists {
+			if innerPropsMap, ok := innerProps.(map[string]interface{}); ok {
+				insertProperties(dict, innerPropsMap, nil)
+			}
+		}
 
 		outputMap[primary] = dict
 		if primaryInt, errNotNumber := strconv.Atoi(primary); errNotNumber == nil {
@@ -363,11 +368,6 @@ func EnumerateOutputProperties(properties map[string]string) []string {
 	var propsList []string
 	if len(propsStr) > 0 {
 		propsList = strings.Split(propsStr, ",")
-		/*
-			for j := 0; j < len(propsList); j++ {
-				propsList[j] = strings.Trim(propsList[j], " \t\r\n")
-			}
-		*/
 	}
 	return propsList
 }

@@ -347,8 +347,15 @@ func listDataset(api core.Session, args []string) error {
 	extras := typeRetrieveParams{
 		retrieveType:       "dataset",
 		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
-		shouldGetUserProps: false,
+		shouldGetUserProps: core.IsValueTrue(options.allFlags, "user_properties"),
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+	}
+
+	for _, prop := range properties {
+		if strings.Index(prop, ":") >= 0 {
+			extras.shouldGetUserProps = true
+			break
+		}
 	}
 
 	datasets, err := QueryApi(api, args, idTypes, properties, extras)
