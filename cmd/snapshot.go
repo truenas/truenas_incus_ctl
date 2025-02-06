@@ -139,7 +139,7 @@ func cloneSnapshot(api core.Session, args []string) {
 	stmt := builder.String()
 	DebugString(stmt)
 
-	out, err := api.CallString("zfs.snapshot.clone", "10s", stmt)
+	out, err := core.ApiCallString(api, "zfs.snapshot.clone", "10s", stmt)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func createSnapshot(api core.Session, args []string) {
 	stmt := builder.String()
 	DebugString(stmt)
 
-	out, err := api.CallString("zfs.snapshot.create", "10s", stmt)
+	out, err := core.ApiCallString(api, "zfs.snapshot.create", "10s", stmt)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	params := BuildNameStrAndPropertiesJson(options, snapshot)
 	DebugString(params)
 
-	out, err := api.CallString("zfs.snapshot."+cmdType, "10s", params)
+	out, err := core.ApiCallString(api, "zfs.snapshot."+cmdType, "10s", params)
 	fmt.Println(string(out))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)

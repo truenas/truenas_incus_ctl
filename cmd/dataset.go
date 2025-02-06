@@ -290,7 +290,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	params := builder.String()
 	DebugString(params)
 
-	out, err := api.CallString("pool.dataset."+cmdType, "10s", params)
+	out, err := core.ApiCallString(api, "pool.dataset."+cmdType, "10s", params)
 	_ = out
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
@@ -308,7 +308,7 @@ func deleteDataset(api core.Session, args []string) {
 	params := BuildNameStrAndPropertiesJson(options, args[0])
 	DebugString(params)
 
-	out, err := api.CallString("pool.dataset.delete", "10s", params)
+	out, err := core.ApiCallString(api, "pool.dataset.delete", "10s", params)
 	fmt.Println(string(out))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
@@ -375,7 +375,7 @@ func promoteDataset(api core.Session, args []string) {
 	defer api.Close()
 
 	nameEsc := core.EncloseAndEscape(args[0], "\"")
-	out, err := api.CallString("pool.dataset.promote", "10s", "["+nameEsc+"]")
+	out, err := core.ApiCallString(api, "pool.dataset.promote", "10s", "["+nameEsc+"]")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
@@ -405,14 +405,9 @@ func renameDataset(api core.Session, args []string) {
 	stmt := builder.String()
 	DebugString(stmt)
 
-	out, err := api.CallString("zfs.dataset.rename", "10s", stmt)
+	_, err := core.ApiCallString(api, "zfs.dataset.rename", "10s", stmt)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
-		return
-	}
-
-	if errMsg := core.ExtractApiError(out); errMsg != "" {
-		fmt.Fprintln(os.Stderr, "API response error: ", errMsg)
 		return
 	}
 
@@ -437,14 +432,9 @@ func renameDataset(api core.Session, args []string) {
 		nfsStmt := nfsBuilder.String()
 		DebugString(nfsStmt)
 
-		out, err = api.CallString("sharing.nfs.update", "10s", nfsStmt)
+		_, err = core.ApiCallString(api, "sharing.nfs.update", "10s", nfsStmt)
 		if err != nil {
 			log.Fatal(err)
-		}
-
-		if errMsg := core.ExtractApiError(out); errMsg != "" {
-			fmt.Fprintln(os.Stderr, "API response error: ", errMsg)
-			return
 		}
 	}
 }

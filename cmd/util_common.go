@@ -74,7 +74,7 @@ func QueryApi(api core.Session, entries, entryTypes, propsList []string, params 
 	query := builder.String()
 	DebugString(query)
 
-	data, err := api.CallString(endpoint, "20s", query)
+	data, err := core.ApiCallString(api, endpoint, "20s", query)
 	if err != nil {
 		return nil, err
 	}

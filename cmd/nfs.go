@@ -151,7 +151,7 @@ func createNfs(api core.Session, args []string) {
 	stmt := builder.String()
 	DebugString(stmt)
 
-	out, err := api.CallString("sharing.nfs.create", "10s", stmt)
+	out, err := core.ApiCallString(api, "sharing.nfs.create", "10s", stmt)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func updateNfs(api core.Session, args []string) {
 		verb = "update"
 	}
 
-	out, err := api.CallString("sharing.nfs." + verb, "10s", stmt)
+	out, err := core.ApiCallString(api, "sharing.nfs." + verb, "10s", stmt)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func deleteNfs(api core.Session, args []string) {
 		}
 	}
 
-	out, err := api.CallString("sharing.nfs.delete", "10s", "["+idStr+"]")
+	out, err := core.ApiCallString(api, "sharing.nfs.delete", "10s", "["+idStr+"]")
 	if err != nil {
 		log.Fatal(err)
 	}
