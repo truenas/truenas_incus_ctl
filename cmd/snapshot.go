@@ -291,16 +291,16 @@ func getSnapshotListTypes(args []string) ([]string, error) {
 
 	typeList = make([]string, len(args), len(args))
 	for i := 0; i < len(args); i++ {
-		t := core.IdentifyObject(args[i])
+		t, value := core.IdentifyObject(args[i])
 		if t == "id" || t == "share" {
 			return typeList, errors.New("querying snapshots based on mount point is not yet supported")
 		} else if t == "snapshot" {
 			t = "name"
 		} else if t == "snapshot_only" {
 			t = "snapshot_name"
-			args[i] = args[i][1:]
 		}
 		typeList[i] = t
+		args[i] = value
 	}
 
 	return typeList, nil

@@ -9,21 +9,25 @@ import (
 	"slices"
 )
 
-func IdentifyObject(obj string) string {
+func IdentifyObject(obj string) (string, string) {
 	if obj == "" {
-		return ""
+		return "", ""
 	} else if _, errNotNumber := strconv.Atoi(obj); errNotNumber == nil {
-		return "id"
+		return "id", obj
 	} else if obj[0] == '/' {
-		return "share"
+		return "share", obj
 	} else if obj[0] == '@' {
-		return "snapshot_only"
+		return "snapshot_only", obj[1:]
 	} else if strings.Index(obj, "@") >= 1 {
-		return "snapshot"
-	} else if strings.Index(obj, "/") >= 1 {
-		return "dataset"
+		return "snapshot", obj
+	} else if pos := strings.LastIndex(obj, "/"); pos >= 1 {
+		if pos == len(obj)-1 {
+			return IdentifyObject(obj[0:len(obj)-1])
+		} else {
+			return "dataset", obj
+		}
 	}
-	return "pool"
+	return "pool", obj
 }
 
 func EncloseAndEscape(original string, ends string) string {

@@ -38,6 +38,9 @@ func GetCobraFlags(cmd *cobra.Command, cmdEnums map[string][]string) (FlagMap, e
 	RemoveGlobalFlags(fm.allFlags)
 	RemoveGlobalFlags(fm.allTypes)
 
+	if err := ValidateFlagEnums(&fm.usedFlags, cmdEnums); err != nil {
+		return FlagMap{}, err
+	}
 	if err := ValidateFlagEnums(&fm.allFlags, cmdEnums); err != nil {
 		return FlagMap{}, err
 	}

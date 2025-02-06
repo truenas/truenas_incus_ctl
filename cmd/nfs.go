@@ -113,14 +113,15 @@ func createNfs(api core.Session, args []string) {
 	defer api.Close()
 
 	var sharePath string
+	typeStr, spec := core.IdentifyObject(args[0])
 
-	switch core.IdentifyObject(args[0]) {
+	switch typeStr {
 	case "dataset":
-		sharePath = "/mnt/" + args[0]
+		sharePath = "/mnt/" + spec
 	case "share":
-		sharePath = args[0]
+		sharePath = spec
 	default:
-		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \""+args[0]+"\"")
+		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \""+spec+"\"")
 		return
 	}
 
@@ -158,16 +159,17 @@ func updateNfs(api core.Session, args []string) {
 
 	var sharePath string
 	var idStr string
+	typeStr, spec := core.IdentifyObject(args[0])
 
-	switch core.IdentifyObject(args[0]) {
+	switch typeStr {
 	case "id":
-		idStr = args[0]
+		idStr = spec
 	case "dataset":
-		sharePath = "/mnt/" + args[0]
+		sharePath = "/mnt/" + spec
 	case "share":
-		sharePath = args[0]
+		sharePath = spec
 	default:
-		fmt.Fprintln(os.Stderr, "Unrecognized nfs update spec \""+args[0]+"\"")
+		fmt.Fprintln(os.Stderr, "Unrecognized nfs update spec \""+spec+"\"")
 		return
 	}
 
@@ -239,16 +241,17 @@ func deleteNfs(api core.Session, args []string) {
 
 	var sharePath string
 	var idStr string
+	typeStr, spec := core.IdentifyObject(args[0])
 
-	switch core.IdentifyObject(args[0]) {
+	switch typeStr {
 	case "id":
-		idStr = args[0]
+		idStr = spec
 	case "dataset":
-		sharePath = "/mnt/" + args[0]
+		sharePath = "/mnt/" + spec
 	case "share":
-		sharePath = args[0]
+		sharePath = spec
 	default:
-		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \""+args[0]+"\"")
+		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \""+spec+"\"")
 		return
 	}
 
@@ -323,7 +326,7 @@ func getNfsListTypes(args []string) ([]string, error) {
 
 	typeList = make([]string, len(args), len(args))
 	for i := 0; i < len(args); i++ {
-		t := core.IdentifyObject(args[i])
+		t, value := core.IdentifyObject(args[i])
 		if t == "snapshot" || t == "snapshot_only" {
 			return typeList, errors.New("querying nfs shares based on snapshot is not supported")
 		} else if t == "dataset" {
@@ -332,6 +335,7 @@ func getNfsListTypes(args []string) ([]string, error) {
 			t = "path"
 		}
 		typeList[i] = t
+		args[i] = value
 	}
 
 	return typeList, nil
