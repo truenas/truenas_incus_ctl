@@ -134,19 +134,16 @@ func createNfs(api core.Session, args []string) {
 
 	options, _ := GetCobraFlags(nfsCreateCmd, nil)
 
-	securityList, err := ValidateEnumArray(options.allFlags["security"], []string{"sys", "krb5", "krb5i", "krb5p"})
-	if err != nil {
+	options.usedFlags["path"] = sharePath
+
+	var builder strings.Builder
+	builder.WriteString("[")
+
+	if err := writeNfsCreateUpdateProperties(&builder, options); err != nil {
 		log.Fatal(err)
 	}
 
-	var builder strings.Builder
-	builder.WriteString("[{\"path\":")
-	core.WriteEncloseAndEscape(&builder, sharePath, "\"")
-	builder.WriteString(",")
-
-	writeNfsCreateUpdateProperties(&builder, options, securityList)
-
-	builder.WriteString("}]")
+	builder.WriteString("]")
 
 	stmt := builder.String()
 	DebugString(stmt)
@@ -182,20 +179,24 @@ func updateNfs(api core.Session, args []string) {
 
 	options, _ := GetCobraFlags(nfsUpdateCmd, nil)
 
-	securityList, err := ValidateEnumArray(options.allFlags["security"], []string{"sys", "krb5", "krb5i", "krb5p"})
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	shouldCreate := false
 
 	if idStr == "" {
 		var found bool
+		var err error
 		idStr, found, err = LookupNfsIdByPath(api, sharePath)
 		if err != nil {
 			log.Fatal(err)
 		}
-		shouldCreate = !found && core.IsValueTrue(options.allFlags, "create")
+		if !found {
+			if core.IsValueTrue(options.allFlags, "create") {
+				shouldCreate = true
+			} else {
+				fmt.Fprintln(os.Stderr, "Could not find NFS share \""+sharePath+"\".\n" +
+					"Try passing -c to create a share if it doesn't exist.")
+				return
+			}
+		}
 	}
 
 	// now that we know whether to create or not, let's not pass this flag on to the API
@@ -203,19 +204,20 @@ func updateNfs(api core.Session, args []string) {
 	delete(options.allFlags, "create")
 
 	var builder strings.Builder
+	builder.WriteString("[")
+
 	if shouldCreate {
-		builder.WriteString("[{\"path\":")
-		core.WriteEncloseAndEscape(&builder, sharePath, "\"")
-		builder.WriteString(",")
+		options.usedFlags["path"] = sharePath
 	} else {
-		builder.WriteString("[")
 		builder.WriteString(idStr)
-		builder.WriteString(",{")
+		builder.WriteString(",")
 	}
 
-	writeNfsCreateUpdateProperties(&builder, options, securityList)
+	if err := writeNfsCreateUpdateProperties(&builder, options); err != nil {
+		log.Fatal(err)
+	}
 
-	builder.WriteString("}]")
+	builder.WriteString("]")
 
 	stmt := builder.String()
 	DebugString(stmt)
@@ -234,34 +236,48 @@ func updateNfs(api core.Session, args []string) {
 	fmt.Println(string(out))
 }
 
-func writeNfsCreateUpdateProperties(builder *strings.Builder, options FlagMap, securityList []string) {
+func writeNfsCreateUpdateProperties(builder *strings.Builder, options FlagMap) error {
+	builder.WriteString("{")
+
 	nProps := 0
 	for propName, valueStr := range options.usedFlags {
+		var securityListStr string
 		if propName == "security" {
-			continue
+			securityList, err := ValidateEnumArray(valueStr, []string{"sys", "krb5", "krb5i", "krb5p"})
+			if err != nil {
+				return err
+			}
+			var sb strings.Builder
+			sb.WriteString("[")
+			core.WriteJsonStringArray(&sb, securityList)
+			sb.WriteString("]")
+			securityListStr = sb.String()
 		}
 		if propName == "read-only" {
 			propName = "ro"
 		}
+
 		if nProps > 0 {
 			builder.WriteString(",")
 		}
 		core.WriteEncloseAndEscape(builder, propName, "\"")
 		builder.WriteString(":")
-		if t, exists := options.allTypes[propName]; exists && t == "string" {
-			core.WriteEncloseAndEscape(builder, valueStr, "\"")
+
+		if securityListStr != "" {
+			builder.WriteString(securityListStr)
 		} else {
-			builder.WriteString(valueStr)
+			if t, exists := options.allTypes[propName]; exists && t == "string" {
+				core.WriteEncloseAndEscape(builder, valueStr, "\"")
+			} else {
+				builder.WriteString(valueStr)
+			}
 		}
 		nProps++
 	}
 
-	if nProps > 0 {
-		builder.WriteString(",")
-	}
-	builder.WriteString("\"security\":[")
-	core.WriteJsonStringArray(builder, securityList)
-	builder.WriteString("]")
+	builder.WriteString("}")
+
+	return nil
 }
 
 func deleteNfs(api core.Session, args []string) {
