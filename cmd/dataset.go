@@ -4,7 +4,6 @@ import (
 	//"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"truenas/admin-tool/core"
@@ -120,14 +119,14 @@ func init() {
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "exec", []string{"inherit", "on", "off"}))
 		cmd.Flags().String("managedby", "truenas-admin", "Manager of this dataset, must not be empty")
 		cmd.Flags().Bool("quota", false, "")
-		//cmd.Flags().Bool("quota_warning", false, "")
-		//cmd.Flags().Bool("quota_critical", false, "")
+		//cmd.Flags().Bool("quota-warning", false, "")
+		//cmd.Flags().Bool("quota-critical", false, "")
 		cmd.Flags().Bool("refquota", false, "")
-		//cmd.Flags().Bool("refquota_warning", false, "")
-		//cmd.Flags().Bool("refquota_critical", false, "")
+		//cmd.Flags().Bool("refquota-warning", false, "")
+		//cmd.Flags().Bool("refquota-critical", false, "")
 		cmd.Flags().Bool("reservation", false, "")
 		cmd.Flags().Bool("refreservation", false, "")
-		cmd.Flags().Bool("special_small_block_size", false, "")
+		cmd.Flags().Bool("special-small-block-size", false, "")
 		cmd.Flags().Bool("copies", false, "")
 		cmd.Flags().Bool("deduplication", false, "")
 		cmd.Flags().Bool("checksum", false, "")
@@ -136,14 +135,14 @@ func init() {
 		cmd.Flags().Bool("casesensitivity", false, "")
 		cmd.Flags().Bool("aclmode", false, "")
 		cmd.Flags().Bool("acltype", false, "")
-		cmd.Flags().Bool("share_type", false, "")
-		cmd.Flags().BoolP("create_parents", "p", false, "Creates all the non-existing parent datasets")
-		cmd.Flags().String("user_props", "", "Sets the specified properties")
+		cmd.Flags().Bool("share-type", false, "")
+		cmd.Flags().BoolP("create-parents", "p", false, "Creates all the non-existing parent datasets")
+		cmd.Flags().String("user-props", "", "Sets the specified properties")
 		cmd.Flags().StringP("option", "o", "", "Specify property=value,...")
 		cmd.Flags().Int64P("volume", "V", 0, "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size.")
 		cmd.Flags().StringP("volblocksize", "b", "512", "Volume block size (\"512\",\"1K\",\"2K\",\"4K\",\"8K\",\"16K\",\"32K\",\"64K\",\"128K\")")
 		cmd.Flags().BoolP("sparse", "s", false, "Creates a sparse volume with no reservation")
-		cmd.Flags().Bool("force_size", false, "")
+		cmd.Flags().Bool("force-size", false, "")
 		cmd.Flags().String("snapdev", "hidden", "Controls whether the volume snapshot devices are hidden or visible "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "snapdev", []string{"hidden", "visible"}))
 	}
@@ -190,8 +189,6 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		return errors.New("cmdType was not create or update")
 	}
 
-	cmd.SilenceUsage = true
-
 	nameEsc := core.EncloseAndEscape(args[0], "\"")
 	nProps := 0
 
@@ -212,7 +209,6 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 
 	options, err := GetCobraFlags(cmd, g_datasetCreateUpdateEnums)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
 		return err
 	}
 
@@ -224,7 +220,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		case "user_props":
 			userPropsStr = valueStr
 		case "option":
-			paramsKV, err := convertParamsStrToFlatKVArray(valueStr)
+			paramsKV, err := convertParamsStrToFlatKVArray(valueStr, g_datasetCreateUpdateEnums)
 			if err != nil {
 				return err
 			}
@@ -265,7 +261,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	}
 
 	if userPropsStr != "" {
-		paramsKV, err := convertParamsStrToFlatKVArray(userPropsStr)
+		paramsKV, err := convertParamsStrToFlatKVArray(userPropsStr, g_datasetCreateUpdateEnums)
 		if err != nil {
 			return err
 		}
@@ -290,6 +286,8 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 
 	params := builder.String()
 	DebugString(params)
+
+	cmd.SilenceUsage = true
 
 	out, err := core.ApiCallString(api, "pool.dataset."+cmdType, "10s", params)
 	if err != nil {
@@ -451,7 +449,7 @@ func renameDataset(api core.Session, args []string) error {
 	return err
 }
 
-func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
+func convertParamsStrToFlatKVArray(fullParamsStr string, enumsList map[string][]string) ([]string, error) {
 	var array []string
 	if fullParamsStr == "" {
 		return nil, nil
@@ -459,8 +457,8 @@ func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
 
 	array = make([]string, 0, 0)
 	params := strings.Split(fullParamsStr, ",")
-	for j := 0; j < len(params); j++ {
-		parts := strings.Split(params[j], "=")
+	for _, parameter := range params {
+		parts := strings.Split(parameter, "=")
 		var value string
 		if len(parts) == 0 {
 			continue
@@ -473,6 +471,20 @@ func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
 		if value != "true" && value != "false" && value != "null" {
 			_, errNotNumber := strconv.Atoi(value)
 			if errNotNumber != nil {
+				if acceptable, exists := enumsList[parts[0]]; exists {
+					found := false
+					valueUpper := strings.ToUpper(value)
+					for i := 0; i < len(acceptable); i++ {
+						if valueUpper == strings.ToUpper(acceptable[i]) {
+							found = true
+							break
+						}
+					}
+					if !found {
+						return nil, fmt.Errorf("Could not find value %s in enum %s %v", value, parts[0], acceptable)
+					}
+					value = valueUpper
+				}
 				value = core.EncloseAndEscape(value, "\"")
 			}
 		}
