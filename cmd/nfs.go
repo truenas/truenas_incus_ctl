@@ -54,6 +54,7 @@ var nfsListCmd = &cobra.Command{
 	Aliases: []string{"ls"},
 }
 
+var g_nfsCreateUpdateEnums map[string][]string
 var g_nfsListEnums map[string][]string
 
 func init() {
@@ -75,6 +76,8 @@ func init() {
 
 	nfsUpdateCmd.Flags().String("path", "", "Mount path")
 
+	g_nfsCreateUpdateEnums = make(map[string][]string)
+
 	createUpdateCmds := []*cobra.Command{nfsCreateCmd, nfsUpdateCmd}
 	for _, cmd := range createUpdateCmds {
 		cmd.Flags().Bool("read-only", false, "Export as write protected, default false")
@@ -90,6 +93,8 @@ func init() {
 		cmd.Flags().String("security", "", "Array of Enum(sys,krb5,krb5i,krb5p)")
 		cmd.Flags().Bool("enabled", false, "")
 	}
+
+	g_nfsCreateUpdateEnums["security"] = []string{"sys","krb5","krb5i","krb5p"}
 
 	nfsListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 	nfsListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
@@ -212,6 +217,9 @@ func writeNfsCreateUpdateProperties(builder *strings.Builder, options FlagMap, s
 		if propName == "security" {
 			continue
 		}
+		if propName == "read-only" {
+			propName = "ro"
+		}
 		if nProps > 0 {
 			builder.WriteString(",")
 		}
@@ -304,6 +312,8 @@ func listNfs(api core.Session, args []string) {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
 	}
+
+	LowerCaseValuesFromEnums(shares, g_nfsCreateUpdateEnums)
 
 	required := []string{"id", "path"}
 	var columnsList []string

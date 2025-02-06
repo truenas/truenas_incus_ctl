@@ -270,6 +270,8 @@ func listSnapshot(api core.Session, args []string) {
 		return
 	}
 
+	//LowerCaseValuesFromEnums(snapshots, g_snapshotCreateUpdateEnums)
+
 	required := []string{"name"}
 	var columnsList []string
 	if extras.shouldGetAllProps {

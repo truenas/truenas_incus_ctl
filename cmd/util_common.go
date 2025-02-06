@@ -288,6 +288,18 @@ func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []strin
 	}
 }
 
+func LowerCaseValuesFromEnums(results []map[string]interface{}, enums map[string][]string) {
+	for i, _ := range results {
+		for key, _ := range enums {
+			if value, exists := results[i][key]; exists {
+				if valueStr, ok := value.(string); ok {
+					results[i][key] = strings.ToLower(valueStr)
+				}
+			}
+		}
+	}
+}
+
 func LookupNfsIdByPath(api core.Session, sharePath string) (string, error) {
 	extras := typeRetrieveParams{
 		retrieveType:      "nfs",

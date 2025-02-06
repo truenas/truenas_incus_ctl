@@ -149,6 +149,8 @@ func init() {
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "snapdev", []string{"hidden", "visible"}))
 	}
 
+	g_datasetCreateUpdateEnums["type"] = []string{"volume", "filesystem"}
+
 	datasetDeleteCmd.Flags().BoolP("recursive", "r", false, "Also delete/destroy all children datasets. When the root dataset is specified,\n"+
 		"it will destroy all the children of the root dataset present leaving root dataset intact")
 	datasetDeleteCmd.Flags().BoolP("force", "f", false, "Force delete busy datasets")
@@ -193,7 +195,6 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	nProps := 0
 
 	var builder strings.Builder
-
 	if cmdType == "create" {
 		builder.WriteString("[{\"name\":")
 		builder.WriteString(nameEsc)
@@ -351,6 +352,8 @@ func listDataset(api core.Session, args []string) {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
 	}
+
+	LowerCaseValuesFromEnums(datasets, g_datasetCreateUpdateEnums)
 
 	required := []string{"name"}
 	var columnsList []string
