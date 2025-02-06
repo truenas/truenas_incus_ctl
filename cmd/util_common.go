@@ -14,9 +14,10 @@ import (
 )
 
 type typeRetrieveParams struct {
-	retrieveType      string
-	shouldGetAllProps bool
-	shouldRecurse     bool
+	retrieveType       string
+	shouldGetAllProps  bool
+	shouldGetUserProps bool
+	shouldRecurse      bool
 }
 
 func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) string {
@@ -259,7 +260,9 @@ func writeQueryOptions(builder *strings.Builder, propsList []string, params type
 		}
 		builder.WriteString("]")
 	}
-	builder.WriteString(", \"user_properties\":false }} ")
+	builder.WriteString(", \"user_properties\":")
+	builder.WriteString(fmt.Sprint(params.shouldGetUserProps))
+	builder.WriteString(" }} ")
 }
 
 func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []string) {
@@ -320,9 +323,10 @@ func LookupNfsIdByPath(api core.Session, sharePath string) (string, bool, error)
 	}
 
 	extras := typeRetrieveParams{
-		retrieveType:      "nfs",
-		shouldGetAllProps: false,
-		shouldRecurse:     false,
+		retrieveType:       "nfs",
+		shouldGetAllProps:  false,
+		shouldGetUserProps: false,
+		shouldRecurse:      false,
 	}
 
 	shares, err := QueryApi(api, []string{sharePath}, []string{"path"}, []string{"id", "path"}, extras)

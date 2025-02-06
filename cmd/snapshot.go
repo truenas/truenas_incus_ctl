@@ -263,9 +263,10 @@ func listSnapshot(api core.Session, args []string) error {
 
 	// `zfs list` will "recurse" if no names are specified.
 	extras := typeRetrieveParams{
-		retrieveType:      "snapshot",
-		shouldGetAllProps: format == "json" || core.IsValueTrue(options.allFlags, "all"),
-		shouldRecurse:     len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+		retrieveType:       "snapshot",
+		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldGetUserProps: false,
+		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
 	snapshots, err := QueryApi(api, args, idTypes, properties, extras)
