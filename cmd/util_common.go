@@ -300,7 +300,11 @@ func LowerCaseValuesFromEnums(results []map[string]interface{}, enums map[string
 	}
 }
 
-func LookupNfsIdByPath(api core.Session, sharePath string) (string, error) {
+func LookupNfsIdByPath(api core.Session, sharePath string) (string, bool, error) {
+	if sharePath == "" {
+		return "", false, errors.New("Error looking up NFS share: no path was specified")
+	}
+
 	extras := typeRetrieveParams{
 		retrieveType:      "nfs",
 		shouldGetAllProps: false,
@@ -309,10 +313,10 @@ func LookupNfsIdByPath(api core.Session, sharePath string) (string, error) {
 
 	shares, err := QueryApi(api, []string{sharePath}, []string{"path"}, []string{"id", "path"}, extras)
 	if err != nil {
-		return "", errors.New("API error: " + fmt.Sprint(err))
+		return "", false, errors.New("API error: " + fmt.Sprint(err))
 	}
 	if len(shares) == 0 {
-		return "", errors.New("NFS share for path \"" + sharePath + "\" was not found")
+		return "", false, nil
 	}
 
 	var idStr string
@@ -320,18 +324,16 @@ func LookupNfsIdByPath(api core.Session, sharePath string) (string, error) {
 		if valueStr, ok := value.(string); ok {
 			if _, errNotNumber := strconv.Atoi(valueStr); errNotNumber == nil {
 				idStr = valueStr
-			} else {
-				idStr = core.EncloseAndEscape(valueStr, "\"")
 			}
 		} else {
 			idStr = fmt.Sprint(value)
 		}
 	}
 	if idStr == "" {
-		return "", errors.New("Could not find id for NFS share \"" + sharePath + "\"")
+		return "", false, nil
 	}
 
-	return idStr, nil
+	return idStr, true, nil
 }
 
 func EnumerateOutputProperties(properties map[string]string) []string {

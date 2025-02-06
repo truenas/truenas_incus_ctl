@@ -94,6 +94,8 @@ func init() {
 		cmd.Flags().Bool("enabled", false, "")
 	}
 
+	nfsUpdateCmd.Flags().BoolP("create", "c", false, "If the share doesn't exist, create it. Off by default.")
+
 	g_nfsCreateUpdateEnums["security"] = []string{"sys","krb5","krb5i","krb5p"}
 
 	nfsListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
@@ -185,17 +187,31 @@ func updateNfs(api core.Session, args []string) {
 		log.Fatal(err)
 	}
 
+	shouldCreate := false
+
 	if idStr == "" {
-		idStr, err = LookupNfsIdByPath(api, sharePath)
+		var found bool
+		idStr, found, err = LookupNfsIdByPath(api, sharePath)
 		if err != nil {
 			log.Fatal(err)
 		}
+		shouldCreate = !found && core.IsValueTrue(options.allFlags, "create")
 	}
 
+	// now that we know whether to create or not, let's not pass this flag on to the API
+	delete(options.usedFlags, "create")
+	delete(options.allFlags, "create")
+
 	var builder strings.Builder
-	builder.WriteString("[")
-	builder.WriteString(idStr)
-	builder.WriteString(",{")
+	if shouldCreate {
+		builder.WriteString("[{\"path\":")
+		core.WriteEncloseAndEscape(&builder, sharePath, "\"")
+		builder.WriteString(",")
+	} else {
+		builder.WriteString("[")
+		builder.WriteString(idStr)
+		builder.WriteString(",{")
+	}
 
 	writeNfsCreateUpdateProperties(&builder, options, securityList)
 
@@ -204,7 +220,14 @@ func updateNfs(api core.Session, args []string) {
 	stmt := builder.String()
 	DebugString(stmt)
 
-	out, err := api.CallString("sharing.nfs.update", "10s", stmt)
+	var verb string
+	if shouldCreate {
+		verb = "create"
+	} else {
+		verb = "update"
+	}
+
+	out, err := api.CallString("sharing.nfs." + verb, "10s", stmt)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -265,9 +288,14 @@ func deleteNfs(api core.Session, args []string) {
 
 	var err error
 	if idStr == "" {
-		idStr, err = LookupNfsIdByPath(api, sharePath)
+		var found bool
+		idStr, found, err = LookupNfsIdByPath(api, sharePath)
 		if err != nil {
 			log.Fatal(err)
+		}
+		if !found {
+			fmt.Fprintln(os.Stderr, "Could not find nfs share for path \""+sharePath+"\"")
+			return
 		}
 	}
 
