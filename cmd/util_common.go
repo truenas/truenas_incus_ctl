@@ -110,7 +110,7 @@ func QueryApi(api core.Session, entries, entryTypes, propsList []string, params 
 	for i := 0; i < len(resultsList); i++ {
 		children, _ := core.ExtractJsonArrayOfMaps(resultsList[i], "children")
 		if len(children) > 0 {
-			resultsList = append(append(resultsList[0:i+1], children...), resultsList[i+1:]...)
+			resultsList = append(resultsList, children...)
 		}
 
 		var primary string
