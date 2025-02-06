@@ -113,11 +113,17 @@ func init() {
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "snapdir", []string{"hidden", "visible"}))
 		cmd.Flags().String("compression", "off", "Controls the compression algorithm used for this dataset\n"+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "compression", g_compressionEnum[:]))
-		cmd.Flags().String("atime", "off", "Controls whether the access time for files is updated when they are read "+
-			AddFlagsEnum(&g_datasetCreateUpdateEnums, "atime", []string{"on", "off"}))
+		cmd.Flags().String("atime", "inherit", "Controls whether the access time for files is updated when they are read "+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "atime", []string{"inherit", "on", "off"}))
 		cmd.Flags().String("exec", "inherit", "Controls whether processes can be executed from within this file system "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "exec", []string{"inherit", "on", "off"}))
 		cmd.Flags().String("managedby", "truenas-admin", "Manager of this dataset, must not be empty")
+		cmd.Flags().String("acltype", "inherit", "Controls whether ACLs are enabled and if so what type of ACL to use "+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "acltype", []string{"inherit", "posix", "nfsv4", "off"}))
+		cmd.Flags().String("aclmode", "inherit", "Controls how an ACL is modified during chmod(2) and how inherited ACEs are modified by the file creation mode "+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "aclmode", []string{"inherit", "passthrough", "restricted", "discard"}))
+		//cmd.Flags().String("xattr", "inherit", "Controls whether extended attributes are enabled for this file system "+
+		//	AddFlagsEnum(&g_datasetCreateUpdateEnums, "xattr", []string{"inherit", "on", "off", "dir"})) // 'sa' should be "on"
 		cmd.Flags().Bool("quota", false, "")
 		//cmd.Flags().Bool("quota-warning", false, "")
 		//cmd.Flags().Bool("quota-critical", false, "")
@@ -133,8 +139,6 @@ func init() {
 		cmd.Flags().Bool("readonly", false, "")
 		cmd.Flags().Bool("recordsize", false, "")
 		cmd.Flags().Bool("casesensitivity", false, "")
-		cmd.Flags().Bool("aclmode", false, "")
-		cmd.Flags().Bool("acltype", false, "")
 		cmd.Flags().Bool("share-type", false, "")
 		cmd.Flags().BoolP("create-parents", "p", false, "Creates all the non-existing parent datasets")
 		cmd.Flags().String("user-props", "", "Sets the specified properties")
