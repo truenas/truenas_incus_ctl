@@ -139,7 +139,7 @@ func cloneSnapshot(api core.Session, args []string) {
 	stmt := builder.String()
 	DebugString(stmt)
 
-	out, err := api.CallString("zfs.snapshot.clone", "10s", stmt)
+	out, err := core.ApiCallString(api, "zfs.snapshot.clone", "10s", stmt)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func createSnapshot(api core.Session, args []string) {
 	stmt := builder.String()
 	DebugString(stmt)
 
-	out, err := api.CallString("zfs.snapshot.create", "10s", stmt)
+	out, err := core.ApiCallString(api, "zfs.snapshot.create", "10s", stmt)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	params := BuildNameStrAndPropertiesJson(options, snapshot)
 	DebugString(params)
 
-	out, err := api.CallString("zfs.snapshot."+cmdType, "10s", params)
+	out, err := core.ApiCallString(api, "zfs.snapshot."+cmdType, "10s", params)
 	fmt.Println(string(out))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
@@ -270,6 +270,8 @@ func listSnapshot(api core.Session, args []string) {
 		return
 	}
 
+	//LowerCaseValuesFromEnums(snapshots, g_snapshotCreateUpdateEnums)
+
 	required := []string{"name"}
 	var columnsList []string
 	if extras.shouldGetAllProps {
@@ -291,16 +293,16 @@ func getSnapshotListTypes(args []string) ([]string, error) {
 
 	typeList = make([]string, len(args), len(args))
 	for i := 0; i < len(args); i++ {
-		t := core.IdentifyObject(args[i])
+		t, value := core.IdentifyObject(args[i])
 		if t == "id" || t == "share" {
 			return typeList, errors.New("querying snapshots based on mount point is not yet supported")
 		} else if t == "snapshot" {
 			t = "name"
 		} else if t == "snapshot_only" {
 			t = "snapshot_name"
-			args[i] = args[i][1:]
 		}
 		typeList[i] = t
+		args[i] = value
 	}
 
 	return typeList, nil

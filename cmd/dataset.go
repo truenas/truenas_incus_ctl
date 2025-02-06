@@ -149,6 +149,8 @@ func init() {
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "snapdev", []string{"hidden", "visible"}))
 	}
 
+	g_datasetCreateUpdateEnums["type"] = []string{"volume", "filesystem"}
+
 	datasetDeleteCmd.Flags().BoolP("recursive", "r", false, "Also delete/destroy all children datasets. When the root dataset is specified,\n"+
 		"it will destroy all the children of the root dataset present leaving root dataset intact")
 	datasetDeleteCmd.Flags().BoolP("force", "f", false, "Force delete busy datasets")
@@ -193,7 +195,6 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	nProps := 0
 
 	var builder strings.Builder
-
 	if cmdType == "create" {
 		builder.WriteString("[{\"name\":")
 		builder.WriteString(nameEsc)
@@ -234,9 +235,6 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 				builder.WriteString(key)
 				builder.WriteString(":")
 				value := paramsKV[j+1]
-				if key == "\"exec\"" {
-					value = strings.ToUpper(value)
-				}
 				builder.WriteString(value)
 				nProps++
 				if paramsKV[j] == "\"create_ancestors\"" {
@@ -252,11 +250,6 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 			}
 			core.WriteEncloseAndEscape(&builder, propName, "\"")
 			builder.WriteString(":")
-
-			// TODO: need a better solution for enum mapping.
-			if propName == "exec" {
-				valueStr = strings.ToUpper(valueStr)
-			}
 
 			if t, exists := options.allTypes[propName]; exists && t == "string" {
 				valueStr = core.EncloseAndEscape(valueStr, "\"")
@@ -297,7 +290,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	params := builder.String()
 	DebugString(params)
 
-	out, err := api.CallString("pool.dataset."+cmdType, "10s", params)
+	out, err := core.ApiCallString(api, "pool.dataset."+cmdType, "10s", params)
 	_ = out
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
@@ -315,7 +308,7 @@ func deleteDataset(api core.Session, args []string) {
 	params := BuildNameStrAndPropertiesJson(options, args[0])
 	DebugString(params)
 
-	out, err := api.CallString("pool.dataset.delete", "10s", params)
+	out, err := core.ApiCallString(api, "pool.dataset.delete", "10s", params)
 	fmt.Println(string(out))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
@@ -360,6 +353,8 @@ func listDataset(api core.Session, args []string) {
 		return
 	}
 
+	LowerCaseValuesFromEnums(datasets, g_datasetCreateUpdateEnums)
+
 	required := []string{"name"}
 	var columnsList []string
 	if extras.shouldGetAllProps {
@@ -380,7 +375,7 @@ func promoteDataset(api core.Session, args []string) {
 	defer api.Close()
 
 	nameEsc := core.EncloseAndEscape(args[0], "\"")
-	out, err := api.CallString("pool.dataset.promote", "10s", "["+nameEsc+"]")
+	out, err := core.ApiCallString(api, "pool.dataset.promote", "10s", "["+nameEsc+"]")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
@@ -410,22 +405,21 @@ func renameDataset(api core.Session, args []string) {
 	stmt := builder.String()
 	DebugString(stmt)
 
-	out, err := api.CallString("zfs.dataset.rename", "10s", stmt)
+	_, err := core.ApiCallString(api, "zfs.dataset.rename", "10s", stmt)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "API error:", err)
 		return
 	}
 
-	if errMsg := core.ExtractApiError(out); errMsg != "" {
-		fmt.Fprintln(os.Stderr, "API response error: ", errMsg)
-		return
-	}
-
 	// no point updating the share if we're renaming a snapshot.
 	if core.IsValueTrue(options.allFlags, "update_shares") && !strings.Contains(source, "@") {
-		idStr, err := LookupNfsIdByPath(api, "/mnt/"+source)
+		idStr, found, err := LookupNfsIdByPath(api, "/mnt/"+source)
 		if err != nil {
 			log.Fatal(err)
+		}
+		if !found {
+			fmt.Println("INFO: this dataset did not appear to have a share")
+			return
 		}
 
 		var nfsBuilder strings.Builder
@@ -438,14 +432,9 @@ func renameDataset(api core.Session, args []string) {
 		nfsStmt := nfsBuilder.String()
 		DebugString(nfsStmt)
 
-		out, err = api.CallString("sharing.nfs.update", "10s", nfsStmt)
+		_, err = core.ApiCallString(api, "sharing.nfs.update", "10s", nfsStmt)
 		if err != nil {
 			log.Fatal(err)
-		}
-
-		if errMsg := core.ExtractApiError(out); errMsg != "" {
-			fmt.Fprintln(os.Stderr, "API response error: ", errMsg)
-			return
 		}
 	}
 }
@@ -488,7 +477,7 @@ func getDatasetListTypes(args []string) ([]string, error) {
 
 	typeList = make([]string, len(args), len(args))
 	for i := 0; i < len(args); i++ {
-		t := core.IdentifyObject(args[i])
+		t, value := core.IdentifyObject(args[i])
 		if t == "id" || t == "share" {
 			return typeList, errors.New("querying datasets based on mount point is not yet supported")
 		} else if t == "snapshot" || t == "snapshot_only" {
@@ -497,6 +486,7 @@ func getDatasetListTypes(args []string) ([]string, error) {
 			t = "name"
 		}
 		typeList[i] = t
+		args[i] = value
 	}
 
 	return typeList, nil

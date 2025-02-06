@@ -74,7 +74,7 @@ func QueryApi(api core.Session, entries, entryTypes, propsList []string, params 
 	query := builder.String()
 	DebugString(query)
 
-	data, err := api.CallString(endpoint, "20s", query)
+	data, err := core.ApiCallString(api, endpoint, "20s", query)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func QueryApi(api core.Session, entries, entryTypes, propsList []string, params 
 	for i := 0; i < len(resultsList); i++ {
 		children, _ := core.ExtractJsonArrayOfMaps(resultsList[i], "children")
 		if len(children) > 0 {
-			resultsList = append(append(resultsList[0:i+1], children...), resultsList[i+1:]...)
+			resultsList = append(resultsList, children...)
 		}
 
 		var primary string
@@ -288,7 +288,23 @@ func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []strin
 	}
 }
 
-func LookupNfsIdByPath(api core.Session, sharePath string) (string, error) {
+func LowerCaseValuesFromEnums(results []map[string]interface{}, enums map[string][]string) {
+	for i, _ := range results {
+		for key, _ := range enums {
+			if value, exists := results[i][key]; exists {
+				if valueStr, ok := value.(string); ok {
+					results[i][key] = strings.ToLower(valueStr)
+				}
+			}
+		}
+	}
+}
+
+func LookupNfsIdByPath(api core.Session, sharePath string) (string, bool, error) {
+	if sharePath == "" {
+		return "", false, errors.New("Error looking up NFS share: no path was specified")
+	}
+
 	extras := typeRetrieveParams{
 		retrieveType:      "nfs",
 		shouldGetAllProps: false,
@@ -297,10 +313,10 @@ func LookupNfsIdByPath(api core.Session, sharePath string) (string, error) {
 
 	shares, err := QueryApi(api, []string{sharePath}, []string{"path"}, []string{"id", "path"}, extras)
 	if err != nil {
-		return "", errors.New("API error: " + fmt.Sprint(err))
+		return "", false, errors.New("API error: " + fmt.Sprint(err))
 	}
 	if len(shares) == 0 {
-		return "", errors.New("NFS share for path \"" + sharePath + "\" was not found")
+		return "", false, nil
 	}
 
 	var idStr string
@@ -308,18 +324,16 @@ func LookupNfsIdByPath(api core.Session, sharePath string) (string, error) {
 		if valueStr, ok := value.(string); ok {
 			if _, errNotNumber := strconv.Atoi(valueStr); errNotNumber == nil {
 				idStr = valueStr
-			} else {
-				idStr = core.EncloseAndEscape(valueStr, "\"")
 			}
 		} else {
 			idStr = fmt.Sprint(value)
 		}
 	}
 	if idStr == "" {
-		return "", errors.New("Could not find id for NFS share \"" + sharePath + "\"")
+		return "", false, nil
 	}
 
-	return idStr, nil
+	return idStr, true, nil
 }
 
 func EnumerateOutputProperties(properties map[string]string) []string {
