@@ -209,6 +209,12 @@ func updateNfs(api core.Session, args []string) {
 	if shouldCreate {
 		options.usedFlags["path"] = sharePath
 	} else {
+		// ideally, we'd examine the props we already retreived when inspecting the id (if we did), and only
+		// if there are changes to be made, would we do another update.
+		if len(options.usedFlags) == 0 {
+			DebugString("share does not require updating, exiting")
+			return
+		}
 		builder.WriteString(idStr)
 		builder.WriteString(",")
 	}
