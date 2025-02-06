@@ -2,9 +2,6 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
-	"log"
-	"os"
 	"strings"
 	"truenas/admin-tool/core"
 
@@ -58,20 +55,20 @@ var g_nfsCreateUpdateEnums map[string][]string
 var g_nfsListEnums map[string][]string
 
 func init() {
-	nfsCreateCmd.Run = func(cmd *cobra.Command, args []string) {
-		createNfs(ValidateAndLogin(), args)
+	nfsCreateCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return createNfs(ValidateAndLogin(), args)
 	}
 
-	nfsUpdateCmd.Run = func(cmd *cobra.Command, args []string) {
-		updateNfs(ValidateAndLogin(), args)
+	nfsUpdateCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return updateNfs(ValidateAndLogin(), args)
 	}
 
-	nfsDeleteCmd.Run = func(cmd *cobra.Command, args []string) {
-		deleteNfs(ValidateAndLogin(), args)
+	nfsDeleteCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return deleteNfs(ValidateAndLogin(), args)
 	}
 
-	nfsListCmd.Run = func(cmd *cobra.Command, args []string) {
-		listNfs(ValidateAndLogin(), args)
+	nfsListCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return listNfs(ValidateAndLogin(), args)
 	}
 
 	nfsUpdateCmd.Flags().String("path", "", "Mount path")
@@ -96,7 +93,7 @@ func init() {
 
 	nfsUpdateCmd.Flags().BoolP("create", "c", false, "If the share doesn't exist, create it. Off by default.")
 
-	g_nfsCreateUpdateEnums["security"] = []string{"sys","krb5","krb5i","krb5p"}
+	g_nfsCreateUpdateEnums["security"] = []string{"sys", "krb5", "krb5i", "krb5p"}
 
 	nfsListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 	nfsListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
@@ -113,9 +110,9 @@ func init() {
 	shareCmd.AddCommand(nfsCmd)
 }
 
-func createNfs(api core.Session, args []string) {
+func createNfs(api core.Session, args []string) error {
 	if api == nil {
-		return
+		return nil
 	}
 	defer api.Close()
 
@@ -128,39 +125,39 @@ func createNfs(api core.Session, args []string) {
 	case "share":
 		sharePath = spec
 	default:
-		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \""+spec+"\"")
-		return
+		return errors.New("Unrecognized nfs create spec \""+spec+"\"")
 	}
 
 	options, _ := GetCobraFlags(nfsCreateCmd, nil)
 
-	securityList, err := ValidateEnumArray(options.allFlags["security"], []string{"sys", "krb5", "krb5i", "krb5p"})
-	if err != nil {
-		log.Fatal(err)
-	}
+	options.usedFlags["path"] = sharePath
 
 	var builder strings.Builder
-	builder.WriteString("[{\"path\":")
-	core.WriteEncloseAndEscape(&builder, sharePath, "\"")
-	builder.WriteString(",")
+	builder.WriteString("[")
 
-	writeNfsCreateUpdateProperties(&builder, options, securityList)
+	if err := writeNfsCreateUpdateProperties(&builder, options); err != nil {
+		return err
+	}
 
-	builder.WriteString("}]")
+	builder.WriteString("]")
 
 	stmt := builder.String()
 	DebugString(stmt)
 
+	nfsCreateCmd.SilenceUsage = true
+
 	out, err := core.ApiCallString(api, "sharing.nfs.create", "10s", stmt)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	fmt.Println(string(out))
+
+	DebugString(string(out))
+	return nil
 }
 
-func updateNfs(api core.Session, args []string) {
+func updateNfs(api core.Session, args []string) error {
 	if api == nil {
-		return
+		return nil
 	}
 	defer api.Close()
 
@@ -176,26 +173,30 @@ func updateNfs(api core.Session, args []string) {
 	case "share":
 		sharePath = spec
 	default:
-		fmt.Fprintln(os.Stderr, "Unrecognized nfs update spec \""+spec+"\"")
-		return
+		return errors.New("Unrecognized nfs update spec \""+spec+"\"")
 	}
 
 	options, _ := GetCobraFlags(nfsUpdateCmd, nil)
-
-	securityList, err := ValidateEnumArray(options.allFlags["security"], []string{"sys", "krb5", "krb5i", "krb5p"})
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	shouldCreate := false
 
 	if idStr == "" {
 		var found bool
+		var err error
 		idStr, found, err = LookupNfsIdByPath(api, sharePath)
 		if err != nil {
-			log.Fatal(err)
+			nfsUpdateCmd.SilenceUsage = true
+			return err
 		}
-		shouldCreate = !found && core.IsValueTrue(options.allFlags, "create")
+		if !found {
+			if core.IsValueTrue(options.allFlags, "create") {
+				shouldCreate = true
+			} else {
+				nfsUpdateCmd.SilenceUsage = true
+				return errors.New("Could not find NFS share \""+sharePath+"\".\n"+
+					"Try passing -c to create a share if it doesn't exist.")
+			}
+		}
 	}
 
 	// now that we know whether to create or not, let's not pass this flag on to the API
@@ -203,19 +204,28 @@ func updateNfs(api core.Session, args []string) {
 	delete(options.allFlags, "create")
 
 	var builder strings.Builder
+	builder.WriteString("[")
+
 	if shouldCreate {
-		builder.WriteString("[{\"path\":")
-		core.WriteEncloseAndEscape(&builder, sharePath, "\"")
-		builder.WriteString(",")
+		options.usedFlags["path"] = sharePath
 	} else {
-		builder.WriteString("[")
+		// ideally, we'd examine the props we already retreived when inspecting the id (if we did), and only
+		// if there are changes to be made, would we do another update.
+		if len(options.usedFlags) == 0 {
+			DebugString("share does not require updating, exiting")
+			return nil
+		}
 		builder.WriteString(idStr)
-		builder.WriteString(",{")
+		builder.WriteString(",")
 	}
 
-	writeNfsCreateUpdateProperties(&builder, options, securityList)
+	if err := writeNfsCreateUpdateProperties(&builder, options); err != nil {
+		return err
+	}
 
-	builder.WriteString("}]")
+	nfsUpdateCmd.SilenceUsage = true
+
+	builder.WriteString("]")
 
 	stmt := builder.String()
 	DebugString(stmt)
@@ -227,46 +237,62 @@ func updateNfs(api core.Session, args []string) {
 		verb = "update"
 	}
 
-	out, err := core.ApiCallString(api, "sharing.nfs." + verb, "10s", stmt)
+	out, err := core.ApiCallString(api, "sharing.nfs."+verb, "10s", stmt)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	fmt.Println(string(out))
+
+	DebugString(string(out))
+	return nil
 }
 
-func writeNfsCreateUpdateProperties(builder *strings.Builder, options FlagMap, securityList []string) {
+func writeNfsCreateUpdateProperties(builder *strings.Builder, options FlagMap) error {
+	builder.WriteString("{")
+
 	nProps := 0
 	for propName, valueStr := range options.usedFlags {
+		var securityListStr string
 		if propName == "security" {
-			continue
+			securityList, err := ValidateEnumArray(valueStr, []string{"sys", "krb5", "krb5i", "krb5p"})
+			if err != nil {
+				return err
+			}
+			var sb strings.Builder
+			sb.WriteString("[")
+			core.WriteJsonStringArray(&sb, securityList)
+			sb.WriteString("]")
+			securityListStr = sb.String()
 		}
 		if propName == "read-only" {
 			propName = "ro"
 		}
+
 		if nProps > 0 {
 			builder.WriteString(",")
 		}
 		core.WriteEncloseAndEscape(builder, propName, "\"")
 		builder.WriteString(":")
-		if t, exists := options.allTypes[propName]; exists && t == "string" {
-			core.WriteEncloseAndEscape(builder, valueStr, "\"")
+
+		if securityListStr != "" {
+			builder.WriteString(securityListStr)
 		} else {
-			builder.WriteString(valueStr)
+			if t, exists := options.allTypes[propName]; exists && t == "string" {
+				core.WriteEncloseAndEscape(builder, valueStr, "\"")
+			} else {
+				builder.WriteString(valueStr)
+			}
 		}
 		nProps++
 	}
 
-	if nProps > 0 {
-		builder.WriteString(",")
-	}
-	builder.WriteString("\"security\":[")
-	core.WriteJsonStringArray(builder, securityList)
-	builder.WriteString("]")
+	builder.WriteString("}")
+
+	return nil
 }
 
-func deleteNfs(api core.Session, args []string) {
+func deleteNfs(api core.Session, args []string) error {
 	if api == nil {
-		return
+		return nil
 	}
 	defer api.Close()
 
@@ -282,51 +308,54 @@ func deleteNfs(api core.Session, args []string) {
 	case "share":
 		sharePath = spec
 	default:
-		fmt.Fprintln(os.Stderr, "Unrecognized nfs create spec \""+spec+"\"")
-		return
+		return errors.New("Unrecognized nfs create spec \""+spec+"\"")
 	}
+
+	nfsDeleteCmd.SilenceUsage = true
 
 	var err error
 	if idStr == "" {
 		var found bool
 		idStr, found, err = LookupNfsIdByPath(api, sharePath)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		if !found {
-			fmt.Fprintln(os.Stderr, "Could not find nfs share for path \""+sharePath+"\"")
-			return
+			return errors.New("Could not find nfs share for path \""+sharePath+"\"")
 		}
 	}
 
 	out, err := core.ApiCallString(api, "sharing.nfs.delete", "10s", "["+idStr+"]")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	fmt.Println(string(out))
+
+	DebugString(string(out))
+	return nil
 }
 
-func listNfs(api core.Session, args []string) {
+func listNfs(api core.Session, args []string) error {
 	if api == nil {
-		return
+		return nil
 	}
 	defer api.Close()
 
 	options, err := GetCobraFlags(nfsListCmd, g_nfsListEnums)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return
+		return err
 	}
 
 	format, err := GetTableFormat(options.allFlags)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+
+	nfsListCmd.SilenceUsage = true
 
 	properties := EnumerateOutputProperties(options.allFlags)
 	idTypes, err := getNfsListTypes(args)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	extras := typeRetrieveParams{
@@ -337,8 +366,7 @@ func listNfs(api core.Session, args []string) {
 
 	shares, err := QueryApi(api, args, idTypes, properties, extras)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "API error:", err)
-		return
+		return err
 	}
 
 	LowerCaseValuesFromEnums(shares, g_nfsCreateUpdateEnums)
@@ -354,6 +382,7 @@ func listNfs(api core.Session, args []string) {
 	}
 
 	core.PrintTableDataList(format, "shares", columnsList, shares)
+	return nil
 }
 
 func getNfsListTypes(args []string) ([]string, error) {

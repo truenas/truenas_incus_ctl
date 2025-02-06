@@ -4,8 +4,6 @@ import (
 	//"encoding/json"
 	"errors"
 	"fmt"
-	"log"
-	"os"
 	"strconv"
 	"strings"
 	"truenas/admin-tool/core"
@@ -82,28 +80,28 @@ var g_datasetCreateUpdateEnums map[string][]string
 var g_datasetListEnums map[string][]string
 
 func init() {
-	datasetCreateCmd.Run = func(cmd *cobra.Command, args []string) {
-		createOrUpdateDataset(cmd, ValidateAndLogin(), args)
+	datasetCreateCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return createOrUpdateDataset(cmd, ValidateAndLogin(), args)
 	}
 
-	datasetUpdateCmd.Run = func(cmd *cobra.Command, args []string) {
-		createOrUpdateDataset(cmd, ValidateAndLogin(), args)
+	datasetUpdateCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return createOrUpdateDataset(cmd, ValidateAndLogin(), args)
 	}
 
-	datasetDeleteCmd.Run = func(cmd *cobra.Command, args []string) {
-		deleteDataset(ValidateAndLogin(), args)
+	datasetDeleteCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return deleteDataset(ValidateAndLogin(), args)
 	}
 
-	datasetListCmd.Run = func(cmd *cobra.Command, args []string) {
-		listDataset(ValidateAndLogin(), args)
+	datasetListCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return listDataset(ValidateAndLogin(), args)
 	}
 
-	datasetPromoteCmd.Run = func(cmd *cobra.Command, args []string) {
-		promoteDataset(ValidateAndLogin(), args)
+	datasetPromoteCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return promoteDataset(ValidateAndLogin(), args)
 	}
 
-	datasetRenameCmd.Run = func(cmd *cobra.Command, args []string) {
-		renameDataset(ValidateAndLogin(), args)
+	datasetRenameCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return renameDataset(ValidateAndLogin(), args)
 	}
 
 	createUpdateCmds := []*cobra.Command{datasetCreateCmd, datasetUpdateCmd}
@@ -121,14 +119,14 @@ func init() {
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "exec", []string{"inherit", "on", "off"}))
 		cmd.Flags().String("managedby", "truenas-admin", "Manager of this dataset, must not be empty")
 		cmd.Flags().Bool("quota", false, "")
-		//cmd.Flags().Bool("quota_warning", false, "")
-		//cmd.Flags().Bool("quota_critical", false, "")
+		//cmd.Flags().Bool("quota-warning", false, "")
+		//cmd.Flags().Bool("quota-critical", false, "")
 		cmd.Flags().Bool("refquota", false, "")
-		//cmd.Flags().Bool("refquota_warning", false, "")
-		//cmd.Flags().Bool("refquota_critical", false, "")
+		//cmd.Flags().Bool("refquota-warning", false, "")
+		//cmd.Flags().Bool("refquota-critical", false, "")
 		cmd.Flags().Bool("reservation", false, "")
 		cmd.Flags().Bool("refreservation", false, "")
-		cmd.Flags().Bool("special_small_block_size", false, "")
+		cmd.Flags().Bool("special-small-block-size", false, "")
 		cmd.Flags().Bool("copies", false, "")
 		cmd.Flags().Bool("deduplication", false, "")
 		cmd.Flags().Bool("checksum", false, "")
@@ -137,14 +135,14 @@ func init() {
 		cmd.Flags().Bool("casesensitivity", false, "")
 		cmd.Flags().Bool("aclmode", false, "")
 		cmd.Flags().Bool("acltype", false, "")
-		cmd.Flags().Bool("share_type", false, "")
-		cmd.Flags().BoolP("create_parents", "p", false, "Creates all the non-existing parent datasets")
-		cmd.Flags().String("user_props", "", "Sets the specified properties")
+		cmd.Flags().Bool("share-type", false, "")
+		cmd.Flags().BoolP("create-parents", "p", false, "Creates all the non-existing parent datasets")
+		cmd.Flags().String("user-props", "", "Sets the specified properties")
 		cmd.Flags().StringP("option", "o", "", "Specify property=value,...")
 		cmd.Flags().Int64P("volume", "V", 0, "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size.")
 		cmd.Flags().StringP("volblocksize", "b", "512", "Volume block size (\"512\",\"1K\",\"2K\",\"4K\",\"8K\",\"16K\",\"32K\",\"64K\",\"128K\")")
 		cmd.Flags().BoolP("sparse", "s", false, "Creates a sparse volume with no reservation")
-		cmd.Flags().Bool("force_size", false, "")
+		cmd.Flags().Bool("force-size", false, "")
 		cmd.Flags().String("snapdev", "hidden", "Controls whether the volume snapshot devices are hidden or visible "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "snapdev", []string{"hidden", "visible"}))
 	}
@@ -180,15 +178,15 @@ func init() {
 	rootCmd.AddCommand(datasetCmd)
 }
 
-func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) {
+func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
-		return
+		return nil
 	}
 	defer api.Close()
 
 	cmdType := strings.Split(cmd.Use, " ")[0]
 	if cmdType != "create" && cmdType != "update" {
-		log.Fatal(errors.New("cmdType was not create or update"))
+		return errors.New("cmdType was not create or update")
 	}
 
 	nameEsc := core.EncloseAndEscape(args[0], "\"")
@@ -211,8 +209,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 
 	options, err := GetCobraFlags(cmd, g_datasetCreateUpdateEnums)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return
+		return err
 	}
 
 	for propName, valueStr := range options.usedFlags {
@@ -223,9 +220,9 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		case "user_props":
 			userPropsStr = valueStr
 		case "option":
-			paramsKV, err := convertParamsStrToFlatKVArray(valueStr)
+			paramsKV, err := convertParamsStrToFlatKVArray(valueStr, g_datasetCreateUpdateEnums)
 			if err != nil {
-				log.Fatal(err)
+				return err
 			}
 			for j := 0; j < len(paramsKV); j += 2 {
 				if nProps > 0 {
@@ -264,9 +261,9 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	}
 
 	if userPropsStr != "" {
-		paramsKV, err := convertParamsStrToFlatKVArray(userPropsStr)
+		paramsKV, err := convertParamsStrToFlatKVArray(userPropsStr, g_datasetCreateUpdateEnums)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		if nProps > 0 {
 			builder.WriteString(",")
@@ -290,54 +287,60 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	params := builder.String()
 	DebugString(params)
 
+	cmd.SilenceUsage = true
+
 	out, err := core.ApiCallString(api, "pool.dataset."+cmdType, "10s", params)
-	_ = out
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "API error:", err)
-		return
+		return err
 	}
+
+	DebugString(string(out))
+	return nil
 }
 
-func deleteDataset(api core.Session, args []string) {
+func deleteDataset(api core.Session, args []string) error {
 	if api == nil {
-		return
+		return nil
 	}
 	defer api.Close()
+
+	datasetDeleteCmd.SilenceUsage = true
 
 	options, _ := GetCobraFlags(datasetDeleteCmd, nil)
 	params := BuildNameStrAndPropertiesJson(options, args[0])
 	DebugString(params)
 
 	out, err := core.ApiCallString(api, "pool.dataset.delete", "10s", params)
-	fmt.Println(string(out))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "API error:", err)
-		return
+		return err
 	}
+
+	DebugString(string(out))
+	return nil
 }
 
-func listDataset(api core.Session, args []string) {
+func listDataset(api core.Session, args []string) error {
 	if api == nil {
-		return
+		return nil
 	}
 	defer api.Close()
 
 	options, err := GetCobraFlags(datasetListCmd, g_datasetListEnums)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return
+		return err
 	}
 
 	format, err := GetTableFormat(options.allFlags)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return
+		return err
 	}
+
+	datasetListCmd.SilenceUsage = true
 
 	properties := EnumerateOutputProperties(options.allFlags)
 	idTypes, err := getDatasetListTypes(args)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// `zfs list` will "recurse" if no names are specified.
@@ -349,8 +352,7 @@ func listDataset(api core.Session, args []string) {
 
 	datasets, err := QueryApi(api, args, idTypes, properties, extras)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "API error:", err)
-		return
+		return err
 	}
 
 	LowerCaseValuesFromEnums(datasets, g_datasetCreateUpdateEnums)
@@ -366,29 +368,34 @@ func listDataset(api core.Session, args []string) {
 	}
 
 	core.PrintTableDataList(format, "datasets", columnsList, datasets)
+	return nil
 }
 
-func promoteDataset(api core.Session, args []string) {
+func promoteDataset(api core.Session, args []string) error {
 	if api == nil {
-		return
+		return nil
 	}
 	defer api.Close()
+
+	datasetPromoteCmd.SilenceUsage = true
 
 	nameEsc := core.EncloseAndEscape(args[0], "\"")
 	out, err := core.ApiCallString(api, "pool.dataset.promote", "10s", "["+nameEsc+"]")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "API error:", err)
-		return
+		return err
 	}
 
-	os.Stdout.WriteString(string(out))
+	DebugString(string(out))
+	return nil
 }
 
-func renameDataset(api core.Session, args []string) {
+func renameDataset(api core.Session, args []string) error {
 	if api == nil {
-		return
+		return nil
 	}
 	defer api.Close()
+
+	datasetRenameCmd.SilenceUsage = true
 
 	options, _ := GetCobraFlags(datasetRenameCmd, nil)
 
@@ -405,21 +412,21 @@ func renameDataset(api core.Session, args []string) {
 	stmt := builder.String()
 	DebugString(stmt)
 
-	_, err := core.ApiCallString(api, "zfs.dataset.rename", "10s", stmt)
+	out, err := core.ApiCallString(api, "zfs.dataset.rename", "10s", stmt)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "API error:", err)
-		return
+		return err
 	}
+	DebugString(string(out))
 
 	// no point updating the share if we're renaming a snapshot.
 	if core.IsValueTrue(options.allFlags, "update_shares") && !strings.Contains(source, "@") {
 		idStr, found, err := LookupNfsIdByPath(api, "/mnt/"+source)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		if !found {
 			fmt.Println("INFO: this dataset did not appear to have a share")
-			return
+			return nil
 		}
 
 		var nfsBuilder strings.Builder
@@ -432,14 +439,17 @@ func renameDataset(api core.Session, args []string) {
 		nfsStmt := nfsBuilder.String()
 		DebugString(nfsStmt)
 
-		_, err = core.ApiCallString(api, "sharing.nfs.update", "10s", nfsStmt)
+		out, err = core.ApiCallString(api, "sharing.nfs.update", "10s", nfsStmt)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
+		DebugString(string(out))
 	}
+
+	return err
 }
 
-func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
+func convertParamsStrToFlatKVArray(fullParamsStr string, enumsList map[string][]string) ([]string, error) {
 	var array []string
 	if fullParamsStr == "" {
 		return nil, nil
@@ -447,8 +457,8 @@ func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
 
 	array = make([]string, 0, 0)
 	params := strings.Split(fullParamsStr, ",")
-	for j := 0; j < len(params); j++ {
-		parts := strings.Split(params[j], "=")
+	for _, parameter := range params {
+		parts := strings.Split(parameter, "=")
 		var value string
 		if len(parts) == 0 {
 			continue
@@ -461,6 +471,20 @@ func convertParamsStrToFlatKVArray(fullParamsStr string) ([]string, error) {
 		if value != "true" && value != "false" && value != "null" {
 			_, errNotNumber := strconv.Atoi(value)
 			if errNotNumber != nil {
+				if acceptable, exists := enumsList[parts[0]]; exists {
+					found := false
+					valueUpper := strings.ToUpper(value)
+					for i := 0; i < len(acceptable); i++ {
+						if valueUpper == strings.ToUpper(acceptable[i]) {
+							found = true
+							break
+						}
+					}
+					if !found {
+						return nil, fmt.Errorf("Could not find value %s in enum %s %v", value, parts[0], acceptable)
+					}
+					value = valueUpper
+				}
 				value = core.EncloseAndEscape(value, "\"")
 			}
 		}

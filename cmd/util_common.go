@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	//"os"
 	//"log"
 	"slices"
@@ -276,15 +277,28 @@ func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []strin
 		if shouldSkip {
 			continue
 		}
+
+		var elem interface{}
 		if valueMap, ok := value.(map[string]interface{}); ok {
 			if actualValue, ok := valueMap["parsed"]; ok {
-				dstMap[key] = actualValue
+				elem = actualValue
 			} else if actualValue, ok := valueMap["value"]; ok {
-				dstMap[key] = actualValue
+				elem = actualValue
+			} else if actualValue, ok := valueMap["rawvalue"]; ok {
+				elem = actualValue
+			} else {
+				continue
 			}
 		} else {
-			dstMap[key] = value
+			elem = value
 		}
+
+		if elemFloat, ok := elem.(float64); ok {
+			if elemFloat == math.Floor(elemFloat) {
+				elem = int64(elemFloat)
+			}
+		}
+		dstMap[key] = elem
 	}
 }
 

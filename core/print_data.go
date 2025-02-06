@@ -60,7 +60,7 @@ func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{},
 				if valueStr, ok := value.(string); ok {
 					line.WriteString(valueStr)
 				} else {
-					line.WriteString(fmt.Sprintf("%v", value))
+					line.WriteString(fmt.Sprint(value))
 				}
 				hits++
 			} else {
@@ -102,7 +102,7 @@ func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}) {
 			} else if valueStr, ok := value.(string); ok {
 				WriteEncloseAndEscape(builder, valueStr, "\"")
 			} else {
-				builder.WriteString(fmt.Sprintf("%v", value))
+				builder.WriteString(fmt.Sprint(value))
 			}
 		}
 		builder.WriteString("}")
@@ -133,7 +133,7 @@ func WriteListTable(builder *strings.Builder, propsArray []map[string]interface{
 				if valueStr, ok := value.(string); ok {
 					str = valueStr
 				} else {
-					str = fmt.Sprintf("%v", value)
+					str = fmt.Sprint(value)
 				}
 			}
 			allStrings = append(allStrings, str)
