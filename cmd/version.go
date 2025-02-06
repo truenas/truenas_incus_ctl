@@ -14,8 +14,9 @@ import (
 0.1.4 added `--update-shares` to `dataset rename`
 0.1.5 removed inspect command
 0.1.6 `share nfs delete“ now supports <id|dataset|path>
+0.1.7 `share nfs update now supports `--create`
 */
-const VERSION = "0.1.6"
+const VERSION = "0.1.7"
 
 var versionCmd = &cobra.Command{
 	Use: "version",
