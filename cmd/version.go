@@ -15,8 +15,9 @@ import (
 0.1.5 removed inspect command
 0.1.6 `share nfs delete“ now supports <id|dataset|path>
 0.1.7 `share nfs update now supports `--create`
+0.1.8 most methods now return non-zero on error
 */
-const VERSION = "0.1.7"
+const VERSION = "0.1.8"
 
 var versionCmd = &cobra.Command{
 	Use: "version",
