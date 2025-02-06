@@ -96,7 +96,7 @@ func init() {
 
 	nfsUpdateCmd.Flags().BoolP("create", "c", false, "If the share doesn't exist, create it. Off by default.")
 
-	g_nfsCreateUpdateEnums["security"] = []string{"sys","krb5","krb5i","krb5p"}
+	g_nfsCreateUpdateEnums["security"] = []string{"sys", "krb5", "krb5i", "krb5p"}
 
 	nfsListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 	nfsListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
@@ -192,7 +192,7 @@ func updateNfs(api core.Session, args []string) {
 			if core.IsValueTrue(options.allFlags, "create") {
 				shouldCreate = true
 			} else {
-				fmt.Fprintln(os.Stderr, "Could not find NFS share \""+sharePath+"\".\n" +
+				fmt.Fprintln(os.Stderr, "Could not find NFS share \""+sharePath+"\".\n"+
 					"Try passing -c to create a share if it doesn't exist.")
 				return
 			}
@@ -229,7 +229,7 @@ func updateNfs(api core.Session, args []string) {
 		verb = "update"
 	}
 
-	out, err := core.ApiCallString(api, "sharing.nfs." + verb, "10s", stmt)
+	out, err := core.ApiCallString(api, "sharing.nfs."+verb, "10s", stmt)
 	if err != nil {
 		log.Fatal(err)
 	}
