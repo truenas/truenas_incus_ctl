@@ -180,11 +180,13 @@ func updateNfs(api core.Session, args []string) error {
 	options, _ := GetCobraFlags(nfsUpdateCmd, nil)
 
 	shouldCreate := false
+	var existingProperties map[string]string
 
 	if idStr == "" {
 		var found bool
 		var err error
-		idStr, found, err = LookupNfsIdByPath(api, sharePath)
+		existingProperties = make(map[string]string)
+		idStr, found, err = LookupNfsIdByPath(api, sharePath, existingProperties)
 		if err != nil {
 			nfsUpdateCmd.SilenceUsage = true
 			return err
@@ -213,9 +215,26 @@ func updateNfs(api core.Session, args []string) error {
 	} else {
 		// ideally, we'd examine the props we already retreived when inspecting the id (if we did), and only
 		// if there are changes to be made, would we do another update.
-		if len(options.usedFlags) == 0 {
-			DebugString("share does not require updating, exiting")
-			return nil
+		if existingProperties != nil {
+			anyDiffs := false
+			for key, value := range options.usedFlags {
+				if elem, exists := existingProperties[key]; exists {
+					var flag string
+					if options.allTypes[key] == "string" {
+						flag = "\"" + value + "\""
+					} else {
+						flag = value
+					}
+					if elem != flag {
+						anyDiffs = true
+						break
+					}
+				}
+			}
+			if !anyDiffs {
+				DebugString("share does not require updating, exiting")
+				return nil
+			}
 		}
 		builder.WriteString(idStr)
 		builder.WriteString(",")
@@ -318,7 +337,7 @@ func deleteNfs(api core.Session, args []string) error {
 	var err error
 	if idStr == "" {
 		var found bool
-		idStr, found, err = LookupNfsIdByPath(api, sharePath)
+		idStr, found, err = LookupNfsIdByPath(api, sharePath, nil)
 		if err != nil {
 			return err
 		}
