@@ -329,8 +329,8 @@ func LookupNfsIdByPath(api core.Session, sharePath string, optShareProperties ma
 
 	extras := typeRetrieveParams{
 		retrieveType:       "nfs",
-		shouldGetAllProps:  false,
-		shouldGetUserProps: false,
+		shouldGetAllProps:  optShareProperties != nil,
+		shouldGetUserProps: optShareProperties != nil,
 		shouldRecurse:      false,
 	}
 
@@ -359,7 +359,7 @@ func LookupNfsIdByPath(api core.Session, sharePath string, optShareProperties ma
 	if optShareProperties != nil {
 		for key, value := range shares[0] {
 			if valueStr, ok := value.(string); ok {
-				optShareProperties[key] = "\"" + valueStr + "\""
+				optShareProperties[key] = core.EncloseAndEscape(valueStr, "\"")
 			} else {
 				optShareProperties[key] = fmt.Sprint(value)
 			}

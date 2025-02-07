@@ -221,7 +221,7 @@ func updateNfs(api core.Session, args []string) error {
 				if elem, exists := existingProperties[key]; exists {
 					var flag string
 					if options.allTypes[key] == "string" {
-						flag = "\"" + value + "\""
+						flag = core.EncloseAndEscape(value, "\"")
 					} else {
 						flag = value
 					}
@@ -229,6 +229,10 @@ func updateNfs(api core.Session, args []string) error {
 						anyDiffs = true
 						break
 					}
+				} else {
+					// this flag is not an existing property of this nfs share
+					anyDiffs = true
+					break
 				}
 			}
 			if !anyDiffs {

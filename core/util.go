@@ -48,9 +48,14 @@ func WriteEncloseAndEscape(builder *strings.Builder, original string, ends strin
 		if idx != 0 {
 			builder.WriteString(original[off:off+idx])
 		}
-		builder.WriteString("\\")
+		if off+idx == 0 || original[off+idx-1] != '\\' {
+			builder.WriteString("\\")
+		}
 		builder.WriteString(ends)
 		off += idx + 1
+	}
+	if original[len(original)-1] == '\\' {
+		builder.WriteString("\\")
 	}
 	builder.WriteString(ends)
 }
