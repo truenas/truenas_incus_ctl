@@ -288,6 +288,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	} else {
 		builder.WriteString("\"type\":\"FILESYSTEM\"")
 	}
+	nProps++
 
 	if !wroteCreateParents && shouldCreateParents {
 		builder.WriteString(",\"create_ancestors\":true")
@@ -298,10 +299,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		if err != nil {
 			return err
 		}
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
-		builder.WriteString("user_properties:[")
+		builder.WriteString(",user_properties:[")
 		for j := 0; j < len(paramsKV); j += 2 {
 			if j > 0 {
 				builder.WriteString(",")
