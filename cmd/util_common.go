@@ -219,7 +219,11 @@ func writeKeyAndArray(builder *strings.Builder, key string, array []string) {
 		if j > 0 {
 			builder.WriteString(",")
 		}
-		core.WriteEncloseAndEscape(builder, elem, "\"")
+		if _, errNotNumber := strconv.Atoi(elem); errNotNumber == nil && key == "id" {
+			builder.WriteString(elem)
+		} else {
+			core.WriteEncloseAndEscape(builder, elem, "\"")
+		}
 	}
 	builder.WriteString("]]")
 }
@@ -243,10 +247,10 @@ func writeRecursivePathFilter(builder *strings.Builder, key, path string, isStar
 	core.WriteEncloseAndEscape(builder, key, "\"")
 	if isStartsWith {
 		builder.WriteString(",\"^\",")
-		core.WriteEncloseAndEscape(builder, path, "\"")
+		core.WriteEncloseAndEscape(builder, path + "/", "\"")
 	} else {
 		builder.WriteString(",\"=\",")
-		core.WriteEncloseAndEscape(builder, path + "/", "\"")
+		core.WriteEncloseAndEscape(builder, path, "\"")
 	}
 	builder.WriteString("]")
 }

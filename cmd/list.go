@@ -57,10 +57,10 @@ func doList(api core.Session, args []string) error {
 		return errors.New("At least one object type must be provided")
 	}
 
+	typesToQuery := make(map[string]bool)
 	shouldQueryFs := false
 	shouldQueryVol := false
 	_, shouldExclude := options.usedFlags["types"]
-	typesToQuery := make(map[string]bool)
 
 	for i := 0; i < len(givenTypes); i++ {
 		t := givenTypes[i]
@@ -104,25 +104,28 @@ func doList(api core.Session, args []string) error {
 		qEntryTypesMap[qType] = append(qEntryTypesMap[qType], obj)
 	}
 
-	listCmd.SilenceUsage = true
-
 	// NOTE: datasets are added to snapshots before pools are added to datasets
 	if _, exists := typesToQuery["snapshot"]; exists || !shouldExclude {
-		fmt.Println("adding to snapshot")
-		addEntriesFromInto(qEntriesMap, qEntryTypesMap, "dataset", "snapshot")
-		addEntriesFromInto(qEntriesMap, qEntryTypesMap, "pool", "snapshot")
+		addEntriesFromInto(qEntriesMap, qEntryTypesMap, "dataset", "snapshot", len(args) == 0)
+		addEntriesFromInto(qEntriesMap, qEntryTypesMap, "pool", "snapshot", len(args) == 0)
 	} else if shouldExclude {
 		delete(qEntriesMap, "snapshot")
 		delete(qEntryTypesMap, "snapshot")
 	}
+
 	if _, exists := typesToQuery["dataset"]; exists || !shouldExclude {
-		fmt.Println("adding to dataset")
-		addEntriesFromInto(qEntriesMap, qEntryTypesMap, "pool", "dataset")
+		addEntriesFromInto(qEntriesMap, qEntryTypesMap, "pool", "dataset", len(args) == 0)
 	} else if shouldExclude {
 		delete(qEntriesMap, "dataset")
 		delete(qEntryTypesMap, "dataset")
 	}
-	if _, exists := typesToQuery["nfs"]; !exists && shouldExclude {
+
+	if _, exists := typesToQuery["nfs"]; exists || !shouldExclude {
+		if len(args) == 0 {
+			qEntriesMap["nfs"] = make([]string, 0)
+			qEntryTypesMap["nfs"] = make([]string, 0)
+		}
+	} else {
 		delete(qEntriesMap, "nfs")
 		delete(qEntryTypesMap, "nfs")
 	}
@@ -130,48 +133,120 @@ func doList(api core.Session, args []string) error {
 	delete(qEntriesMap, "pool")
 	delete(qEntryTypesMap, "pool")
 
+	tDs := qEntryTypesMap["dataset"]
+	for i, _ := range tDs {
+		if tDs[i] == "dataset" {
+			tDs[i] = "name"
+		}
+	}
+
+	tSnaps := qEntryTypesMap["snapshot"]
+	for i, _ := range tSnaps {
+		if tSnaps[i] == "snapshot" {
+			tSnaps[i] = "name"
+		} else if tSnaps[i] == "snapshot_only" {
+			tSnaps[i] = "snapshot"
+		}
+	}
+
+	tShares := qEntryTypesMap["nfs"]
+	for i, _ := range tShares {
+		if tShares[i] == "share" {
+			tShares[i] = "path"
+		}
+	}
+
 	DebugString(fmt.Sprint(typesToQuery))
 	DebugString(fmt.Sprint(qEntriesMap))
 	DebugString(fmt.Sprint(qEntryTypesMap))
-	if true {
-		return nil
+
+	if len(qEntriesMap) == 0 {
+		return errors.New("No types could be queried. Try passing a different value to the --types option.")
 	}
 
-	shouldQueryFs = shouldQueryFs
-	shouldQueryVol = shouldQueryVol
+	listCmd.SilenceUsage = true
+
+	if properties != nil {
+		hasType := false
+		for _, p := range properties {
+			if p == "type" {
+				hasType = true
+				break
+			}
+		}
+		if !hasType {
+			properties = append(properties, "type")
+		}
+	}
 
 	extras := typeRetrieveParams{
-		retrieveType:       "nfs",
+		retrieveType:       "",
 		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
-		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+		shouldRecurse:      true, //len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	var idTypes []string
-	results, err := QueryApi(api, args, idTypes, properties, extras)
-	if err != nil {
-		return err
-	}
+	allResults := make([]map[string]interface{}, 0)
 
-	LowerCaseValuesFromEnums(results, g_datasetCreateUpdateEnums)
-	//LowerCaseValuesFromEnums(results, g_snapshotCreateUpdateEnums)
-	LowerCaseValuesFromEnums(results, g_nfsCreateUpdateEnums)
+	for qType, qValues := range qEntriesMap {
+		extras.retrieveType = qType
+		results, err := QueryApi(api, qValues, qEntryTypesMap[qType], properties, extras)
+		if err != nil {
+			return err
+		}
+
+		if qType == "dataset" {
+			filterType := ""
+			if shouldQueryFs && !shouldQueryVol {
+				filterType = "FILESYSTEM"
+			} else if !shouldQueryFs && shouldQueryVol {
+				filterType = "VOLUME"
+			}
+			if filterType != "" {
+				fResults := make([]map[string]interface{}, 0)
+				for _, r := range results {
+					if t, exists := r["type"]; exists && t == filterType {
+						fResults = append(fResults, r)
+					}
+				}
+				results = fResults
+			}
+		} else if qType == "nfs" {
+			for _, r := range results {
+				r["type"] = "nfs"
+			}
+		}
+
+		allResults = append(allResults, results...)
+	}
 
 	required := []string{"id"}
+	if _, exists := qEntriesMap["nfs"]; exists {
+		required = append(required, "path")
+	}
+
+	LowerCaseValuesFromEnums(allResults, g_datasetCreateUpdateEnums)
+	//LowerCaseValuesFromEnums(allResults, g_snapshotCreateUpdateEnums)
+	LowerCaseValuesFromEnums(allResults, g_nfsCreateUpdateEnums)
+
 	var columnsList []string
 	if extras.shouldGetAllProps {
-		columnsList = GetUsedPropertyColumns(results, required)
+		columnsList = GetUsedPropertyColumns(allResults, required)
 	} else if len(properties) > 0 {
 		columnsList = properties
 	} else {
 		columnsList = required
 	}
 
-	core.PrintTableDataList(format, "all", columnsList, results)
+	core.PrintTableDataList(format, "all", columnsList, allResults)
 	return nil
 }
 
-func addEntriesFromInto(allValues, allTypes map[string][]string, srcKey, dstKey string) {
+func addEntriesFromInto(allValues, allTypes map[string][]string, srcKey, dstKey string, shouldCreateAnyway bool) {
+	if _, exists := allValues[dstKey]; !exists && shouldCreateAnyway {
+		allValues[dstKey] = make([]string, 0)
+		allTypes[dstKey] = make([]string, 0)
+	}
 	if values, exists := allValues[srcKey]; exists {
 		if _, exists := allValues[dstKey]; !exists {
 			allValues[dstKey] = make([]string, 0)
