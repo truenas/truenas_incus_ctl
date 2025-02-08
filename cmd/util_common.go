@@ -133,6 +133,10 @@ func QueryApi(api core.Session, entries, entryTypes, propsList []string, params 
 		dict := make(map[string]interface{})
 		dict["id"] = primary
 
+		if params.retrieveType == "nfs" {
+			dict["type"] = "NFS"
+		}
+
 		insertProperties(dict, resultsList[i], []string{"id", "children", "properties"})
 		if innerProps, exists := resultsList[i]["properties"]; exists {
 			if innerPropsMap, ok := innerProps.(map[string]interface{}); ok {
