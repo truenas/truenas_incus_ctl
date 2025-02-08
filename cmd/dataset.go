@@ -432,7 +432,7 @@ func renameDataset(api core.Session, args []string) error {
 
 	// no point updating the share if we're renaming a snapshot.
 	if core.IsValueTrue(options.allFlags, "update_shares") && !strings.Contains(source, "@") {
-		idStr, found, err := LookupNfsIdByPath(api, "/mnt/"+source)
+		idStr, found, err := LookupNfsIdByPath(api, "/mnt/"+source, nil)
 		if err != nil {
 			return err
 		}

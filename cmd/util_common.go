@@ -322,15 +322,15 @@ func LowerCaseValuesFromEnums(results []map[string]interface{}, enums map[string
 	}
 }
 
-func LookupNfsIdByPath(api core.Session, sharePath string) (string, bool, error) {
+func LookupNfsIdByPath(api core.Session, sharePath string, optShareProperties map[string]string) (string, bool, error) {
 	if sharePath == "" {
 		return "", false, errors.New("Error looking up NFS share: no path was specified")
 	}
 
 	extras := typeRetrieveParams{
 		retrieveType:       "nfs",
-		shouldGetAllProps:  false,
-		shouldGetUserProps: false,
+		shouldGetAllProps:  optShareProperties != nil,
+		shouldGetUserProps: optShareProperties != nil,
 		shouldRecurse:      false,
 	}
 
@@ -354,6 +354,16 @@ func LookupNfsIdByPath(api core.Session, sharePath string) (string, bool, error)
 	}
 	if idStr == "" {
 		return "", false, nil
+	}
+
+	if optShareProperties != nil {
+		for key, value := range shares[0] {
+			if valueStr, ok := value.(string); ok {
+				optShareProperties[key] = core.EncloseAndEscape(valueStr, "\"")
+			} else {
+				optShareProperties[key] = fmt.Sprint(value)
+			}
+		}
 	}
 
 	return idStr, true, nil
