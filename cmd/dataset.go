@@ -107,44 +107,53 @@ func init() {
 	createUpdateCmds := []*cobra.Command{datasetCreateCmd, datasetUpdateCmd}
 	for _, cmd := range createUpdateCmds {
 		cmd.Flags().String("comments", "", "User defined comments")
+		cmd.Flags().String("managedby", "truenas-admin", "Manager of this dataset, must not be empty")
+		cmd.Flags().String("recordsize", "", "")
 		cmd.Flags().String("sync", "standard", "Controls the behavior of synchronous requests "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "sync", []string{"standard", "always", "disabled"}))
 		cmd.Flags().String("snapdir", "hidden", "Controls whether the .zfs directory is disabled, hidden or visible "+
-			AddFlagsEnum(&g_datasetCreateUpdateEnums, "snapdir", []string{"hidden", "visible"}))
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "snapdir", []string{"disabled", "hidden", "visible"}))
 		cmd.Flags().String("compression", "off", "Controls the compression algorithm used for this dataset\n"+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "compression", g_compressionEnum[:]))
 		cmd.Flags().String("atime", "inherit", "Controls whether the access time for files is updated when they are read "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "atime", []string{"inherit", "on", "off"}))
 		cmd.Flags().String("exec", "inherit", "Controls whether processes can be executed from within this file system "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "exec", []string{"inherit", "on", "off"}))
-		cmd.Flags().String("managedby", "truenas-admin", "Manager of this dataset, must not be empty")
 		cmd.Flags().String("acltype", "inherit", "Controls whether ACLs are enabled and if so what type of ACL to use "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "acltype", []string{"inherit", "posix", "nfsv4", "off"}))
 		cmd.Flags().String("aclmode", "inherit", "Controls how an ACL is modified during chmod(2) and how inherited ACEs are modified by the file creation mode "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "aclmode", []string{"inherit", "passthrough", "restricted", "discard"}))
+		cmd.Flags().String("deduplication", "inherit", ""+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "deduplication", []string{"inherit", "on", "verify", "off"}))
+		cmd.Flags().String("checksum", "inherit", ""+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "checksum", []string{"inherit", "on", "off", "fletcher2", "fletcher4", "sha256", "sha512", "skein", "edonr", "blake3"}))
+		cmd.Flags().String("readonly", "inherit", ""+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "readonly", []string{"inherit", "on", "off"}))
+		cmd.Flags().String("casesensitivity", "inherit", ""+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "casesensitivity", []string{"inherit", "sensitive", "insensitive"}))
+		cmd.Flags().String("share-type", "inherit", ""+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "share_type", []string{"inherit", "generic", "multiprotocol", "nfs", "smb", "apps"}))
+		//cmd.Flags().String("encryption-options", "", "")
+		//cmd.Flags().Bool("encryption", false, "")
+		//cmd.Flags().Bool("inherit-encryption", true, "")
 		//cmd.Flags().String("xattr", "inherit", "Controls whether extended attributes are enabled for this file system "+
 		//	AddFlagsEnum(&g_datasetCreateUpdateEnums, "xattr", []string{"inherit", "on", "off", "dir"})) // 'sa' should be "on"
-		cmd.Flags().Bool("quota", false, "")
-		//cmd.Flags().Bool("quota-warning", false, "")
-		//cmd.Flags().Bool("quota-critical", false, "")
-		cmd.Flags().Bool("refquota", false, "")
-		//cmd.Flags().Bool("refquota-warning", false, "")
-		//cmd.Flags().Bool("refquota-critical", false, "")
-		cmd.Flags().Bool("reservation", false, "")
-		cmd.Flags().Bool("refreservation", false, "")
-		cmd.Flags().Bool("special-small-block-size", false, "")
-		cmd.Flags().Bool("copies", false, "")
-		cmd.Flags().Bool("deduplication", false, "")
-		cmd.Flags().Bool("checksum", false, "")
-		cmd.Flags().Bool("readonly", false, "")
-		cmd.Flags().Bool("recordsize", false, "")
-		cmd.Flags().Bool("casesensitivity", false, "")
-		cmd.Flags().Bool("share-type", false, "")
+		cmd.Flags().Int64("quota", 0, "")
+		cmd.Flags().Int("quota-warning", 0, "Percentage (1-100 or 0)")
+		cmd.Flags().Int("quota-critical", 0, "Percentage (1-100 or 0)")
+		cmd.Flags().Int64("refquota", 0, "")
+		cmd.Flags().Int("refquota-warning", 0, "Percentage (1-100 or 0)")
+		cmd.Flags().Int("refquota-critical", 0, "Percentage (1-100 or 0)")
+		cmd.Flags().Int64("reservation", 0, "")
+		cmd.Flags().Int64("refreservation", 0, "")
+		cmd.Flags().Int64("special-small-block-size", 0, "")
+		cmd.Flags().Int("copies", 0, "")
 		cmd.Flags().BoolP("create-parents", "p", false, "Creates all the non-existing parent datasets")
 		cmd.Flags().String("user-props", "", "Sets the specified properties")
 		cmd.Flags().StringP("option", "o", "", "Specify property=value,...")
 		cmd.Flags().Int64P("volume", "V", 0, "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size.")
-		cmd.Flags().StringP("volblocksize", "b", "512", "Volume block size (\"512\",\"1K\",\"2K\",\"4K\",\"8K\",\"16K\",\"32K\",\"64K\",\"128K\")")
+		cmd.Flags().StringP("volblocksize", "b", "512", "Volume block size "+
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "volblocksize", []string{"512","1K","2K","4K","8K","16K","32K","64K","128K"}))
 		cmd.Flags().BoolP("sparse", "s", false, "Creates a sparse volume with no reservation")
 		cmd.Flags().Bool("force-size", false, "")
 		cmd.Flags().String("snapdev", "hidden", "Controls whether the volume snapshot devices are hidden or visible "+
@@ -216,11 +225,21 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		return err
 	}
 
+	volSize := int64(0)
+
 	for propName, valueStr := range options.usedFlags {
 		isProp := false
 		switch propName {
 		case "create_parents":
 			shouldCreateParents = valueStr == "true"
+		case "volume":
+			volSize, err = strconv.ParseInt(valueStr, 10, 64)
+			if err != nil {
+				return errors.New("Failed to parse volume size: " + err.Error())
+			}
+			if volSize < 0 {
+				return errors.New("Failed to parse volume size: negative numbers are not permitted")
+			}
 		case "user_props":
 			userPropsStr = valueStr
 		case "option":
@@ -238,7 +257,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 				value := paramsKV[j+1]
 				builder.WriteString(value)
 				nProps++
-				if paramsKV[j] == "\"create_ancestors\"" {
+				if key == "\"create_ancestors\"" {
 					wroteCreateParents = true
 				}
 			}
@@ -260,6 +279,17 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		}
 	}
 
+	if nProps > 0 {
+		builder.WriteString(",")
+	}
+	if volSize != 0 {
+		builder.WriteString("\"type\":\"VOLUME\",\"volsize\":")
+		builder.WriteString(fmt.Sprint(volSize))
+	} else {
+		builder.WriteString("\"type\":\"FILESYSTEM\"")
+	}
+	nProps++
+
 	if !wroteCreateParents && shouldCreateParents {
 		builder.WriteString(",\"create_ancestors\":true")
 	}
@@ -269,10 +299,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		if err != nil {
 			return err
 		}
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
-		builder.WriteString("user_properties:[")
+		builder.WriteString(",user_properties:[")
 		for j := 0; j < len(paramsKV); j += 2 {
 			if j > 0 {
 				builder.WriteString(",")
