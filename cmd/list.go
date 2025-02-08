@@ -166,7 +166,10 @@ func doList(api core.Session, args []string) error {
 
 	listCmd.SilenceUsage = true
 
+	var outProps []string
 	if properties != nil {
+		outProps = make([]string, len(properties))
+		copy(outProps, properties)
 		hasType := false
 		for _, p := range properties {
 			if p == "type" {
@@ -233,7 +236,7 @@ func doList(api core.Session, args []string) error {
 	if extras.shouldGetAllProps {
 		columnsList = GetUsedPropertyColumns(allResults, required)
 	} else if len(properties) > 0 {
-		columnsList = properties
+		columnsList = outProps
 	} else {
 		columnsList = required
 	}
