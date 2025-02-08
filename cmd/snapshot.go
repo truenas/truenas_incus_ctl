@@ -50,6 +50,13 @@ var snapshotListCmd = &cobra.Command{
 	Aliases: []string{"ls"},
 }
 
+var snapshotRenameCmd = &cobra.Command{
+	Use:   "rename [flags]... <old dataset>@<old snapshot> <new snapshot>",
+	Short: "Rename a ZFS snapshot",
+	Args:    cobra.ExactArgs(2),
+	Aliases: []string{"mv"},
+}
+
 var snapshotRollbackCmd = &cobra.Command{
 	Use:   "rollback",
 	Short: "Rollback to a given snapshot",
@@ -73,6 +80,10 @@ func init() {
 
 	snapshotListCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return listSnapshot(ValidateAndLogin(), args)
+	}
+
+	snapshotRenameCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return renameSnapshot(ValidateAndLogin(), args)
 	}
 
 	snapshotRollbackCmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -107,6 +118,7 @@ func init() {
 	snapshotCmd.AddCommand(snapshotCreateCmd)
 	snapshotCmd.AddCommand(snapshotDeleteCmd)
 	snapshotCmd.AddCommand(snapshotListCmd)
+	snapshotCmd.AddCommand(snapshotRenameCmd)
 	snapshotCmd.AddCommand(snapshotRollbackCmd)
 	rootCmd.AddCommand(snapshotCmd)
 }
@@ -229,6 +241,37 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	cmd.SilenceUsage = true
 
 	out, err := core.ApiCallString(api, "zfs.snapshot."+cmdType, "10s", params)
+	if err != nil {
+		return err
+	}
+
+	DebugString(string(out))
+	return nil
+}
+
+func renameSnapshot(api core.Session, args []string) error {
+	if api == nil {
+		return nil
+	}
+	defer api.Close()
+
+	snapshotRenameCmd.SilenceUsage = true
+
+	source := args[0]
+	dest := args[1]
+
+	var builder strings.Builder
+	builder.WriteString("[")
+	core.WriteEncloseAndEscape(&builder, source, "\"")
+	builder.WriteString(",{\"new_name\":")
+	core.WriteEncloseAndEscape(&builder, dest, "\"")
+
+	builder.WriteString("}]")
+	stmt := builder.String()
+	DebugString(stmt)
+
+	// For now, snapshot rename uses the same API as dataset rename. This may change in the future.
+	out, err := core.ApiCallString(api, "zfs.dataset.rename", "10s", stmt)
 	if err != nil {
 		return err
 	}
