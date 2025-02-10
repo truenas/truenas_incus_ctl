@@ -43,11 +43,11 @@ func (s *RealSession) Login() error {
 	return nil
 }
 
-func (s *RealSession) Call(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
+func (s *RealSession) CallRaw(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
 	return s.client.Call(method, timeoutStr, params)
 }
 
-func (s *RealSession) CallString(method string, timeoutStr string, paramsStr string) (json.RawMessage, error) {
+func (s *RealSession) CallStringRaw(method string, timeoutStr string, paramsStr string) (json.RawMessage, error) {
 	return s.client.CallString(method, timeoutStr, paramsStr)
 }
 

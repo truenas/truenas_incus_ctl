@@ -2,10 +2,40 @@ package core;
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
+func PrintTableDataList(format string, jsonName string, columnsList []string, data []map[string]interface{}) {
+	var table strings.Builder
+	f := strings.ToLower(format)
+
+	switch f {
+	case "compact":
+		WriteListCsv(&table, data, columnsList, false)
+	case "csv":
+		WriteListCsv(&table, data, columnsList, true)
+	case "json":
+		table.WriteString("{")
+		WriteEncloseAndEscape(&table, jsonName, "\"")
+		table.WriteString(":")
+		WriteJson(&table, data)
+		table.WriteString("}\n")
+	case "table":
+		WriteListTable(&table, data, columnsList, true)
+	default:
+		fmt.Fprintln(os.Stderr, "Unrecognised table format", f)
+		return
+	}
+
+	os.Stdout.WriteString(table.String())
+}
+
 func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
+	if len(propsArray) == 0 || len(columnsList) == 0 {
+		return
+	}
+
 	isFirstCol := true
 	if useHeaders {
 		for _, c := range(columnsList) {
@@ -17,58 +47,46 @@ func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{},
 		}
 		builder.WriteString("\n")
 	}
+	var line strings.Builder
 	for i := 0; i < len(propsArray); i++ {
+		line.Reset()
 		isFirstCol = true
+		hits := 0
 		for _, c := range(columnsList) {
 			if !isFirstCol {
-				builder.WriteString("\t")
+				line.WriteString("\t")
 			}
 			if value, ok := propsArray[i][c]; ok {
 				if valueStr, ok := value.(string); ok {
-					builder.WriteString(valueStr)
+					line.WriteString(valueStr)
 				} else {
-					builder.WriteString(fmt.Sprintf("%v", value))
+					line.WriteString(fmt.Sprint(value))
 				}
+				hits++
 			} else {
-				builder.WriteString("-")
+				line.WriteString("-")
 			}
 			isFirstCol = false
 		}
-		builder.WriteString("\n")
-	}
-}
-
-func WriteInspectCsv(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
-	for _, c := range(columnsList) {
-		if useHeaders {
-			builder.WriteString(c)
-			builder.WriteString("\t")
+		if hits > 0 {
+			builder.WriteString(line.String())
+			builder.WriteString("\n")
 		}
-		for j := 0; j < len(propsArray); j++ {
-			if j > 0 {
-				builder.WriteString("\t")
-			}
-			if value, ok := propsArray[j][c]; ok {
-				if valueStr, ok := value.(string); ok {
-					builder.WriteString(valueStr)
-				} else {
-					builder.WriteString(fmt.Sprintf("%v", value))
-				}
-			} else {
-				builder.WriteString("-")
-			}
-		}
-		builder.WriteString("\n")
 	}
 }
 
 func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}) {
+	if len(propsArray) == 0 {
+		builder.WriteString("{}")
+		return
+	}
+
 	builder.WriteString("{")
 	for i, p := range(propsArray) {
 		if i > 0 {
 			builder.WriteString(",")
 		}
-		name, _ := EncloseWith(p["name"].(string), "\"")
+		name := EncloseAndEscape(p["name"].(string), "\"")
 		builder.WriteString(name)
 		builder.WriteString(":{\"name\":")
 		builder.WriteString(name)
@@ -77,14 +95,14 @@ func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}) {
 				continue
 			}
 			builder.WriteString(",")
-			_ = WriteEncloseWith(builder, key, "\"")
+			WriteEncloseAndEscape(builder, key, "\"")
 			builder.WriteString(":")
 			if value == nil {
 				builder.WriteString("null")
 			} else if valueStr, ok := value.(string); ok {
-				_ = WriteEncloseWith(builder, valueStr, "\"")
+				WriteEncloseAndEscape(builder, valueStr, "\"")
 			} else {
-				builder.WriteString(fmt.Sprintf("%v", value))
+				builder.WriteString(fmt.Sprint(value))
 			}
 		}
 		builder.WriteString("}")
@@ -93,6 +111,10 @@ func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}) {
 }
 
 func WriteListTable(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
+	if len(propsArray) == 0 || len(columnsList) == 0 {
+		return
+	}
+
 	headerInc := 0
 	if useHeaders {
 		headerInc = 1
@@ -111,7 +133,7 @@ func WriteListTable(builder *strings.Builder, propsArray []map[string]interface{
 				if valueStr, ok := value.(string); ok {
 					str = valueStr
 				} else {
-					str = fmt.Sprintf("%v", value)
+					str = fmt.Sprint(value)
 				}
 			}
 			allStrings = append(allStrings, str)
@@ -119,37 +141,6 @@ func WriteListTable(builder *strings.Builder, propsArray []map[string]interface{
 	}
 
 	writeTable(builder, allStrings, headerInc + len(propsArray), len(columnsList), useHeaders)
-}
-
-func WriteInspectTable(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
-	headerInc := 0
-	if useHeaders {
-		headerInc = 1
-	}
-
-	nRows := len(columnsList)
-	nCols := headerInc + len(propsArray)
-	nStrings := nRows * nCols
-	allStrings := make([]string, nStrings, nStrings)
-
-	for i := 0; i < len(columnsList); i++ {
-		if useHeaders {
-			allStrings[i * nCols] = columnsList[i]
-		}
-		for j := 0; j < len(propsArray); j++ {
-			var str string
-			if value, ok := propsArray[j][columnsList[i]]; ok {
-				if valueStr, ok := value.(string); ok {
-					str = valueStr
-				} else {
-					str = fmt.Sprintf("%v", value)
-				}
-			}
-			allStrings[i * nCols + (headerInc + j)] = str
-		}
-	}
-
-	writeTable(builder, allStrings, len(columnsList), headerInc + len(propsArray), false)
 }
 
 func writeTable(builder *strings.Builder, allStrings []string, nRows int, nCols int, useHeaders bool) {
@@ -177,41 +168,52 @@ func writeTable(builder *strings.Builder, allStrings []string, nRows int, nCols 
 		bufHyphens[i] = 0x2d; // -
 	}
 
-	isFirstCol := true
+	var line strings.Builder
 	for i := 0; i < nRows; i++ {
-		isFirstCol = true
+		line.Reset()
+		hits := 0
+		isFirstCol := true
 		for j := 0; j < nCols; j++ {
 			idx := i * nCols + j
 			sp := columnWidths[j] - len(allStrings[idx])
 
 			if !isFirstCol {
-				builder.WriteString("|")
+				line.WriteString("|")
 			}
-			builder.WriteString(" ")
+			line.WriteString(" ")
 			if useHeaders && i == 0 {
-				builder.Write(bufSpaces[0:sp/2])
-				builder.WriteString(allStrings[idx])
-				builder.Write(bufSpaces[0:sp/2+(sp%2)])
+				line.Write(bufSpaces[0:sp/2])
+				line.WriteString(allStrings[idx])
+				line.Write(bufSpaces[0:sp/2+(sp%2)])
+				hits++
 			} else {
-				builder.WriteString(allStrings[idx])
-				builder.Write(bufSpaces[0:sp])
+				line.WriteString(allStrings[idx])
+				line.Write(bufSpaces[0:sp])
+				if allStrings[idx] != "" {
+					hits++
+				}
 			}
-			builder.WriteString(" ")
+			line.WriteString(" ")
 
 			isFirstCol = false
 		}
 		if useHeaders && i == 0 {
-			builder.WriteString("\n")
+			line.WriteString("\n")
 
 			isFirstCol = true
 			for i := 0; i < nCols; i++ {
 				if !isFirstCol {
-					builder.WriteString("+")
+					line.WriteString("+")
 				}
-				builder.Write(bufHyphens[0:columnWidths[i]+2])
+				line.Write(bufHyphens[0:columnWidths[i]+2])
 				isFirstCol = false
 			}
+			// ensures the column headers and separating line are not culled
+			hits++
 		}
-		builder.WriteString("\n")
+		if hits > 0 {
+			builder.WriteString(line.String())
+			builder.WriteString("\n")
+		}
 	}
 }
