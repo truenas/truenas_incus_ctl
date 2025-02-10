@@ -279,19 +279,32 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		}
 	}
 
-	if nProps > 0 {
-		builder.WriteString(",")
-	}
-	if volSize != 0 {
-		builder.WriteString("\"type\":\"VOLUME\",\"volsize\":")
+	if cmdType == "create" {
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		if volSize != 0 {
+			builder.WriteString("\"type\":\"VOLUME\",\"volsize\":")
+			builder.WriteString(fmt.Sprint(volSize))
+		} else {
+			builder.WriteString("\"type\":\"FILESYSTEM\"")
+		}
+		nProps++
+	} else if volSize != 0 {
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		builder.WriteString("\"volsize\":")
 		builder.WriteString(fmt.Sprint(volSize))
-	} else {
-		builder.WriteString("\"type\":\"FILESYSTEM\"")
+		nProps++
 	}
-	nProps++
 
 	if !wroteCreateParents && shouldCreateParents {
-		builder.WriteString(",\"create_ancestors\":true")
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		builder.WriteString("\"create_ancestors\":true")
+		nProps++
 	}
 
 	if userPropsStr != "" {
@@ -299,7 +312,10 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		if err != nil {
 			return err
 		}
-		builder.WriteString(",user_properties:[")
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		builder.WriteString("user_properties:[")
 		for j := 0; j < len(paramsKV); j += 2 {
 			if j > 0 {
 				builder.WriteString(",")
