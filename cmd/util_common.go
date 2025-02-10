@@ -14,7 +14,7 @@ import (
 )
 
 type typeRetrieveParams struct {
-	retrieveType       string
+	valueOrder         []string
 	shouldGetAllProps  bool
 	shouldGetUserProps bool
 	shouldRecurse      bool
@@ -45,9 +45,9 @@ func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) string {
 	return builder.String()
 }
 
-func QueryApi(api core.Session, entries, entryTypes, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
+func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
 	var endpoint string
-	switch params.retrieveType {
+	switch endpointType {
 	case "dataset":
 		endpoint = "pool.dataset.query"
 	case "snapshot":
@@ -55,7 +55,7 @@ func QueryApi(api core.Session, entries, entryTypes, propsList []string, params 
 	case "nfs":
 		endpoint = "sharing.nfs.query"
 	default:
-		return nil, fmt.Errorf("Unrecognised retrieve format \"" + params.retrieveType + "\"")
+		return nil, fmt.Errorf("Unrecognised retrieve format \"" + endpointType + "\"")
 	}
 
 	if len(entryTypes) != len(entries) {
@@ -66,7 +66,7 @@ func QueryApi(api core.Session, entries, entryTypes, propsList []string, params 
 	builder.WriteString("[")
 
 	writeQueryFilter(&builder, entries, entryTypes, params)
-	if params.retrieveType != "nfs" {
+	if endpointType != "nfs" {
 		builder.WriteString(", ")
 		writeQueryOptions(&builder, propsList, params)
 	}
@@ -133,19 +133,19 @@ func QueryApi(api core.Session, entries, entryTypes, propsList []string, params 
 		dict := make(map[string]interface{})
 		dict["id"] = primary
 
-		if params.retrieveType == "nfs" {
+		if endpointType == "nfs" {
 			dict["type"] = "NFS"
 		}
 
-		insertProperties(dict, resultsList[i], []string{"id", "children", "properties"})
+		insertProperties(dict, resultsList[i], []string{"id", "children", "properties"}, params.valueOrder)
 		if innerProps, exists := resultsList[i]["properties"]; exists {
 			if innerPropsMap, ok := innerProps.(map[string]interface{}); ok {
-				insertProperties(dict, innerPropsMap, nil)
+				insertProperties(dict, innerPropsMap, nil, params.valueOrder)
 			}
 		}
 		if innerProps, exists := resultsList[i]["user_properties"]; exists {
 			if innerPropsMap, ok := innerProps.(map[string]interface{}); ok {
-				insertProperties(dict, innerPropsMap, nil)
+				insertProperties(dict, innerPropsMap, nil, params.valueOrder)
 			}
 		}
 
@@ -278,7 +278,7 @@ func writeQueryOptions(builder *strings.Builder, propsList []string, params type
 	builder.WriteString(" }} ")
 }
 
-func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []string) {
+func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []string, valueOrder []string) {
 	for key, value := range srcMap {
 		if _, exists := dstMap[key]; exists {
 			continue
@@ -296,26 +296,33 @@ func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []strin
 
 		var elem interface{}
 		if valueMap, ok := value.(map[string]interface{}); ok {
-			if actualValue, ok := valueMap["parsed"]; ok {
-				elem = actualValue
-			} else if actualValue, ok := valueMap["value"]; ok {
-				elem = actualValue
-			} else if actualValue, ok := valueMap["rawvalue"]; ok {
-				elem = actualValue
-			} else {
-				continue
+			for _, t := range valueOrder {
+				if actualValue, ok := valueMap[t]; ok {
+					elem = actualValue
+					break
+				}
 			}
+
 		} else {
 			elem = value
 		}
 
-		if elemFloat, ok := elem.(float64); ok {
-			if elemFloat == math.Floor(elemFloat) {
-				elem = int64(elemFloat)
+		if elem != nil {
+			if elemFloat, ok := elem.(float64); ok {
+				if elemFloat == math.Floor(elemFloat) {
+					elem = int64(elemFloat)
+				}
 			}
+			dstMap[key] = elem
 		}
-		dstMap[key] = elem
 	}
+}
+
+func BuildValueOrder(parseable bool) []string {
+	if parseable {
+		return []string{"value", "rawvalue", "parsed"}
+	}
+	return []string{"parsed", "value", "rawvalue"}
 }
 
 func LowerCaseValuesFromEnums(results []map[string]interface{}, enums map[string][]string) {
@@ -336,13 +343,13 @@ func LookupNfsIdByPath(api core.Session, sharePath string, optShareProperties ma
 	}
 
 	extras := typeRetrieveParams{
-		retrieveType:       "nfs",
+		valueOrder:         BuildValueOrder(false),
 		shouldGetAllProps:  optShareProperties != nil,
 		shouldGetUserProps: optShareProperties != nil,
 		shouldRecurse:      false,
 	}
 
-	shares, err := QueryApi(api, []string{sharePath}, []string{"path"}, []string{"id", "path"}, extras)
+	shares, err := QueryApi(api, "nfs", []string{sharePath}, []string{"path"}, []string{"id", "path"}, extras)
 	if err != nil {
 		return "", false, errors.New("API error: " + fmt.Sprint(err))
 	}

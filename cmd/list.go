@@ -29,6 +29,7 @@ func init() {
 	listCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
 		AddFlagsEnum(&g_genericListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	listCmd.Flags().StringP("output", "o", "", "Output property list")
+	listCmd.Flags().BoolP("parseable", "p", false, "")
 	listCmd.Flags().BoolP("all", "a", false, "Output all properties")
 
 	rootCmd.AddCommand(listCmd)
@@ -183,7 +184,7 @@ func doList(api core.Session, args []string) error {
 	}
 
 	extras := typeRetrieveParams{
-		retrieveType:       "",
+		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
 		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
 		shouldRecurse:      true, //len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
@@ -192,8 +193,7 @@ func doList(api core.Session, args []string) error {
 	allResults := make([]map[string]interface{}, 0)
 
 	for qType, qValues := range qEntriesMap {
-		extras.retrieveType = qType
-		results, err := QueryApi(api, qValues, qEntryTypesMap[qType], properties, extras)
+		results, err := QueryApi(api, qType, qValues, qEntryTypesMap[qType], properties, extras)
 		if err != nil {
 			return err
 		}

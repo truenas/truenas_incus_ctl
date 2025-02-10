@@ -173,8 +173,8 @@ func init() {
 	datasetListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
 		AddFlagsEnum(&g_datasetListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	datasetListCmd.Flags().StringP("output", "o", "", "Output property list")
+	datasetListCmd.Flags().BoolP("parseable", "p", false, "")
 	datasetListCmd.Flags().BoolP("all", "a", false, "Output all properties")
-	//datasetListCmd.Flags().BoolP("parseable", "p", false, "")
 	datasetListCmd.Flags().StringP("source", "s", "default", "A comma-separated list of sources to display.\n"+
 		"Those properties coming from a source other than those in this list are ignored.\n"+
 		"Each source must be one of the following: local, default, inherited, temporary, received, or none.\n"+
@@ -279,19 +279,32 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		}
 	}
 
-	if nProps > 0 {
-		builder.WriteString(",")
-	}
-	if volSize != 0 {
-		builder.WriteString("\"type\":\"VOLUME\",\"volsize\":")
+	if cmdType == "create" {
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		if volSize != 0 {
+			builder.WriteString("\"type\":\"VOLUME\",\"volsize\":")
+			builder.WriteString(fmt.Sprint(volSize))
+		} else {
+			builder.WriteString("\"type\":\"FILESYSTEM\"")
+		}
+		nProps++
+	} else if volSize != 0 {
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		builder.WriteString("\"volsize\":")
 		builder.WriteString(fmt.Sprint(volSize))
-	} else {
-		builder.WriteString("\"type\":\"FILESYSTEM\"")
+		nProps++
 	}
-	nProps++
 
 	if !wroteCreateParents && shouldCreateParents {
-		builder.WriteString(",\"create_ancestors\":true")
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		builder.WriteString("\"create_ancestors\":true")
+		nProps++
 	}
 
 	if userPropsStr != "" {
@@ -299,7 +312,10 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		if err != nil {
 			return err
 		}
-		builder.WriteString(",user_properties:[")
+		if nProps > 0 {
+			builder.WriteString(",")
+		}
+		builder.WriteString("user_properties:[")
 		for j := 0; j < len(paramsKV); j += 2 {
 			if j > 0 {
 				builder.WriteString(",")
@@ -376,7 +392,7 @@ func listDataset(api core.Session, args []string) error {
 
 	// `zfs list` will "recurse" if no names are specified.
 	extras := typeRetrieveParams{
-		retrieveType:       "dataset",
+		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
 		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: core.IsValueTrue(options.allFlags, "user_properties"),
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
@@ -389,7 +405,7 @@ func listDataset(api core.Session, args []string) error {
 		}
 	}
 
-	datasets, err := QueryApi(api, args, idTypes, properties, extras)
+	datasets, err := QueryApi(api, "dataset", args, idTypes, properties, extras)
 	if err != nil {
 		return err
 	}
