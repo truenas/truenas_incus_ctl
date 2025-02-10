@@ -100,6 +100,7 @@ func init() {
 	nfsListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
 		AddFlagsEnum(&g_nfsListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	nfsListCmd.Flags().StringP("output", "o", "", "Output property list")
+	nfsListCmd.Flags().BoolP("parseable", "p", false, "")
 	nfsListCmd.Flags().BoolP("all", "a", false, "Output all properties")
 
 	nfsCmd.AddCommand(nfsCreateCmd)
@@ -384,13 +385,13 @@ func listNfs(api core.Session, args []string) error {
 	}
 
 	extras := typeRetrieveParams{
-		retrieveType:       "nfs",
+		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
 		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	shares, err := QueryApi(api, args, idTypes, properties, extras)
+	shares, err := QueryApi(api, "nfs", args, idTypes, properties, extras)
 	if err != nil {
 		return err
 	}
