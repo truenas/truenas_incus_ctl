@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"strings"
-	"truenas/admin-tool/core"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -74,7 +73,7 @@ func ValidateFlagEnums(flags *map[string]string, cmdEnums map[string][]string) e
 				builder.WriteString("\": value \"")
 				builder.WriteString(value)
 				builder.WriteString("\" was not in the valid set (")
-				core.WriteJsonStringArray(&builder, enumList)
+				builder.WriteString(strings.Join(enumList, ", "))
 				builder.WriteString(")\n")
 			}
 		}
@@ -116,7 +115,7 @@ func ValidateEnumArray(content string, enumList []string) ([]string, error) {
 	}
 	if builder.Len() > 0 {
 		builder.WriteString("Acceptable values: (")
-		core.WriteJsonStringArray(&builder, enumList)
+		builder.WriteString(strings.Join(enumList, ", "))
 		builder.WriteString(")")
 		return output, errors.New(builder.String())
 	}
@@ -129,9 +128,10 @@ func AddFlagsEnum(enumMap *map[string][]string, flagName string, newEnum []strin
 		*enumMap = make(map[string][]string)
 	}
 	(*enumMap)[flagName] = newEnum
+
 	var builder strings.Builder
 	builder.WriteString("(")
-	core.WriteJsonStringArray(&builder, newEnum)
+	builder.WriteString(strings.Join(newEnum, ", "))
 	builder.WriteString(")")
 	return builder.String()
 }

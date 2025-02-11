@@ -132,23 +132,15 @@ func cloneSnapshot(api core.Session, args []string) error {
 
 	snapshotCloneCmd.SilenceUsage = true
 
-	var builder strings.Builder
+	outMap := make(map[string]interface{})
+	outMap["snapshot"] = args[0]
+	outMap["dataset_dst"] = args[1]
+	//outMap["dataset_properties"] = make(map[string]interface{})
 
-	builder.WriteString("[{")
-	builder.WriteString("\"snapshot\":")
-	core.WriteEncloseAndEscape(&builder, args[0], "\"")
-	builder.WriteString(",\"dataset_dst\":")
-	core.WriteEncloseAndEscape(&builder, args[1], "\"")
-	builder.WriteString(",\"dataset_properties\":{")
+	params := []interface{} {outMap}
+	DebugJson(params)
 
-	// write properties...
-
-	builder.WriteString("}}]")
-
-	stmt := builder.String()
-	DebugString(stmt)
-
-	out, err := core.ApiCallString(api, "zfs.snapshot.clone", "10s", stmt)
+	out, err := core.ApiCall(api, "zfs.snapshot.clone", "10s", params)
 	if err != nil {
 		return err
 	}
@@ -174,42 +166,31 @@ func createSnapshot(api core.Session, args []string) error {
 
 	snapshotIsolated := snapshot[datasetLen+1:]
 
-	var builder strings.Builder
-	builder.WriteString("[{")
+	outMap := make(map[string]interface{})
 
-	builder.WriteString("\"dataset\":")
-	core.WriteEncloseAndEscape(&builder, dataset, "\"")
-	builder.WriteString(",\"name\":")
-	core.WriteEncloseAndEscape(&builder, snapshotIsolated, "\"")
+	outMap["dataset"] = dataset
+	outMap["name"] = snapshotIsolated
 
-	// "naming_schema":""
+	MaybeCopyProperty(outMap, options.allFlags, "recursive")
+	MaybeCopyProperty(outMap, options.usedFlags, "suspend_vms")
+	MaybeCopyProperty(outMap, options.usedFlags, "vmware_sync")
 
-	builder.WriteString(",\"recursive\":")
-	builder.WriteString(options.allFlags["recursive"])
-	builder.WriteString(",\"exclude\":[")
-	builder.WriteString("]")
-
-	if value, exists := options.usedFlags["suspend_vms"]; exists {
-		builder.WriteString(",\"suspend_vms\":")
-		builder.WriteString(value)
-	}
-	if value, exists := options.usedFlags["vmware_sync"]; exists {
-		builder.WriteString(",\"vmware_sync\":")
-		builder.WriteString(value)
+	if excludeStr := options.allFlags["exclude"]; excludeStr != "" {
+		outMap["exclude"] = strings.Split(excludeStr, ",")
 	}
 
-	builder.WriteString(",\"properties\":{")
+	// TODO: naming_schema
 
-	// option ...
+	outProps := make(map[string]interface{})
+	_ = WriteKvArrayToMap(outProps, ConvertParamsStringToKvArray(options.allFlags["option"]), nil)
+	outMap["properties"] = outProps
 
-	builder.WriteString("}}]")
-
-	stmt := builder.String()
-	DebugString(stmt)
+	params := []interface{} {outMap}
+	DebugJson(params)
 
 	snapshotCreateCmd.SilenceUsage = true
 
-	out, err := core.ApiCallString(api, "zfs.snapshot.create", "10s", stmt)
+	out, err := core.ApiCall(api, "zfs.snapshot.create", "10s", params)
 	if err != nil {
 		return err
 	}
@@ -237,11 +218,11 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 
 	options, _ := GetCobraFlags(cmd, nil)
 	params := BuildNameStrAndPropertiesJson(options, snapshot)
-	DebugString(params)
+	DebugJson(params)
 
 	cmd.SilenceUsage = true
 
-	out, err := core.ApiCallString(api, "zfs.snapshot."+cmdType, "10s", params)
+	out, err := core.ApiCall(api, "zfs.snapshot."+cmdType, "10s", params)
 	if err != nil {
 		return err
 	}
@@ -261,18 +242,14 @@ func renameSnapshot(api core.Session, args []string) error {
 	source := args[0]
 	dest := args[1]
 
-	var builder strings.Builder
-	builder.WriteString("[")
-	core.WriteEncloseAndEscape(&builder, source, "\"")
-	builder.WriteString(",{\"new_name\":")
-	core.WriteEncloseAndEscape(&builder, dest, "\"")
+	outMap := make(map[string]interface{})
+	outMap["new_name"] = dest
 
-	builder.WriteString("}]")
-	stmt := builder.String()
-	DebugString(stmt)
+	params := []interface{} {source, outMap}
+	DebugJson(params)
 
 	// For now, snapshot rename uses the same API as dataset rename. This may change in the future.
-	out, err := core.ApiCallString(api, "zfs.dataset.rename", "10s", stmt)
+	out, err := core.ApiCall(api, "zfs.dataset.rename", "10s", params)
 	if err != nil {
 		return err
 	}

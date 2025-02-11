@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -77,5 +78,15 @@ func ValidateAndLogin() core.Session {
 func DebugString(str string) {
 	if g_debug {
 		fmt.Println(str)
+	}
+}
+
+func DebugJson(obj interface{}) {
+	if g_debug {
+		data, err := json.Marshal(obj)
+		if err != nil {
+			fmt.Println("%v (%v)", obj, err)
+		}
+		fmt.Println(string(data))
 	}
 }

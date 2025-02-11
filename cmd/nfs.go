@@ -2,7 +2,8 @@ package cmd
 
 import (
 	"errors"
-	"strings"
+	"fmt"
+	"strconv"
 	"truenas/admin-tool/core"
 
 	"github.com/spf13/cobra"
@@ -134,21 +135,17 @@ func createNfs(api core.Session, args []string) error {
 	options.usedFlags["path"] = sharePath
 	options.allTypes["path"] = "string"
 
-	var builder strings.Builder
-	builder.WriteString("[")
-
-	if err := writeNfsCreateUpdateProperties(&builder, options); err != nil {
+	propsMap, err := writeNfsCreateUpdateProperties(options)
+	if err != nil {
 		return err
 	}
 
-	builder.WriteString("]")
-
-	stmt := builder.String()
-	DebugString(stmt)
+	params := []interface{} {propsMap}
+	DebugJson(params)
 
 	nfsCreateCmd.SilenceUsage = true
 
-	out, err := core.ApiCallString(api, "sharing.nfs.create", "10s", stmt)
+	out, err := core.ApiCall(api, "sharing.nfs.create", "10s", params)
 	if err != nil {
 		return err
 	}
@@ -183,6 +180,7 @@ func updateNfs(api core.Session, args []string) error {
 	shouldCreate := false
 	var existingProperties map[string]string
 
+	id := -1
 	if idStr == "" {
 		var found bool
 		var err error
@@ -201,14 +199,20 @@ func updateNfs(api core.Session, args []string) error {
 					"Try passing -c to create a share if it doesn't exist.")
 			}
 		}
+		id, err = strconv.Atoi(idStr)
+		if err != nil {
+			return fmt.Errorf("Failed to parse NFS share id: %v", err)
+		}
+		if id < 0 {
+			return fmt.Errorf("NFS share id was not valid (%d)", id)
+		}
 	}
 
 	// now that we know whether to create or not, let's not pass this flag on to the API
 	delete(options.usedFlags, "create")
 	delete(options.allFlags, "create")
 
-	var builder strings.Builder
-	builder.WriteString("[")
+	params := make([]interface{}, 0)
 
 	if shouldCreate {
 		options.usedFlags["path"] = sharePath
@@ -220,13 +224,7 @@ func updateNfs(api core.Session, args []string) error {
 			anyDiffs := false
 			for key, value := range options.usedFlags {
 				if elem, exists := existingProperties[key]; exists {
-					var flag string
-					if options.allTypes[key] == "string" {
-						flag = core.EncloseAndEscape(value, "\"")
-					} else {
-						flag = value
-					}
-					if elem != flag {
+					if elem != value {
 						anyDiffs = true
 						break
 					}
@@ -241,20 +239,16 @@ func updateNfs(api core.Session, args []string) error {
 				return nil
 			}
 		}
-		builder.WriteString(idStr)
-		builder.WriteString(",")
+		params = append(params, id)
 	}
 
-	if err := writeNfsCreateUpdateProperties(&builder, options); err != nil {
+	propsMap, err := writeNfsCreateUpdateProperties(options)
+	if err != nil {
 		return err
 	}
 
-	nfsUpdateCmd.SilenceUsage = true
-
-	builder.WriteString("]")
-
-	stmt := builder.String()
-	DebugString(stmt)
+	params = append(params, propsMap)
+	DebugJson(params)
 
 	var verb string
 	if shouldCreate {
@@ -263,7 +257,9 @@ func updateNfs(api core.Session, args []string) error {
 		verb = "update"
 	}
 
-	out, err := core.ApiCallString(api, "sharing.nfs."+verb, "10s", stmt)
+	nfsUpdateCmd.SilenceUsage = true
+
+	out, err := core.ApiCall(api, "sharing.nfs."+verb, "10s", params)
 	if err != nil {
 		return err
 	}
@@ -272,48 +268,27 @@ func updateNfs(api core.Session, args []string) error {
 	return nil
 }
 
-func writeNfsCreateUpdateProperties(builder *strings.Builder, options FlagMap) error {
-	builder.WriteString("{")
-
-	nProps := 0
+func writeNfsCreateUpdateProperties(options FlagMap) (map[string]interface{}, error) {
+	outMap := make(map[string]interface{})
 	for propName, valueStr := range options.usedFlags {
-		var securityListStr string
 		if propName == "security" {
 			securityList, err := ValidateEnumArray(valueStr, []string{"sys", "krb5", "krb5i", "krb5p"})
 			if err != nil {
-				return err
+				return nil, err
 			}
-			var sb strings.Builder
-			sb.WriteString("[")
-			core.WriteJsonStringArray(&sb, securityList)
-			sb.WriteString("]")
-			securityListStr = sb.String()
-		}
-		if propName == "read-only" {
-			propName = "ro"
-		}
-
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
-		core.WriteEncloseAndEscape(builder, propName, "\"")
-		builder.WriteString(":")
-
-		if securityListStr != "" {
-			builder.WriteString(securityListStr)
+			outMap["security"] = securityList
 		} else {
-			if t, exists := options.allTypes[propName]; exists && t == "string" {
-				core.WriteEncloseAndEscape(builder, valueStr, "\"")
-			} else {
-				builder.WriteString(valueStr)
+			if propName == "read-only" {
+				propName = "ro"
 			}
+			value, err := ParseStringAndValidate(propName, valueStr, nil)
+			if err != nil {
+				return nil, err
+			}
+			outMap[propName] = value
 		}
-		nProps++
 	}
-
-	builder.WriteString("}")
-
-	return nil
+	return outMap, nil
 }
 
 func deleteNfs(api core.Session, args []string) error {
@@ -351,7 +326,18 @@ func deleteNfs(api core.Session, args []string) error {
 		}
 	}
 
-	out, err := core.ApiCallString(api, "sharing.nfs.delete", "10s", "["+idStr+"]")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return err
+	}
+	if id < 0 {
+		return fmt.Errorf("NFS share id was not valid (%d)", id)
+	}
+
+	params := []interface{} {id}
+	DebugJson(params)
+
+	out, err := core.ApiCall(api, "sharing.nfs.delete", "10s", params)
 	if err != nil {
 		return err
 	}
