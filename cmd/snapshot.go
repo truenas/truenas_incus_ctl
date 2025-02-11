@@ -106,6 +106,7 @@ func init() {
 	snapshotListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" " +
 			AddFlagsEnum(&g_snapshotListEnums, "format", []string{"csv","json","table","compact"}))
 	snapshotListCmd.Flags().StringP("output", "o", "", "Output property list")
+	snapshotListCmd.Flags().BoolP("parseable", "p", false, "")
 	snapshotListCmd.Flags().Bool("all", false, "")
 
 	snapshotRollbackCmd.Flags().BoolP("force", "f", false, "force unmount of any clones")
@@ -306,13 +307,13 @@ func listSnapshot(api core.Session, args []string) error {
 
 	// `zfs list` will "recurse" if no names are specified.
 	extras := typeRetrieveParams{
-		retrieveType:       "snapshot",
+		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
 		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	snapshots, err := QueryApi(api, args, idTypes, properties, extras)
+	snapshots, err := QueryApi(api, "snapshot", args, idTypes, properties, extras)
 	if err != nil {
 		return err
 	}
