@@ -85,7 +85,7 @@ func DebugJson(obj interface{}) {
 	if g_debug {
 		data, err := json.Marshal(obj)
 		if err != nil {
-			fmt.Println("%v (%v)", obj, err)
+			fmt.Printf("%v (%v)", obj, err)
 		}
 		fmt.Println(string(data))
 	}

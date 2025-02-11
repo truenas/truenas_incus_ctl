@@ -44,7 +44,7 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 	}
 
 	if len(entryTypes) != len(entries) {
-		return nil, fmt.Errorf("Length mismatch between entries and entry types:", len(entries), "!=", len(entryTypes))
+		return nil, errors.New(fmt.Sprint("Length mismatch between entries and entry types:", len(entries), "!=", len(entryTypes)))
 	}
 
 	query := []interface{} {makeQueryFilter(entries, entryTypes, params)}

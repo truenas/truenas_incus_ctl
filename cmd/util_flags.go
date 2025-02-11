@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -13,6 +14,13 @@ type FlagMap struct {
 	usedFlags map[string]string
 	allFlags  map[string]string
 	allTypes  map[string]string
+}
+
+func SetCobraFlag(cmd *cobra.Command, key string, rawValue string) error {
+	if err := cmd.Flags().Set(key, rawValue); err != nil {
+		return fmt.Errorf("error setting flag \"%s\" for command \"%s\": %v", key, cmd.Use, err)
+	}
+	return nil
 }
 
 func GetCobraFlags(cmd *cobra.Command, cmdEnums map[string][]string) (FlagMap, error) {
