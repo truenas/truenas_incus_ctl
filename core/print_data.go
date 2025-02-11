@@ -16,11 +16,7 @@ func PrintTableDataList(format string, jsonName string, columnsList []string, da
 	case "csv":
 		WriteListCsv(&table, data, columnsList, true)
 	case "json":
-		table.WriteString("{")
-		WriteEncloseAndEscape(&table, jsonName, "\"")
-		table.WriteString(":")
-		WriteJson(&table, data)
-		table.WriteString("}\n")
+		WriteJson(&table, data, columnsList, jsonName)
 	case "table":
 		WriteListTable(&table, data, columnsList, true)
 	default:
@@ -75,7 +71,12 @@ func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{},
 	}
 }
 
-func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}) {
+func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, jsonName string) {
+	/*
+	table.WriteString("{")
+	WriteEncloseAndEscape(&table, jsonName, "\"")
+	table.WriteString(":")
+
 	if len(propsArray) == 0 {
 		builder.WriteString("{}")
 		return
@@ -108,6 +109,7 @@ func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}) {
 		builder.WriteString("}")
 	}
 	builder.WriteString("}")
+	*/
 }
 
 func WriteListTable(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {

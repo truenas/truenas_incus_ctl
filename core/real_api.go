@@ -47,10 +47,6 @@ func (s *RealSession) CallRaw(method string, timeoutStr string, params interface
 	return s.client.Call(method, timeoutStr, params)
 }
 
-func (s *RealSession) CallStringRaw(method string, timeoutStr string, paramsStr string) (json.RawMessage, error) {
-	return s.client.CallString(method, timeoutStr, paramsStr)
-}
-
 func (s *RealSession) Close() error {
 	var err error
 	if s.client != nil {
