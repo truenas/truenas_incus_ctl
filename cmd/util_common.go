@@ -217,6 +217,9 @@ func makeQueryOptions(propsList []string, params typeRetrieveParams) map[string]
 		var nothing interface{}
 		options["properties"] = nothing
 	} else {
+		if propsList == nil {
+			propsList = make([]string, 0)
+		}
 		options["properties"] = propsList
 	}
 	options["user_properties"] = params.shouldGetUserProps

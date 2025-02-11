@@ -276,6 +276,9 @@ func writeNfsCreateUpdateProperties(options FlagMap) (map[string]interface{}, er
 			if err != nil {
 				return nil, err
 			}
+			if securityList == nil {
+				securityList = make([]string, 0)
+			}
 			outMap["security"] = securityList
 		} else {
 			if propName == "read-only" {
