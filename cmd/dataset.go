@@ -133,11 +133,11 @@ func init() {
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "casesensitivity", []string{"inherit", "sensitive", "insensitive"}))
 		cmd.Flags().String("share-type", "inherit", ""+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "share_type", []string{"inherit", "generic", "multiprotocol", "nfs", "smb", "apps"}))
+		//cmd.Flags().String("xattr", "inherit", "Controls whether extended attributes are enabled for this file system "+
+		//	AddFlagsEnum(&g_datasetCreateUpdateEnums, "xattr", []string{"inherit", "on", "off", "dir"})) // 'sa' should be "on"
 		//cmd.Flags().String("encryption-options", "", "")
 		//cmd.Flags().Bool("encryption", false, "")
 		//cmd.Flags().Bool("inherit-encryption", true, "")
-		//cmd.Flags().String("xattr", "inherit", "Controls whether extended attributes are enabled for this file system "+
-		//	AddFlagsEnum(&g_datasetCreateUpdateEnums, "xattr", []string{"inherit", "on", "off", "dir"})) // 'sa' should be "on"
 		cmd.Flags().Int64("quota", 0, "")
 		cmd.Flags().Int("quota-warning", 0, "Percentage (1-100 or 0)")
 		cmd.Flags().Int("quota-critical", 0, "Percentage (1-100 or 0)")
@@ -170,7 +170,7 @@ func init() {
 	datasetListCmd.Flags().BoolP("user-properties", "u", false, "Include user-properties")
 	datasetListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 	datasetListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
-	datasetListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
+	datasetListCmd.Flags().String("format", "table", "Output table format "+
 		AddFlagsEnum(&g_datasetListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	datasetListCmd.Flags().StringP("output", "o", "", "Output property list")
 	datasetListCmd.Flags().BoolP("parseable", "p", false, "")
@@ -202,36 +202,28 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		return errors.New("cmdType was not create or update")
 	}
 
-	nameEsc := core.EncloseAndEscape(args[0], "\"")
-	nProps := 0
+	params := make([]interface{}, 0)
+	outMap := make(map[string]interface{})
 
-	var builder strings.Builder
 	if cmdType == "create" {
-		builder.WriteString("[{\"name\":")
-		builder.WriteString(nameEsc)
-		nProps++
+		outMap["name"] = args[0]
 	} else {
-		builder.WriteString("[")
-		builder.WriteString(nameEsc)
-		builder.WriteString(",{")
+		params = append(params, args[0])
 	}
-
-	shouldCreateParents := false
-	wroteCreateParents := false
-	var userPropsStr string
 
 	options, err := GetCobraFlags(cmd, g_datasetCreateUpdateEnums)
 	if err != nil {
 		return err
 	}
 
-	volSize := int64(0)
+	var volSize int64
+	var userPropsStr string
 
 	for propName, valueStr := range options.usedFlags {
 		isProp := false
 		switch propName {
 		case "create_parents":
-			shouldCreateParents = valueStr == "true"
+			outMap["create_ancestors"] = true
 		case "volume":
 			volSize, err = strconv.ParseInt(valueStr, 10, 64)
 			if err != nil {
@@ -243,100 +235,55 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		case "user_props":
 			userPropsStr = valueStr
 		case "option":
-			paramsKV, err := convertParamsStrToFlatKVArray(valueStr, g_datasetCreateUpdateEnums)
-			if err != nil {
+			kvArray := ConvertParamsStringToKvArray(valueStr)
+			if err = WriteKvArrayToMap(outMap, kvArray, g_datasetCreateUpdateEnums); err != nil {
 				return err
-			}
-			for j := 0; j < len(paramsKV); j += 2 {
-				if nProps > 0 {
-					builder.WriteString(",")
-				}
-				key := paramsKV[j]
-				builder.WriteString(key)
-				builder.WriteString(":")
-				value := paramsKV[j+1]
-				builder.WriteString(value)
-				nProps++
-				if key == "\"create_ancestors\"" {
-					wroteCreateParents = true
-				}
 			}
 		default:
 			isProp = true
 		}
 		if isProp {
-			if nProps > 0 {
-				builder.WriteString(",")
+			value, err := ParseStringAndValidate(propName, valueStr, g_datasetCreateUpdateEnums)
+			if err != nil {
+				return err
 			}
-			core.WriteEncloseAndEscape(&builder, propName, "\"")
-			builder.WriteString(":")
-
-			if t, exists := options.allTypes[propName]; exists && t == "string" {
-				valueStr = core.EncloseAndEscape(valueStr, "\"")
-			}
-			builder.WriteString(valueStr)
-			nProps++
+			outMap[propName] = value
 		}
 	}
 
 	if cmdType == "create" {
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
 		if volSize != 0 {
-			builder.WriteString("\"type\":\"VOLUME\",\"volsize\":")
-			builder.WriteString(fmt.Sprint(volSize))
+			outMap["type"] = "VOLUME"
+			outMap["volsize"] = volSize
 		} else {
-			builder.WriteString("\"type\":\"FILESYSTEM\"")
+			outMap["type"] = "FILESYSTEM"
 		}
-		nProps++
 	} else if volSize != 0 {
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
-		builder.WriteString("\"volsize\":")
-		builder.WriteString(fmt.Sprint(volSize))
-		nProps++
-	}
-
-	if !wroteCreateParents && shouldCreateParents {
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
-		builder.WriteString("\"create_ancestors\":true")
-		nProps++
+		outMap["volsize"] = volSize
 	}
 
 	if userPropsStr != "" {
-		paramsKV, err := convertParamsStrToFlatKVArray(userPropsStr, g_datasetCreateUpdateEnums)
-		if err != nil {
-			return err
-		}
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
-		builder.WriteString("user_properties:[")
-		for j := 0; j < len(paramsKV); j += 2 {
-			if j > 0 {
-				builder.WriteString(",")
+		kvParams := ConvertParamsStringToKvArray(userPropsStr)
+		userPropsArr := make([]map[string]interface{}, 0)
+		for i := 0; i < len(kvParams); i += 2 {
+			value, err := ParseStringAndValidate(kvParams[i], kvParams[i+1], g_datasetCreateUpdateEnums)
+			if err != nil {
+				return err
 			}
-			builder.WriteString("{\"key\":")
-			builder.WriteString(paramsKV[j])
-			builder.WriteString(",\"value\":")
-			builder.WriteString(paramsKV[j+1])
-			builder.WriteString("}")
+			m := make(map[string]interface{})
+			m["key"] = kvParams[i]
+			m["value"] = value
+			userPropsArr = append(userPropsArr, m)
 		}
-		builder.WriteString("]")
+		outMap["user_properties"] = userPropsArr
 	}
 
-	builder.WriteString("}]")
-
-	params := builder.String()
-	DebugString(params)
+	params = append(params, outMap)
+	DebugJson(params)
 
 	cmd.SilenceUsage = true
 
-	out, err := core.ApiCallString(api, "pool.dataset."+cmdType, "10s", params)
+	out, err := core.ApiCall(api, "pool.dataset."+cmdType, "10s", params)
 	if err != nil {
 		return err
 	}
@@ -355,9 +302,9 @@ func deleteDataset(api core.Session, args []string) error {
 
 	options, _ := GetCobraFlags(datasetDeleteCmd, nil)
 	params := BuildNameStrAndPropertiesJson(options, args[0])
-	DebugString(params)
+	DebugJson(params)
 
-	out, err := core.ApiCallString(api, "pool.dataset.delete", "10s", params)
+	out, err := core.ApiCall(api, "pool.dataset.delete", "10s", params)
 	if err != nil {
 		return err
 	}
@@ -434,8 +381,10 @@ func promoteDataset(api core.Session, args []string) error {
 
 	datasetPromoteCmd.SilenceUsage = true
 
-	nameEsc := core.EncloseAndEscape(args[0], "\"")
-	out, err := core.ApiCallString(api, "pool.dataset.promote", "10s", "["+nameEsc+"]")
+	params := []interface{} {args[0]}
+	DebugJson(params)
+
+	out, err := core.ApiCall(api, "pool.dataset.promote", "10s", params)
 	if err != nil {
 		return err
 	}
@@ -457,17 +406,13 @@ func renameDataset(api core.Session, args []string) error {
 	source := args[0]
 	dest := args[1]
 
-	var builder strings.Builder
-	builder.WriteString("[")
-	core.WriteEncloseAndEscape(&builder, source, "\"")
-	builder.WriteString(",{\"new_name\":")
-	core.WriteEncloseAndEscape(&builder, dest, "\"")
+	outMap := make(map[string]interface{})
+	outMap["new_name"] = dest
 
-	builder.WriteString("}]")
-	stmt := builder.String()
-	DebugString(stmt)
+	params := []interface{} {source, outMap}
+	DebugJson(params)
 
-	out, err := core.ApiCallString(api, "zfs.dataset.rename", "10s", stmt)
+	out, err := core.ApiCall(api, "zfs.dataset.rename", "10s", params)
 	if err != nil {
 		return err
 	}
@@ -483,18 +428,18 @@ func renameDataset(api core.Session, args []string) error {
 			fmt.Println("INFO: this dataset did not appear to have a share")
 			return nil
 		}
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			return fmt.Errorf("Error updating share for dataset \"%s\", nfs id \"%s\": %v", dest, idStr, err)
+		}
 
-		var nfsBuilder strings.Builder
-		nfsBuilder.WriteString("[")
-		nfsBuilder.WriteString(idStr)
-		nfsBuilder.WriteString(",{\"path\":")
-		core.WriteEncloseAndEscape(&nfsBuilder, "/mnt/"+dest, "\"")
-		nfsBuilder.WriteString("}]")
+		pathMap := make(map[string]interface{})
+		pathMap["path"] = "/mnt/"+dest
+		nfsParams := []interface{} {id, pathMap}
 
-		nfsStmt := nfsBuilder.String()
-		DebugString(nfsStmt)
+		DebugJson(nfsParams)
 
-		out, err = core.ApiCallString(api, "sharing.nfs.update", "10s", nfsStmt)
+		out, err = core.ApiCall(api, "sharing.nfs.update", "10s", nfsParams)
 		if err != nil {
 			return err
 		}
@@ -502,50 +447,6 @@ func renameDataset(api core.Session, args []string) error {
 	}
 
 	return err
-}
-
-func convertParamsStrToFlatKVArray(fullParamsStr string, enumsList map[string][]string) ([]string, error) {
-	var array []string
-	if fullParamsStr == "" {
-		return nil, nil
-	}
-
-	array = make([]string, 0, 0)
-	params := strings.Split(fullParamsStr, ",")
-	for _, parameter := range params {
-		parts := strings.Split(parameter, "=")
-		var value string
-		if len(parts) == 0 {
-			continue
-		} else if len(parts) == 1 {
-			value = "true"
-		} else {
-			value = parts[1]
-		}
-		prop := core.EncloseAndEscape(parts[0], "\"")
-		if value != "true" && value != "false" && value != "null" {
-			_, errNotNumber := strconv.Atoi(value)
-			if errNotNumber != nil {
-				if acceptable, exists := enumsList[parts[0]]; exists {
-					found := false
-					valueUpper := strings.ToUpper(value)
-					for i := 0; i < len(acceptable); i++ {
-						if valueUpper == strings.ToUpper(acceptable[i]) {
-							found = true
-							break
-						}
-					}
-					if !found {
-						return nil, fmt.Errorf("Could not find value %s in enum %s %v", value, parts[0], acceptable)
-					}
-					value = valueUpper
-				}
-				value = core.EncloseAndEscape(value, "\"")
-			}
-		}
-		array = append(array, prop, value)
-	}
-	return array, nil
 }
 
 func getDatasetListTypes(args []string) ([]string, error) {

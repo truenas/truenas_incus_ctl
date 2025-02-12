@@ -30,56 +30,6 @@ func IdentifyObject(obj string) (string, string) {
 	return "pool", obj
 }
 
-func EncloseAndEscape(original string, ends string) string {
-	var builder strings.Builder
-	WriteEncloseAndEscape(&builder, original, ends)
-	return builder.String()
-}
-
-func WriteEncloseAndEscape(builder *strings.Builder, original string, ends string) {
-	builder.WriteString(ends)
-	off := 0
-	for off < len(original) {
-		idx := strings.Index(original[off:], ends)
-		if idx < 0 {
-			builder.WriteString(original[off:])
-			break
-		}
-		if idx != 0 {
-			builder.WriteString(original[off:off+idx])
-		}
-		if off+idx == 0 || original[off+idx-1] != '\\' {
-			builder.WriteString("\\")
-		}
-		builder.WriteString(ends)
-		off += idx + 1
-	}
-	if original[len(original)-1] == '\\' {
-		builder.WriteString("\\")
-	}
-	builder.WriteString(ends)
-}
-
-func ExposeString(original string, ends string) string {
-	size := len(original)
-	endSize := len(ends)
-	if size <= 2*endSize || original[0:endSize] != ends && original[size-endSize:] != ends {
-		return original
-	}
-	return strings.ReplaceAll(original[endSize:size-endSize], "\\" + ends, ends)
-}
-
-func WriteJsonStringArray(builder *strings.Builder, valueList []string) {
-	for i, elem := range valueList {
-		if i > 0 {
-			builder.WriteString(",")
-		}
-		builder.WriteString("\"")
-		builder.WriteString(elem)
-		builder.WriteString("\"")
-	}
-}
-
 func GetKeysSorted[T any](dict map[string]T) []string {
 	var keys []string
 	size := len(dict)
@@ -136,7 +86,6 @@ func ExtractApiError(data json.RawMessage) string {
 		return ""
 	}
 
-	// {"jsonrpc": "2.0", "error": {"code": -32602, "message": "Invalid params", "data": {"error": 22, "errname": "EINVAL", "reason": "[EINVAL] query-filters: Invalid operation: O\n" ...
 	errorValue, exists := responseMap["error"]
 	if !exists {
 		return ""
@@ -174,7 +123,6 @@ func ExtractApiError(data json.RawMessage) string {
 	}
 	if reasonStr != "" {
 		builder.WriteString(reasonStr)
-		builder.WriteString("\n")
 	}
 
 	return builder.String()

@@ -20,29 +20,14 @@ type typeRetrieveParams struct {
 	shouldRecurse      bool
 }
 
-func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) string {
-	var builder strings.Builder
-	builder.WriteString("[")
-	core.WriteEncloseAndEscape(&builder, nameStr, "\"")
-	builder.WriteString(",{")
-
-	nProps := 0
+func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) []interface{} {
+	outMap := make(map[string]interface{})
 	for key, value := range options.usedFlags {
-		if nProps > 0 {
-			builder.WriteString(",")
-		}
-		core.WriteEncloseAndEscape(&builder, key, "\"")
-		builder.WriteString(":")
-		if t, _ := options.allTypes[key]; t == "string" {
-			core.WriteEncloseAndEscape(&builder, value, "\"")
-		} else {
-			builder.WriteString(value)
-		}
-		nProps++
+		parsed, _ := ParseStringAndValidate(key, value, nil)
+		outMap[key] = parsed
 	}
 
-	builder.WriteString("}]")
-	return builder.String()
+	return []interface{} {nameStr, outMap}
 }
 
 func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
@@ -62,21 +47,14 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 		return nil, fmt.Errorf("Length mismatch between entries and entry types:", len(entries), "!=", len(entryTypes))
 	}
 
-	var builder strings.Builder
-	builder.WriteString("[")
-
-	writeQueryFilter(&builder, entries, entryTypes, params)
+	query := []interface{} {makeQueryFilter(entries, entryTypes, params)}
 	if endpointType != "nfs" {
-		builder.WriteString(", ")
-		writeQueryOptions(&builder, propsList, params)
+		query = append(query, makeQueryOptions(propsList, params))
 	}
 
-	builder.WriteString("]")
+	DebugJson(query)
 
-	query := builder.String()
-	DebugString(query)
-
-	data, err := core.ApiCallString(api, endpoint, "20s", query)
+	data, err := core.ApiCall(api, endpoint, "20s", query)
 	if err != nil {
 		return nil, err
 	}
@@ -172,12 +150,12 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 	return outputList, nil
 }
 
-func writeQueryFilter(builder *strings.Builder, entries, entryTypes []string, params typeRetrieveParams) {
-	builder.WriteString("[")
+func makeQueryFilter(entries, entryTypes []string, params typeRetrieveParams) []interface{} {
+	filter := make([]interface{}, 0)
 
 	// first arg = query-filter
 	if len(entries) == 1 {
-		writeIndividualFilter(builder, entryTypes[0], []string{entries[0]}, params.shouldRecurse)
+		filter = append(filter, makeIndividualFilter(entryTypes[0], []string{entries[0]}, params.shouldRecurse))
 	} else if len(entries) > 1 {
 		typeEntriesMap := make(map[string][]string)
 		uniqTypes := make([]string, 0, 0)
@@ -189,93 +167,63 @@ func writeQueryFilter(builder *strings.Builder, entries, entryTypes []string, pa
 			typeEntriesMap[entryTypes[i]] = append(typeEntriesMap[entryTypes[i]], entries[i])
 		}
 
-		for i := 0; i < len(uniqTypes) - 1; i++ {
-			builder.WriteString("[\"OR\",[")
+		filterList := make([][]interface{}, len(uniqTypes))
+		for i := 0; i < len(uniqTypes); i++ {
+			filterList[i] = makeIndividualFilter(uniqTypes[i], typeEntriesMap[uniqTypes[i]], params.shouldRecurse)
 		}
 
-		writeIndividualFilter(builder, uniqTypes[0], typeEntriesMap[uniqTypes[0]], params.shouldRecurse)
-		for i := 1; i < len(uniqTypes); i++ {
-			builder.WriteString(",")
-			writeIndividualFilter(builder, uniqTypes[i], typeEntriesMap[uniqTypes[i]], params.shouldRecurse)
-			builder.WriteString("]]")
-		}
+		filter = append(filter, constructORChain(filterList))
 	}
-	builder.WriteString("]")
+
+	return filter
 }
 
-func writeIndividualFilter(builder *strings.Builder, key string, array []string, isRecursive bool) {
+func makeIndividualFilter(key string, array []string, isRecursive bool) []interface{} {
 	if isRecursive && (key == "dataset" /* || key == "pool"*/) {
-		writeKeyAndRecursivePaths(builder, key, array)
-	} else {
-		writeKeyAndArray(builder, key, array)
+		return constructORChain(makeRecursivePathsFilterList(key, array))
 	}
+	return []interface{} {key, "in", array}
 }
 
-func writeKeyAndArray(builder *strings.Builder, key string, array []string) {
-	builder.WriteString("[")
-	core.WriteEncloseAndEscape(builder, key, "\"")
-	builder.WriteString(",\"in\",[")
-	for j, elem := range array {
-		if j > 0 {
-			builder.WriteString(",")
-		}
-		if _, errNotNumber := strconv.Atoi(elem); errNotNumber == nil && key == "id" {
-			builder.WriteString(elem)
-		} else {
-			core.WriteEncloseAndEscape(builder, elem, "\"")
-		}
+func makeRecursivePathsFilterList(key string, paths []string) [][]interface{} {
+	filterList := make([][]interface{}, 0)
+	for i := 0; i < len(paths); i++ {
+		filterList = append(filterList, []interface{} {key, "=", paths[i]})
+		filterList = append(filterList, []interface{} {key, "^", paths[i] + "/"})
 	}
-	builder.WriteString("]]")
+	return filterList
 }
 
-func writeKeyAndRecursivePaths(builder *strings.Builder, key string, array []string) {
-	nFilters := len(array) * 2
-	for i := 0; i < nFilters - 1; i++ {
-		builder.WriteString("[\"OR\",[")
+func constructORChain(filterList [][]interface{}) []interface{} {
+	nFilters := len(filterList)
+	if nFilters == 0 {
+		return nil
 	}
-
-	writeRecursivePathFilter(builder, key, array[0], false)
+	top := [][]interface{} {filterList[0]}
 	for i := 1; i < nFilters; i++ {
-		builder.WriteString(",")
-		writeRecursivePathFilter(builder, key, array[i / 2], (i % 2) == 1)
-		builder.WriteString("]]")
+		top = append(top, filterList[i])
+		inner := []interface{} {"OR",top}
+		top = [][]interface{} {inner}
 	}
+	return top[0]
 }
 
-func writeRecursivePathFilter(builder *strings.Builder, key, path string, isStartsWith bool) {
-	builder.WriteString("[")
-	core.WriteEncloseAndEscape(builder, key, "\"")
-	if isStartsWith {
-		builder.WriteString(",\"^\",")
-		core.WriteEncloseAndEscape(builder, path + "/", "\"")
-	} else {
-		builder.WriteString(",\"=\",")
-		core.WriteEncloseAndEscape(builder, path, "\"")
-	}
-	builder.WriteString("]")
-}
-
-func writeQueryOptions(builder *strings.Builder, propsList []string, params typeRetrieveParams) {
+func makeQueryOptions(propsList []string, params typeRetrieveParams) map[string]interface{} {
 	// second arg = query-options
-	builder.WriteString("{\"extra\":{\"flat\":false, \"retrieve_children\":")
-	builder.WriteString(fmt.Sprint(params.shouldRecurse))
-	builder.WriteString(", \"properties\":")
+	options := make(map[string]interface{})
+	options["flat"] = false
+	options["retrieve_children"] = params.shouldRecurse
 	if params.shouldGetAllProps {
-		builder.WriteString("null")
+		var nothing interface{}
+		options["properties"] = nothing
 	} else {
-		builder.WriteString("[")
-		if len(propsList) > 0 {
-			core.WriteEncloseAndEscape(builder, propsList[0], "\"")
-			for i := 1; i < len(propsList); i++ {
-				builder.WriteString(",")
-				core.WriteEncloseAndEscape(builder, propsList[i], "\"")
-			}
+		if propsList == nil {
+			propsList = make([]string, 0)
 		}
-		builder.WriteString("]")
+		options["properties"] = propsList
 	}
-	builder.WriteString(", \"user_properties\":")
-	builder.WriteString(fmt.Sprint(params.shouldGetUserProps))
-	builder.WriteString(" }} ")
+	options["user_properties"] = params.shouldGetUserProps
+	return map[string]interface{} {"extra": options}
 }
 
 func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []string, valueOrder []string) {
@@ -374,7 +322,7 @@ func LookupNfsIdByPath(api core.Session, sharePath string, optShareProperties ma
 	if optShareProperties != nil {
 		for key, value := range shares[0] {
 			if valueStr, ok := value.(string); ok {
-				optShareProperties[key] = core.EncloseAndEscape(valueStr, "\"")
+				optShareProperties[key] = valueStr
 			} else {
 				optShareProperties[key] = fmt.Sprint(value)
 			}
@@ -382,6 +330,78 @@ func LookupNfsIdByPath(api core.Session, sharePath string, optShareProperties ma
 	}
 
 	return idStr, true, nil
+}
+
+func ConvertParamsStringToKvArray(fullParamsStr string) []string {
+	if fullParamsStr == "" {
+		return nil
+	}
+
+	kvArray := make([]string, 0)
+	params := strings.Split(fullParamsStr, ",")
+	for _, parameter := range params {
+		parts := strings.Split(parameter, "=")
+		if len(parts) == 0 || parts[0] == "" {
+			continue
+		}
+		var value string
+		if len(parts) == 1 || parts[1] == "" {
+			value = "true"
+		} else {
+			value = parts[1]
+		}
+		kvArray = append(kvArray, parts[0], value)
+	}
+
+	return kvArray
+}
+
+func WriteKvArrayToMap(dstMap map[string]interface{}, kvArray []string, enumsList map[string][]string) error {
+	for i := 0; i < len(kvArray); i += 2 {
+		key := kvArray[i]
+		value, err := ParseStringAndValidate(key, kvArray[i+1], enumsList)
+		if err != nil {
+			return err
+		}
+		dstMap[key] = value
+	}
+	return nil
+}
+
+func ParseStringAndValidate(optKey, value string, optEnumsList map[string][]string) (interface{}, error) {
+	if value == "true" || value == "false" {
+		return value == "true", nil
+	} else if value == "null" {
+		return nil, nil
+	} else if intValue, errNotInteger := strconv.Atoi(value); errNotInteger == nil {
+		return intValue, nil
+	} else if floatValue, errNotFloat := strconv.ParseFloat(value, 64); errNotFloat == nil {
+		return floatValue, nil
+	} else {
+		if optKey != "" && optEnumsList != nil {
+			if acceptable, exists := optEnumsList[optKey]; exists {
+				found := false
+				valueUpper := strings.ToUpper(value)
+				for i := 0; i < len(acceptable); i++ {
+					if valueUpper == strings.ToUpper(acceptable[i]) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return nil, fmt.Errorf("Could not find value %s in enum %s %v", value, optKey, acceptable)
+				}
+				return valueUpper, nil
+			}
+		}
+	}
+	return value, nil
+}
+
+func MaybeCopyProperty(dstMap map[string]interface{}, srcMap map[string]string, key string) {
+	if valueStr, exists := srcMap[key]; exists {
+		dstMap[key], _ = ParseStringAndValidate(key, valueStr, nil)
+	}
 }
 
 func EnumerateOutputProperties(properties map[string]string) []string {

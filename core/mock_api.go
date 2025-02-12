@@ -23,14 +23,6 @@ func (s *MockSession) Close() error {
 	return nil
 }
 
-func (s *MockSession) CallStringRaw(method string, timeoutStr string, paramsStr string) (json.RawMessage, error) {
-	var paramsUnmarsalled interface{}
-	if err := json.Unmarshal([]byte(paramsStr), &paramsUnmarsalled); err != nil {
-		return nil, fmt.Errorf("failed to parse params string: %w", err)
-	}
-	return s.CallRaw(method, timeoutStr, paramsUnmarsalled)
-}
-
 func (s *MockSession) CallRaw(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
 	if s.closed {
 		return nil, errors.New("API connection closed")
