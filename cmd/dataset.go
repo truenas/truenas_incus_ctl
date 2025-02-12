@@ -12,8 +12,9 @@ import (
 )
 
 var datasetCmd = &cobra.Command{
-	Use: "dataset",
-	Run: func(cmd *cobra.Command, args []string) {
+	Use:   "dataset",
+	Short: "Edit or list datasets/zvols and their shares on a remote or local machine",
+	Run:   func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			cmd.HelpFunc()(cmd, args)
 			return
@@ -173,7 +174,7 @@ func init() {
 	datasetListCmd.Flags().String("format", "table", "Output table format "+
 		AddFlagsEnum(&g_datasetListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	datasetListCmd.Flags().StringP("output", "o", "", "Output property list")
-	datasetListCmd.Flags().BoolP("parseable", "p", false, "")
+	datasetListCmd.Flags().BoolP("parseable", "p", false, "Show raw values instead of the already parsed values")
 	datasetListCmd.Flags().BoolP("all", "a", false, "Output all properties")
 	datasetListCmd.Flags().StringP("source", "s", "default", "A comma-separated list of sources to display.\n"+
 		"Those properties coming from a source other than those in this list are ignored.\n"+

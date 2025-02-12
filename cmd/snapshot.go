@@ -10,14 +10,8 @@ import (
 
 var snapshotCmd = &cobra.Command{
 	Use:   "snapshot",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	Short: "Edit or list snapshots on a remote or local machine",
+	Run:   func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			cmd.HelpFunc()(cmd, args)
 			return
@@ -106,8 +100,8 @@ func init() {
 	snapshotListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" " +
 			AddFlagsEnum(&g_snapshotListEnums, "format", []string{"csv","json","table","compact"}))
 	snapshotListCmd.Flags().StringP("output", "o", "", "Output property list")
-	snapshotListCmd.Flags().BoolP("parseable", "p", false, "")
-	snapshotListCmd.Flags().Bool("all", false, "")
+	snapshotListCmd.Flags().BoolP("parseable", "p", false, "Show raw values instead of the already parsed values")
+	snapshotListCmd.Flags().Bool("all", false, "Output all properties")
 
 	snapshotRollbackCmd.Flags().BoolP("force", "f", false, "force unmount of any clones")
 	snapshotRollbackCmd.Flags().BoolP("recursive", "r", false, "destroy any snapshots and bookmarks more recent than the one specified")

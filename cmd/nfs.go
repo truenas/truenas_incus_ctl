@@ -11,14 +11,8 @@ import (
 
 var nfsCmd = &cobra.Command{
 	Use:   "nfs",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-	and usage of using your command. For example:
-
-	Cobra is a CLI library for Go that empowers applications.
-	This application is a tool to generate the needed files
-	to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	Short: "Create, list, update or delete NFS shares",
+	Run:   func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			cmd.HelpFunc()(cmd, args)
 			return
@@ -101,7 +95,7 @@ func init() {
 	nfsListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
 		AddFlagsEnum(&g_nfsListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	nfsListCmd.Flags().StringP("output", "o", "", "Output property list")
-	nfsListCmd.Flags().BoolP("parseable", "p", false, "")
+	nfsListCmd.Flags().BoolP("parseable", "p", false, "Show raw values instead of the already parsed values")
 	nfsListCmd.Flags().BoolP("all", "a", false, "Output all properties")
 
 	nfsCmd.AddCommand(nfsCreateCmd)

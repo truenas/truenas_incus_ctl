@@ -20,8 +20,9 @@ import (
 const VERSION = "0.1.8"
 
 var versionCmd = &cobra.Command{
-	Use: "version",
-	Run: func(cmd *cobra.Command, args []string) {
+	Use:   "version",
+	Short: "Print the version of this program",
+	Run:   func(cmd *cobra.Command, args []string) {
 		fmt.Println(VERSION)
 	},
 }
