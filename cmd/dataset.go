@@ -89,19 +89,19 @@ func init() {
 	}
 
 	datasetDeleteCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return deleteDataset(ValidateAndLogin(), args)
+		return deleteDataset(cmd, ValidateAndLogin(), args)
 	}
 
 	datasetListCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return listDataset(ValidateAndLogin(), args)
+		return listDataset(cmd, ValidateAndLogin(), args)
 	}
 
 	datasetPromoteCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return promoteDataset(ValidateAndLogin(), args)
+		return promoteDataset(cmd, ValidateAndLogin(), args)
 	}
 
 	datasetRenameCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return renameDataset(ValidateAndLogin(), args)
+		return renameDataset(cmd, ValidateAndLogin(), args)
 	}
 
 	createUpdateCmds := []*cobra.Command{datasetCreateCmd, datasetUpdateCmd}
@@ -223,7 +223,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		isProp := false
 		switch propName {
 		case "create_parents":
-			outMap["create_ancestors"] = true
+			outMap["create_ancestors"] = valueStr == "true"
 		case "volume":
 			volSize, err = strconv.ParseInt(valueStr, 10, 64)
 			if err != nil {
@@ -292,15 +292,15 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	return nil
 }
 
-func deleteDataset(api core.Session, args []string) error {
+func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	datasetDeleteCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
-	options, _ := GetCobraFlags(datasetDeleteCmd, nil)
+	options, _ := GetCobraFlags(cmd, nil)
 	params := BuildNameStrAndPropertiesJson(options, args[0])
 	DebugJson(params)
 
@@ -313,13 +313,13 @@ func deleteDataset(api core.Session, args []string) error {
 	return nil
 }
 
-func listDataset(api core.Session, args []string) error {
+func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	options, err := GetCobraFlags(datasetListCmd, g_datasetListEnums)
+	options, err := GetCobraFlags(cmd, g_datasetListEnums)
 	if err != nil {
 		return err
 	}
@@ -329,7 +329,7 @@ func listDataset(api core.Session, args []string) error {
 		return err
 	}
 
-	datasetListCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	properties := EnumerateOutputProperties(options.allFlags)
 	idTypes, err := getDatasetListTypes(args)
@@ -373,13 +373,13 @@ func listDataset(api core.Session, args []string) error {
 	return nil
 }
 
-func promoteDataset(api core.Session, args []string) error {
+func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	datasetPromoteCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	params := []interface{} {args[0]}
 	DebugJson(params)
@@ -393,15 +393,15 @@ func promoteDataset(api core.Session, args []string) error {
 	return nil
 }
 
-func renameDataset(api core.Session, args []string) error {
+func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	datasetRenameCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
-	options, _ := GetCobraFlags(datasetRenameCmd, nil)
+	options, _ := GetCobraFlags(cmd, nil)
 
 	source := args[0]
 	dest := args[1]

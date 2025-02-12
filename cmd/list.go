@@ -18,7 +18,7 @@ var g_genericListEnums map[string][]string
 
 func init() {
 	listCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return doList(ValidateAndLogin(), args)
+		return doList(cmd, ValidateAndLogin(), args)
 	}
 
 	g_genericListEnums = make(map[string][]string)
@@ -35,13 +35,13 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 }
 
-func doList(api core.Session, args []string) error {
+func doList(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	options, err := GetCobraFlags(listCmd, g_genericListEnums)
+	options, err := GetCobraFlags(cmd, g_genericListEnums)
 	if err != nil {
 		return err
 	}
@@ -165,7 +165,7 @@ func doList(api core.Session, args []string) error {
 		return errors.New("No types could be queried. Try passing a different value to the --types option.")
 	}
 
-	listCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	var outProps []string
 	if properties != nil {

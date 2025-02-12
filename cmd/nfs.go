@@ -57,19 +57,19 @@ var g_nfsListEnums map[string][]string
 
 func init() {
 	nfsCreateCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return createNfs(ValidateAndLogin(), args)
+		return createNfs(cmd, ValidateAndLogin(), args)
 	}
 
 	nfsUpdateCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return updateNfs(ValidateAndLogin(), args)
+		return updateNfs(cmd, ValidateAndLogin(), args)
 	}
 
 	nfsDeleteCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return deleteNfs(ValidateAndLogin(), args)
+		return deleteNfs(cmd, ValidateAndLogin(), args)
 	}
 
 	nfsListCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return listNfs(ValidateAndLogin(), args)
+		return listNfs(cmd, ValidateAndLogin(), args)
 	}
 
 	nfsUpdateCmd.Flags().String("path", "", "Mount path")
@@ -112,7 +112,7 @@ func init() {
 	shareCmd.AddCommand(nfsCmd)
 }
 
-func createNfs(api core.Session, args []string) error {
+func createNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
@@ -130,7 +130,7 @@ func createNfs(api core.Session, args []string) error {
 		return errors.New("Unrecognized nfs create spec \""+spec+"\"")
 	}
 
-	options, _ := GetCobraFlags(nfsCreateCmd, nil)
+	options, _ := GetCobraFlags(cmd, nil)
 
 	options.usedFlags["path"] = sharePath
 	options.allTypes["path"] = "string"
@@ -143,7 +143,7 @@ func createNfs(api core.Session, args []string) error {
 	params := []interface{} {propsMap}
 	DebugJson(params)
 
-	nfsCreateCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	out, err := core.ApiCall(api, "sharing.nfs.create", "10s", params)
 	if err != nil {
@@ -154,7 +154,7 @@ func createNfs(api core.Session, args []string) error {
 	return nil
 }
 
-func updateNfs(api core.Session, args []string) error {
+func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
@@ -175,7 +175,7 @@ func updateNfs(api core.Session, args []string) error {
 		return errors.New("Unrecognized nfs update spec \""+spec+"\"")
 	}
 
-	options, _ := GetCobraFlags(nfsUpdateCmd, nil)
+	options, _ := GetCobraFlags(cmd, nil)
 
 	shouldCreate := false
 	var existingProperties map[string]string
@@ -186,14 +186,14 @@ func updateNfs(api core.Session, args []string) error {
 		existingProperties = make(map[string]string)
 		idStr, found, err = LookupNfsIdByPath(api, sharePath, existingProperties)
 		if err != nil {
-			nfsUpdateCmd.SilenceUsage = true
+			cmd.SilenceUsage = true
 			return err
 		}
 		if !found {
 			if core.IsValueTrue(options.allFlags, "create") {
 				shouldCreate = true
 			} else {
-				nfsUpdateCmd.SilenceUsage = true
+				cmd.SilenceUsage = true
 				return errors.New("Could not find NFS share \""+sharePath+"\".\n"+
 					"Try passing -c to create a share if it doesn't exist.")
 			}
@@ -254,7 +254,7 @@ func updateNfs(api core.Session, args []string) error {
 		verb = "update"
 	}
 
-	nfsUpdateCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	out, err := core.ApiCall(api, "sharing.nfs."+verb, "10s", params)
 	if err != nil {
@@ -291,7 +291,7 @@ func writeNfsCreateUpdateProperties(options FlagMap) (map[string]interface{}, er
 	return outMap, nil
 }
 
-func deleteNfs(api core.Session, args []string) error {
+func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
@@ -312,7 +312,7 @@ func deleteNfs(api core.Session, args []string) error {
 		return errors.New("Unrecognized nfs create spec \""+spec+"\"")
 	}
 
-	nfsDeleteCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	var err error
 	if idStr == "" {
@@ -346,13 +346,13 @@ func deleteNfs(api core.Session, args []string) error {
 	return nil
 }
 
-func listNfs(api core.Session, args []string) error {
+func listNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	options, err := GetCobraFlags(nfsListCmd, g_nfsListEnums)
+	options, err := GetCobraFlags(cmd, g_nfsListEnums)
 	if err != nil {
 		return err
 	}
@@ -362,7 +362,7 @@ func listNfs(api core.Session, args []string) error {
 		return err
 	}
 
-	nfsListCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	properties := EnumerateOutputProperties(options.allFlags)
 	idTypes, err := getNfsListTypes(args)

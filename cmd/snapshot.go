@@ -67,11 +67,11 @@ var g_snapshotListEnums map[string][]string
 
 func init() {
 	snapshotCloneCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return cloneSnapshot(ValidateAndLogin(), args)
+		return cloneSnapshot(cmd, ValidateAndLogin(), args)
 	}
 
 	snapshotCreateCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return createSnapshot(ValidateAndLogin(), args)
+		return createSnapshot(cmd, ValidateAndLogin(), args)
 	}
 
 	snapshotDeleteCmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -79,11 +79,11 @@ func init() {
 	}
 
 	snapshotListCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return listSnapshot(ValidateAndLogin(), args)
+		return listSnapshot(cmd, ValidateAndLogin(), args)
 	}
 
 	snapshotRenameCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return renameSnapshot(ValidateAndLogin(), args)
+		return renameSnapshot(cmd, ValidateAndLogin(), args)
 	}
 
 	snapshotRollbackCmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -124,13 +124,13 @@ func init() {
 	rootCmd.AddCommand(snapshotCmd)
 }
 
-func cloneSnapshot(api core.Session, args []string) error {
+func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	snapshotCloneCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	outMap := make(map[string]interface{})
 	outMap["snapshot"] = args[0]
@@ -149,13 +149,13 @@ func cloneSnapshot(api core.Session, args []string) error {
 	return nil
 }
 
-func createSnapshot(api core.Session, args []string) error {
+func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	options, _ := GetCobraFlags(snapshotCreateCmd, nil)
+	options, _ := GetCobraFlags(cmd, nil)
 
 	snapshot := args[0]
 	datasetLen := strings.Index(snapshot, "@")
@@ -188,7 +188,7 @@ func createSnapshot(api core.Session, args []string) error {
 	params := []interface{} {outMap}
 	DebugJson(params)
 
-	snapshotCreateCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	out, err := core.ApiCall(api, "zfs.snapshot.create", "10s", params)
 	if err != nil {
@@ -231,13 +231,13 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	return nil
 }
 
-func renameSnapshot(api core.Session, args []string) error {
+func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	snapshotRenameCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	source := args[0]
 	dest := args[1]
@@ -258,13 +258,13 @@ func renameSnapshot(api core.Session, args []string) error {
 	return nil
 }
 
-func listSnapshot(api core.Session, args []string) error {
+func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	options, err := GetCobraFlags(snapshotListCmd, g_snapshotListEnums)
+	options, err := GetCobraFlags(cmd, g_snapshotListEnums)
 	if err != nil {
 		return err
 	}
@@ -274,7 +274,7 @@ func listSnapshot(api core.Session, args []string) error {
 		return err
 	}
 
-	snapshotListCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	properties := EnumerateOutputProperties(options.allFlags)
 	idTypes, err := getSnapshotListTypes(args)

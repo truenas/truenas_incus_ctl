@@ -69,7 +69,7 @@ func GetCobraFlags(cmd *cobra.Command, cmdEnums map[string][]string) (FlagMap, e
 			}
 			if t, exists := fm.allTypes[key]; exists {
 				if t[:3] != typeStr[:3] {
-					return FlagMap{}, fmt.Errorf("aux flag %s: type mismatch (existing = %s, type of given value = %s)", key, t, typeStr)
+					return FlagMap{}, fmt.Errorf("aux flag %s: type mismatch (existing: %s, type of given value: %s)", key, t, typeStr)
 				}
 			} else {
 				fm.allTypes[key] = typeStr
