@@ -180,7 +180,6 @@ func updateNfs(api core.Session, args []string) error {
 	shouldCreate := false
 	var existingProperties map[string]string
 
-	id := -1
 	if idStr == "" {
 		var found bool
 		var err error
@@ -199,13 +198,6 @@ func updateNfs(api core.Session, args []string) error {
 					"Try passing -c to create a share if it doesn't exist.")
 			}
 		}
-		id, err = strconv.Atoi(idStr)
-		if err != nil {
-			return fmt.Errorf("Failed to parse NFS share id: %v", err)
-		}
-		if id < 0 {
-			return fmt.Errorf("NFS share id was not valid (%d)", id)
-		}
 	}
 
 	// now that we know whether to create or not, let's not pass this flag on to the API
@@ -218,8 +210,13 @@ func updateNfs(api core.Session, args []string) error {
 		options.usedFlags["path"] = sharePath
 		options.allTypes["path"] = "string"
 	} else {
-		// ideally, we'd examine the props we already retreived when inspecting the id (if we did), and only
-		// if there are changes to be made, would we do another update.
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			return fmt.Errorf("Failed to parse NFS share id: %v", err)
+		}
+		if id < 0 {
+			return fmt.Errorf("NFS share id was not valid (%d)", id)
+		}
 		if existingProperties != nil {
 			anyDiffs := false
 			for key, value := range options.usedFlags {
