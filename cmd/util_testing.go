@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"truenas/admin-tool/core"
@@ -24,7 +25,7 @@ func (s *DummySession) CallRaw(method string, timeoutStr string, params interfac
 	if string(data) != s.expect {
 		s.test.Error(fmt.Errorf("\"%s\" != \"%s\"", string(data), s.expect))
 	}
-	return []byte(s.response), nil
+	return []byte(s.response), errors.New(s.expect)
 }
 
 func FailIf(t *testing.T, err error) {
