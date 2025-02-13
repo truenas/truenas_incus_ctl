@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
-	"truenas/admin-tool/core"
+	"truenas/truenas-admin/core"
 
 	"github.com/spf13/cobra"
 )

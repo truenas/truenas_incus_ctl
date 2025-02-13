@@ -77,11 +77,64 @@ func TestDatasetCreateWithComments(t *testing.T) {
 }
 
 func TestDatasetUpdate(t *testing.T) {
-	
+	DoSimpleTest(
+		t,
+		datasetUpdateCmd,
+		createOrUpdateDataset,
+		map[string]interface{}{
+			"option":"exec=off,atime=off,acltype=posix,aclmode=discard",
+			"managedby":"incus.truenas",
+			"comments":"Managed by Incus.TrueNAS",
+		},
+		[]string{"dozer/testing/test"},
+		"[\"dozer/testing/test\",{\"aclmode\":\"DISCARD\",\"acltype\":\"POSIX\","+
+			"\"atime\":\"OFF\",\"comments\":\"Managed by Incus.TrueNAS\","+
+			"\"exec\":\"OFF\",\"managedby\":\"incus.truenas\"}]",
+	)
 }
 
 func TestDatasetDelete(t *testing.T) {
-	
+	DoSimpleTest(
+		t,
+		datasetDeleteCmd,
+		deleteDataset,
+		map[string]interface{}{},
+		[]string{"dozer/testing/test"},
+		"[\"dozer/testing/test\",{}]",
+	)
+}
+
+func TestDatasetDeleteRecursive(t *testing.T) {
+	DoSimpleTest(
+		t,
+		datasetDeleteCmd,
+		deleteDataset,
+		map[string]interface{}{"recursive":true},
+		[]string{"dozer/testing/test"},
+		"[\"dozer/testing/test\",{\"recursive\":true}]",
+	)
+}
+
+func TestDatasetDeleteForce(t *testing.T) {
+	DoSimpleTest(
+		t,
+		datasetDeleteCmd,
+		deleteDataset,
+		map[string]interface{}{"force":true},
+		[]string{"dozer/testing/test"},
+		"[\"dozer/testing/test\",{\"force\":true}]",
+	)
+}
+
+func TestDatasetDeleteRecursiveForce(t *testing.T) {
+	DoSimpleTest(
+		t,
+		datasetDeleteCmd,
+		deleteDataset,
+		map[string]interface{}{"recursive":true,"force":true},
+		[]string{"dozer/testing/test"},
+		"[\"dozer/testing/test\",{\"force\":true,\"recursive\":true}]",
+	)
 }
 
 func TestDatasetList(t *testing.T) {
@@ -113,5 +166,9 @@ func TestDatasetPromote(t *testing.T) {
 }
 
 func TestDatasetRename(t *testing.T) {
+	
+}
+
+func TestDatasetRenameUpdateShares(t *testing.T) {
 	
 }

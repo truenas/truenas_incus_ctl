@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"truenas/admin-tool/core"
+	"truenas/truenas-admin/core"
 )
 
 type typeRetrieveParams struct {

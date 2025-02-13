@@ -1,4 +1,4 @@
-module truenas/admin-tool
+module truenas/truenas-admin
 
 go 1.23.3
 

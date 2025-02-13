@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"truenas/admin-tool/core"
+	"truenas/truenas-admin/core"
 
 	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
-	Use: "admin-tool",
+	Use: "truenas-admin",
 }
 
 func Execute() {

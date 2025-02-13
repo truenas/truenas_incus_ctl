@@ -55,6 +55,10 @@ func GetCobraFlags(cmd *cobra.Command, cmdEnums map[string][]string) (FlagMap, e
 
 	if aux, exists := auxiliaryFlags[cmd]; exists {
 		for key, value := range aux {
+			knownType, exists := fm.allTypes[key]
+			if !exists {
+				return FlagMap{}, fmt.Errorf("aux flag %s was not found in command \"%s\"", key, cmd.Use)
+			}
 			var typeStr string
 			if _, ok := value.(string); ok {
 				typeStr = "string"
@@ -67,12 +71,8 @@ func GetCobraFlags(cmd *cobra.Command, cmdEnums map[string][]string) (FlagMap, e
 			} else {
 				typeStr = "any"
 			}
-			if t, exists := fm.allTypes[key]; exists {
-				if t[:3] != typeStr[:3] {
-					return FlagMap{}, fmt.Errorf("aux flag %s: type mismatch (existing: %s, type of given value: %s)", key, t, typeStr)
-				}
-			} else {
-				fm.allTypes[key] = typeStr
+			if knownType[:3] != typeStr[:3] {
+				return FlagMap{}, fmt.Errorf("aux flag %s: type mismatch (existing: %s, type of given value: %s)", key, knownType, typeStr)
 			}
 			valueStr := fmt.Sprint(value)
 			fm.allFlags[key] = valueStr

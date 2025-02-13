@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 	"encoding/json"
-	"truenas/admin-tool/truenas_api"
+	"truenas/truenas-admin/truenas_api"
 )
 
 type RealSession struct {
