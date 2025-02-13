@@ -48,7 +48,12 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 		return nil, fmt.Errorf("length mismatch between entries and entry types: %d != %d", len(entries), len(entryTypes))
 	}
 
-	query := []interface{}{makeQueryFilter(entries, entryTypes, params)}
+	filter, err := makeQueryFilter(entries, entryTypes, params)
+	if err != nil {
+		return nil, err
+	}
+
+	query := []interface{}{filter}
 	if endpointType != "nfs" {
 		query = append(query, makeQueryOptions(propsList, params))
 	}
@@ -152,7 +157,13 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 	return outputList, nil
 }
 
-func makeQueryFilter(entries, entryTypes []string, params typeRetrieveParams) []interface{} {
+func makeQueryFilter(entries, entryTypes []string, params typeRetrieveParams) ([]interface{}, error) {
+	for i, e := range entries {
+		if e == "" {
+			return nil, fmt.Errorf("Cannot query based on empty %s", entryTypes[i])
+		}
+	}
+
 	filter := make([]interface{}, 0)
 
 	// first arg = query-filter
@@ -177,7 +188,7 @@ func makeQueryFilter(entries, entryTypes []string, params typeRetrieveParams) []
 		filter = append(filter, constructORChain(filterList))
 	}
 
-	return filter
+	return filter, nil
 }
 
 func makeIndividualFilter(key string, array []string, isRecursive bool) []interface{} {
