@@ -23,7 +23,7 @@ func init() {
 
 	g_genericListEnums = make(map[string][]string)
 
-	listCmd.Flags().StringP("types", "t", "fs,vol", "Array of types of data to retrieve. Defaults to \"fs,vol\". (fs,vol,snap,nfs)")
+	listCmd.Flags().StringP("types", "t", "fs,vol", "Array of types of data to retrieve. By default, types are deduced from arguments, else fs,vol. (fs,vol,snap,nfs)")
 	listCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 	listCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
 	listCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
@@ -62,6 +62,9 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 	shouldQueryFs := false
 	shouldQueryVol := false
 	_, shouldExclude := options.usedFlags["types"]
+	if len(args) == 0 {
+		shouldExclude = true
+	}
 
 	for i := 0; i < len(givenTypes); i++ {
 		t := givenTypes[i]
@@ -146,7 +149,7 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 		if tSnaps[i] == "snapshot" {
 			tSnaps[i] = "name"
 		} else if tSnaps[i] == "snapshot_only" {
-			tSnaps[i] = "snapshot"
+			tSnaps[i] = "snapshot_name"
 		}
 	}
 
