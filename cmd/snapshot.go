@@ -11,7 +11,7 @@ import (
 var snapshotCmd = &cobra.Command{
 	Use:   "snapshot",
 	Short: "Edit or list snapshots on a remote or local machine",
-	Run:   func(cmd *cobra.Command, args []string) {
+	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			cmd.HelpFunc()(cmd, args)
 			return
@@ -26,27 +26,27 @@ var snapshotCloneCmd = &cobra.Command{
 }
 
 var snapshotCreateCmd = &cobra.Command{
-	Use:   "create",
+	Use:   "create [flags] <dataset>@<snapshot>",
 	Short: "Take a snapshot of dataset, possibly recursive",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var snapshotDeleteCmd = &cobra.Command{
-	Use:     "delete",
+	Use:     "delete [flags] <dataset>@<snapshot>",
 	Short:   "Delete a snapshot of dataset, possibly recursive",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"rm"},
 }
 
 var snapshotListCmd = &cobra.Command{
-	Use:     "list",
+	Use:     "list [flags] [<dataset>][@<snapshot>]...",
 	Short:   "List all snapshots",
 	Aliases: []string{"ls"},
 }
 
 var snapshotRenameCmd = &cobra.Command{
-	Use:   "rename [flags]... <old dataset>@<old snapshot> <new snapshot>",
-	Short: "Rename a ZFS snapshot",
+	Use:     "rename [flags] <old dataset>@<old snapshot> <new snapshot>",
+	Short:   "Rename a ZFS snapshot",
 	Args:    cobra.ExactArgs(2),
 	Aliases: []string{"mv"},
 }
@@ -97,8 +97,8 @@ func init() {
 	snapshotListCmd.Flags().BoolP("user-properties", "u", false, "Include user-properties")
 	snapshotListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 	snapshotListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
-	snapshotListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" " +
-			AddFlagsEnum(&g_snapshotListEnums, "format", []string{"csv","json","table","compact"}))
+	snapshotListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
+		AddFlagsEnum(&g_snapshotListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	snapshotListCmd.Flags().StringP("output", "o", "", "Output property list")
 	snapshotListCmd.Flags().BoolP("parseable", "p", false, "Show raw values instead of the already parsed values")
 	snapshotListCmd.Flags().Bool("all", false, "Output all properties")
@@ -131,7 +131,7 @@ func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	outMap["dataset_dst"] = args[1]
 	//outMap["dataset_properties"] = make(map[string]interface{})
 
-	params := []interface{} {outMap}
+	params := []interface{}{outMap}
 	DebugJson(params)
 
 	out, err := core.ApiCall(api, "zfs.snapshot.clone", "10s", params)
@@ -179,7 +179,7 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	_ = WriteKvArrayToMap(outProps, ConvertParamsStringToKvArray(options.allFlags["option"]), nil)
 	outMap["properties"] = outProps
 
-	params := []interface{} {outMap}
+	params := []interface{}{outMap}
 	DebugJson(params)
 
 	cmd.SilenceUsage = true
@@ -239,7 +239,7 @@ func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	outMap := make(map[string]interface{})
 	outMap["new_name"] = dest
 
-	params := []interface{} {source, outMap}
+	params := []interface{}{source, outMap}
 	DebugJson(params)
 
 	// For now, snapshot rename uses the same API as dataset rename. This may change in the future.
