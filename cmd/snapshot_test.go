@@ -5,7 +5,14 @@ import (
 )
 
 func TestSnapshotClone(t *testing.T) {
-
+	FailIf(t, DoSimpleTest(
+		t,
+		snapshotCloneCmd,
+		cloneSnapshot,
+		map[string]interface{}{},
+		[]string{"dozer/testing/test4@readonly","dozer/testing/test5@readonly"},
+		"[{\"dataset_dst\":\"dozer/testing/test5@readonly\",\"snapshot\":\"dozer/testing/test4@readonly\"}]",
+	))
 }
 
 func TestSnapshotCreate(t *testing.T) {

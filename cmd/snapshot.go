@@ -153,7 +153,7 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 
 	snapshot := args[0]
 	datasetLen := strings.Index(snapshot, "@")
-	if datasetLen <= 0 {
+	if datasetLen <= 0 || datasetLen == len(snapshot)-1 {
 		return errors.New("No dataset name was found in snapshot specifier.\nExpected <datasetname>@<snapshotname>.")
 	}
 	dataset := snapshot[0:datasetLen]
