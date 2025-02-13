@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"truenas/truenas-admin/core"
 
@@ -165,9 +166,19 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 	DebugString(fmt.Sprint(qEntriesMap))
 	DebugString(fmt.Sprint(qEntryTypesMap))
 
-	if len(qEntriesMap) == 0 {
+	var allTypes []string
+	for qType, _ := range qEntriesMap {
+		if allTypes == nil {
+			allTypes = make([]string, 0)
+		}
+		allTypes = append(allTypes, qType)
+	}
+
+	if len(allTypes) == 0 {
 		return errors.New("No types could be queried. Try passing a different value to the --types option.")
 	}
+
+	slices.Sort(allTypes)
 
 	cmd.SilenceUsage = true
 
