@@ -21,7 +21,7 @@ func TestSnapshotList(t *testing.T) {
 }
 
 func TestSnapshotListWithProperties(t *testing.T) {
-	DoSimpleTest(
+	FailIf(t, DoSimpleTest(
 		t,
 		snapshotListCmd,
 		listSnapshot,
@@ -29,7 +29,7 @@ func TestSnapshotListWithProperties(t *testing.T) {
 		[]string{"dozer/testing/test@readonly"},
 		"[[[\"name\",\"in\",[\"dozer/testing/test@readonly\"]]],{\"extra\":{\"flat\":false,"+
 			"\"properties\":[\"clones\"],\"retrieve_children\":false,\"user_properties\":false}}]",
-	)
+	))
 }
 
 func TestSnapshotRename(t *testing.T) {
