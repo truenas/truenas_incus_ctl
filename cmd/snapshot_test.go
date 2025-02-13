@@ -27,6 +27,24 @@ func TestSnapshotList(t *testing.T) {
 
 }
 
+func TestSnapshotListRecursive(t *testing.T) {
+	FailIf(t, DoTest(
+		t,
+		snapshotListCmd,
+		listSnapshot,
+		map[string]interface{}{"recursive":true},
+		[]string{"dozer/testing"},
+		[]string{"[[[\"OR\",[[\"dataset\",\"=\",\"dozer/testing\"],[\"dataset\",\"^\",\"dozer/testing/\"]]]],"+ // expected
+			"{\"extra\":{\"flat\":false,\"properties\":[],\"retrieve_children\":true,\"user_properties\":false}}]"},
+		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test4@readonly\",\"name\":\"dozer/testing/test4@readonly\"},"+ //response
+			"{\"id\":\"dozer/testing/test5@readonly\",\"name\":\"dozer/testing/test5@readonly\"}],\"id\":2}"},
+		"             name             \n" + // table
+		"------------------------------\n" +
+		" dozer/testing/test4@readonly \n" +
+		" dozer/testing/test5@readonly \n",
+	))
+}
+
 func TestSnapshotListWithProperties(t *testing.T) {
 	FailIf(t, DoTest(
 		t,

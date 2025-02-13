@@ -153,6 +153,24 @@ func TestDatasetList(t *testing.T) {
 	))
 }
 
+func TestDatasetListRecursive(t *testing.T) {
+	FailIf(t, DoTest(
+		t,
+		datasetListCmd,
+		listDataset,
+		map[string]interface{}{"recursive":true},
+		[]string{"dozer/testing"},
+		[]string{"[[[\"name\",\"in\",[\"dozer/testing\"]]],{\"extra\":{\"flat\":false,"+ // expected
+			"\"properties\":[],\"retrieve_children\":true,\"user_properties\":false}}]"},
+		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing\",\"name\":\"dozer/testing\"},"+
+			"{\"id\":\"dozer/testing/test\",\"name\":\"dozer/testing/test\"}],\"id\":2}"}, //response
+		"        name        \n" + // table
+		"--------------------\n" +
+		" dozer/testing      \n" +
+		" dozer/testing/test \n",
+	))
+}
+
 func TestDatasetListWithProperties(t *testing.T) {
 	FailIf(t, DoTest(
 		t,
