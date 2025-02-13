@@ -74,7 +74,7 @@ index 5dc1780fd8..76c57b554c 100644
              self.logger.error('Failed to rename dataset', exc_info=True)
 ```
 
-Increase `max_calls` to 100. Incus will exceed 20 calls in 60 seconds at startup. This will be resolved with a connection-cache in future
+Increase `max_calls` to 100. Incus will exceed 20 calls in 60 seconds when creating a storage volume. This will be resolved with a connection-cache in future
 
 ```diff
 diff --git a/src/middlewared/middlewared/utils/rate_limit/cache.py b/src/middlewared/middlewared/utils/rate_limit/cache.py
