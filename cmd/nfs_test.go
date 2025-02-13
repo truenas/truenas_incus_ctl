@@ -9,3 +9,15 @@ func TestNfsCreate(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestNfsUpdate(t *testing.T) {
+
+}
+
+func TestNfsDelete(t *testing.T) {
+
+}
+
+func TestNfsList(t *testing.T) {
+
+}

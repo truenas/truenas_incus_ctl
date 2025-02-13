@@ -76,6 +76,14 @@ func TestDatasetCreateWithComments(t *testing.T) {
 	)
 }
 
+func TestDatasetUpdate(t *testing.T) {
+	
+}
+
+func TestDatasetDelete(t *testing.T) {
+	
+}
+
 func TestDatasetList(t *testing.T) {
 	DoSimpleTest(
 		t,
@@ -98,4 +106,12 @@ func TestDatasetListWithProperties(t *testing.T) {
 		"[[[\"name\",\"in\",[\"dozer/testing/test\"]]],{\"extra\":{\"flat\":false,"+
 			"\"properties\":[\"name\",\"atime\",\"relatime\"],\"retrieve_children\":false,\"user_properties\":false}}]",
 	)
+}
+
+func TestDatasetPromote(t *testing.T) {
+	
+}
+
+func TestDatasetRename(t *testing.T) {
+	
 }
