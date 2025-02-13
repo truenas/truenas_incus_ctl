@@ -207,8 +207,8 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 
 	allResults := make([]map[string]interface{}, 0)
 
-	for qType, qValues := range qEntriesMap {
-		results, err := QueryApi(api, qType, qValues, qEntryTypesMap[qType], properties, extras)
+	for _, qType := range allTypes {
+		results, err := QueryApi(api, qType, qEntriesMap[qType], qEntryTypesMap[qType], properties, extras)
 		if err != nil {
 			return err
 		}
@@ -216,15 +216,17 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 		if qType == "dataset" {
 			filterType := ""
 			if shouldQueryFs && !shouldQueryVol {
-				filterType = "FILESYSTEM"
+				filterType = "filesystem"
 			} else if !shouldQueryFs && shouldQueryVol {
-				filterType = "VOLUME"
+				filterType = "volume"
 			}
 			if filterType != "" {
 				fResults := make([]map[string]interface{}, 0)
 				for _, r := range results {
-					if t, exists := r["type"]; exists && t == filterType {
-						fResults = append(fResults, r)
+					if t, exists := r["type"]; exists {
+						if tStr, ok := t.(string); ok && strings.ToLower(tStr) == filterType {
+							fResults = append(fResults, r)
+						}
 					}
 				}
 				results = fResults
