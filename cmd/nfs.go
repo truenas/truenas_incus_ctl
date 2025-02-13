@@ -12,7 +12,7 @@ import (
 var nfsCmd = &cobra.Command{
 	Use:   "nfs",
 	Short: "Create, list, update or delete NFS shares",
-	Run:   func(cmd *cobra.Command, args []string) {
+	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			cmd.HelpFunc()(cmd, args)
 			return
@@ -21,27 +21,27 @@ var nfsCmd = &cobra.Command{
 }
 
 var nfsCreateCmd = &cobra.Command{
-	Use:   "create [flags]... <dataset|path>",
+	Use:   "create [flags] <dataset|path>",
 	Short: "Creates a nfs share.",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var nfsUpdateCmd = &cobra.Command{
-	Use:     "update [flags]... <id|dataset|path>",
+	Use:     "update [flags] <id|dataset|path>",
 	Short:   "Updates an existing nfs share.",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"set"},
 }
 
 var nfsDeleteCmd = &cobra.Command{
-	Use:     "delete [flags]... <id|dataset|path>",
+	Use:     "delete [flags] <id|dataset|path>",
 	Short:   "Deletes an nfs share.",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"rm"},
 }
 
 var nfsListCmd = &cobra.Command{
-	Use:     "list",
+	Use:     "list [flags] [path]...", // TODO: add dataset support
 	Short:   "Prints a table of all nfs shares, given a source and an optional set of properties.",
 	Aliases: []string{"ls"},
 }
@@ -121,7 +121,7 @@ func createNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	case "share":
 		sharePath = spec
 	default:
-		return errors.New("Unrecognized nfs create spec \""+spec+"\"")
+		return errors.New("Unrecognized nfs create spec \"" + spec + "\"")
 	}
 
 	options, _ := GetCobraFlags(cmd, nil)
@@ -134,7 +134,7 @@ func createNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	params := []interface{} {propsMap}
+	params := []interface{}{propsMap}
 	DebugJson(params)
 
 	cmd.SilenceUsage = true
@@ -166,7 +166,7 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	case "share":
 		sharePath = spec
 	default:
-		return errors.New("Unrecognized nfs update spec \""+spec+"\"")
+		return errors.New("Unrecognized nfs update spec \"" + spec + "\"")
 	}
 
 	options, _ := GetCobraFlags(cmd, nil)
@@ -188,7 +188,7 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 				shouldCreate = true
 			} else {
 				cmd.SilenceUsage = true
-				return errors.New("Could not find NFS share \""+sharePath+"\".\n"+
+				return errors.New("Could not find NFS share \"" + sharePath + "\".\n" +
 					"Try passing -c to create a share if it doesn't exist.")
 			}
 		}
@@ -303,7 +303,7 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	case "share":
 		sharePath = spec
 	default:
-		return errors.New("Unrecognized nfs create spec \""+spec+"\"")
+		return errors.New("Unrecognized nfs create spec \"" + spec + "\"")
 	}
 
 	cmd.SilenceUsage = true
@@ -316,7 +316,7 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 			return err
 		}
 		if !found {
-			return errors.New("Could not find nfs share for path \""+sharePath+"\"")
+			return errors.New("Could not find nfs share for path \"" + sharePath + "\"")
 		}
 	}
 
@@ -328,7 +328,7 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		return fmt.Errorf("NFS share id was not valid (%d)", id)
 	}
 
-	params := []interface{} {id}
+	params := []interface{}{id}
 	DebugJson(params)
 
 	out, err := core.ApiCall(api, "sharing.nfs.delete", "10s", params)

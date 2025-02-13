@@ -14,7 +14,7 @@ import (
 var datasetCmd = &cobra.Command{
 	Use:   "dataset",
 	Short: "Edit or list datasets/zvols and their shares on a remote or local machine",
-	Run:   func(cmd *cobra.Command, args []string) {
+	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			cmd.HelpFunc()(cmd, args)
 			return
@@ -22,42 +22,50 @@ var datasetCmd = &cobra.Command{
 	},
 }
 
+/*
+	TODO: most of these commands should be modified to support specifying multiple datasets,
+	thus allowing a cheap "batch" mode.
+
+	Ie, even when the underlying API doesn't support multiple datasets, we would instead use
+	core.bulk, or worst case, iteration
+*/
+
 var datasetCreateCmd = &cobra.Command{
-	Use:   "create",
+	Use:   "create [flags] <dataset>",
 	Short: "Creates a dataset/zvol.",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var datasetUpdateCmd = &cobra.Command{
-	Use:     "update",
+	Use:     "update [flags] <dataset>",
 	Short:   "Updates an existing dataset/zvol.",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"set"},
 }
 
 var datasetDeleteCmd = &cobra.Command{
-	Use:     "delete",
+	Use:     "delete [flags] <dataset>",
 	Short:   "Deletes a dataset/zvol.",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"rm"},
 }
 
 var datasetListCmd = &cobra.Command{
-	Use:     "list",
+	Use:     "list [flags] [dataset]...",
 	Short:   "Prints a table of all datasets/zvols, given a source and an optional set of properties.",
 	Aliases: []string{"ls"},
 }
 
 var datasetPromoteCmd = &cobra.Command{
-	Use:   "promote",
+	Use:   "promote [flags] <dataset>",
 	Short: "Promote a clone dataset to no longer depend on the origin snapshot.",
 	Args:  cobra.ExactArgs(1),
 }
 
 var datasetRenameCmd = &cobra.Command{
-	Use:     "rename [flags]... <old dataset>[@<old snapshot>] <new dataset|new snapshot>",
-	Short:   "Rename a ZFS dataset",
-	Long:    `Renames the given dataset. The new target can be located anywhere in the ZFS hierarchy, with the exception of snapshots.
+	Use:   "rename [flags] <old dataset>[@<old snapshot>] <new dataset|new snapshot>",
+	Short: "Rename a ZFS dataset",
+	Long: `Renames the given dataset. The new target can be located anywhere in the ZFS hierarchy, with the exception of snapshots.
 Snapshots can only be re‐named within the parent file system or volume.
 When renaming a snapshot, the parent file system of the snapshot does not need to be specified as part of the second argument.
 Renamed file systems can inherit new mount points, in which case they are unmounted and remounted at the new mount point.`,
@@ -156,7 +164,7 @@ func init() {
 		cmd.Flags().StringP("option", "o", "", "Specify property=value,...")
 		cmd.Flags().Int64P("volume", "V", 0, "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size.")
 		cmd.Flags().StringP("volblocksize", "b", "512", "Volume block size "+
-			AddFlagsEnum(&g_datasetCreateUpdateEnums, "volblocksize", []string{"512","1K","2K","4K","8K","16K","32K","64K","128K"}))
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "volblocksize", []string{"512", "1K", "2K", "4K", "8K", "16K", "32K", "64K", "128K"}))
 		cmd.Flags().BoolP("sparse", "s", false, "Creates a sparse volume with no reservation")
 		cmd.Flags().Bool("force-size", false, "")
 		cmd.Flags().String("snapdev", "hidden", "Controls whether the volume snapshot devices are hidden or visible "+
@@ -385,7 +393,7 @@ func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 
 	cmd.SilenceUsage = true
 
-	params := []interface{} {args[0]}
+	params := []interface{}{args[0]}
 	DebugJson(params)
 
 	out, err := core.ApiCall(api, "pool.dataset.promote", "10s", params)
@@ -413,7 +421,7 @@ func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	outMap := make(map[string]interface{})
 	outMap["new_name"] = dest
 
-	params := []interface{} {source, outMap}
+	params := []interface{}{source, outMap}
 	DebugJson(params)
 
 	out, err := core.ApiCall(api, "zfs.dataset.rename", "10s", params)
@@ -438,8 +446,8 @@ func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 
 		pathMap := make(map[string]interface{})
-		pathMap["path"] = "/mnt/"+dest
-		nfsParams := []interface{} {id, pathMap}
+		pathMap["path"] = "/mnt/" + dest
+		nfsParams := []interface{}{id, pathMap}
 
 		DebugJson(nfsParams)
 
