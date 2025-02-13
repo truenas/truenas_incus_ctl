@@ -3,8 +3,9 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
-	"truenas/admin-tool/core"
+	"truenas/truenas-admin/core"
 
 	"github.com/spf13/cobra"
 )
@@ -18,30 +19,31 @@ var g_genericListEnums map[string][]string
 
 func init() {
 	listCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return doList(ValidateAndLogin(), args)
+		return doList(cmd, ValidateAndLogin(), args)
 	}
 
 	g_genericListEnums = make(map[string][]string)
 
-	listCmd.Flags().StringP("types", "t", "fs,vol", "Array of types of data to retrieve. Defaults to \"fs,vol\". (fs,vol,snap,nfs)")
+	listCmd.Flags().StringP("types", "t", "fs,vol", "Array of types of data to retrieve. By default, types are deduced from arguments, else fs,vol. (fs,vol,snap,nfs)")
+	listCmd.Flags().BoolP("recursive", "r", false, "Retrieves properties for children")
 	listCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 	listCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
 	listCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
 		AddFlagsEnum(&g_genericListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	listCmd.Flags().StringP("output", "o", "", "Output property list")
-	listCmd.Flags().BoolP("parseable", "p", false, "")
+	listCmd.Flags().BoolP("parseable", "p", false, "Show raw values instead of the already parsed values")
 	listCmd.Flags().BoolP("all", "a", false, "Output all properties")
 
 	rootCmd.AddCommand(listCmd)
 }
 
-func doList(api core.Session, args []string) error {
+func doList(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	options, err := GetCobraFlags(listCmd, g_genericListEnums)
+	options, err := GetCobraFlags(cmd, g_genericListEnums)
 	if err != nil {
 		return err
 	}
@@ -62,6 +64,9 @@ func doList(api core.Session, args []string) error {
 	shouldQueryFs := false
 	shouldQueryVol := false
 	_, shouldExclude := options.usedFlags["types"]
+	if len(args) == 0 {
+		shouldExclude = true
+	}
 
 	for i := 0; i < len(givenTypes); i++ {
 		t := givenTypes[i]
@@ -95,7 +100,7 @@ func doList(api core.Session, args []string) error {
 		} else if obj == "pool" {
 			qType = "pool"
 		} else {
-			return errors.New("Unrecognised object type \"" + obj + "\"")
+			return errors.New("Unrecognised namespec \"" + obj + "\"")
 		}
 		if _, exists := qEntriesMap[qType]; !exists {
 			qEntriesMap[qType] = make([]string, 0)
@@ -146,7 +151,7 @@ func doList(api core.Session, args []string) error {
 		if tSnaps[i] == "snapshot" {
 			tSnaps[i] = "name"
 		} else if tSnaps[i] == "snapshot_only" {
-			tSnaps[i] = "snapshot"
+			tSnaps[i] = "snapshot_name"
 		}
 	}
 
@@ -161,11 +166,21 @@ func doList(api core.Session, args []string) error {
 	DebugString(fmt.Sprint(qEntriesMap))
 	DebugString(fmt.Sprint(qEntryTypesMap))
 
-	if len(qEntriesMap) == 0 {
+	var allTypes []string
+	for qType, _ := range qEntriesMap {
+		if allTypes == nil {
+			allTypes = make([]string, 0)
+		}
+		allTypes = append(allTypes, qType)
+	}
+
+	if len(allTypes) == 0 {
 		return errors.New("No types could be queried. Try passing a different value to the --types option.")
 	}
 
-	listCmd.SilenceUsage = true
+	slices.Sort(allTypes)
+
+	cmd.SilenceUsage = true
 
 	var outProps []string
 	if properties != nil {
@@ -185,9 +200,9 @@ func doList(api core.Session, args []string) error {
 
 	extras := typeRetrieveParams{
 		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
-		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
-		shouldRecurse:      true, //len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
 	allResults := make([]map[string]interface{}, 0)
@@ -241,8 +256,9 @@ func doList(api core.Session, args []string) error {
 		columnsList = required
 	}
 
-	core.PrintTableDataList(format, "all", columnsList, allResults)
-	return nil
+	str, err := core.BuildTableData(format, "all", columnsList, allResults)
+	PrintTable(api, str)
+	return err
 }
 
 func addEntriesFromInto(allValues, allTypes map[string][]string, srcKey, dstKey string, shouldCreateAnyway bool) {

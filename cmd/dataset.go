@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"truenas/admin-tool/core"
+	"truenas/truenas-admin/core"
 
 	"github.com/spf13/cobra"
 )
 
 var datasetCmd = &cobra.Command{
-	Use: "dataset",
+	Use:   "dataset",
+	Short: "Edit or list datasets/zvols and their shares on a remote or local machine",
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			cmd.HelpFunc()(cmd, args)
@@ -21,40 +22,48 @@ var datasetCmd = &cobra.Command{
 	},
 }
 
+/*
+	TODO: most of these commands should be modified to support specifying multiple datasets,
+	thus allowing a cheap "batch" mode.
+
+	Ie, even when the underlying API doesn't support multiple datasets, we would instead use
+	core.bulk, or worst case, iteration
+*/
+
 var datasetCreateCmd = &cobra.Command{
-	Use:   "create",
+	Use:   "create [flags] <dataset>",
 	Short: "Creates a dataset/zvol.",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var datasetUpdateCmd = &cobra.Command{
-	Use:     "update",
+	Use:     "update [flags] <dataset>",
 	Short:   "Updates an existing dataset/zvol.",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"set"},
 }
 
 var datasetDeleteCmd = &cobra.Command{
-	Use:     "delete",
+	Use:     "delete [flags] <dataset>",
 	Short:   "Deletes a dataset/zvol.",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"rm"},
 }
 
 var datasetListCmd = &cobra.Command{
-	Use:     "list",
+	Use:     "list [flags] [dataset]...",
 	Short:   "Prints a table of all datasets/zvols, given a source and an optional set of properties.",
 	Aliases: []string{"ls"},
 }
 
 var datasetPromoteCmd = &cobra.Command{
-	Use:   "promote",
+	Use:   "promote [flags] <dataset>",
 	Short: "Promote a clone dataset to no longer depend on the origin snapshot.",
 	Args:  cobra.ExactArgs(1),
 }
 
 var datasetRenameCmd = &cobra.Command{
-	Use:   "rename [flags]... <old dataset>[@<old snapshot>] <new dataset|new snapshot>",
+	Use:   "rename [flags] <old dataset>[@<old snapshot>] <new dataset|new snapshot>",
 	Short: "Rename a ZFS dataset",
 	Long: `Renames the given dataset. The new target can be located anywhere in the ZFS hierarchy, with the exception of snapshots.
 Snapshots can only be re‐named within the parent file system or volume.
@@ -89,19 +98,19 @@ func init() {
 	}
 
 	datasetDeleteCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return deleteDataset(ValidateAndLogin(), args)
+		return deleteDataset(cmd, ValidateAndLogin(), args)
 	}
 
 	datasetListCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return listDataset(ValidateAndLogin(), args)
+		return listDataset(cmd, ValidateAndLogin(), args)
 	}
 
 	datasetPromoteCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return promoteDataset(ValidateAndLogin(), args)
+		return promoteDataset(cmd, ValidateAndLogin(), args)
 	}
 
 	datasetRenameCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return renameDataset(ValidateAndLogin(), args)
+		return renameDataset(cmd, ValidateAndLogin(), args)
 	}
 
 	createUpdateCmds := []*cobra.Command{datasetCreateCmd, datasetUpdateCmd}
@@ -117,6 +126,8 @@ func init() {
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "compression", g_compressionEnum[:]))
 		cmd.Flags().String("atime", "inherit", "Controls whether the access time for files is updated when they are read "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "atime", []string{"inherit", "on", "off"}))
+		//cmd.Flags().String("relatime", "inherit", "Controls whether the access time for files is updated periodically "+
+			//AddFlagsEnum(&g_datasetCreateUpdateEnums, "relatime", []string{"inherit", "on", "off"}))
 		cmd.Flags().String("exec", "inherit", "Controls whether processes can be executed from within this file system "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "exec", []string{"inherit", "on", "off"}))
 		cmd.Flags().String("acltype", "inherit", "Controls whether ACLs are enabled and if so what type of ACL to use "+
@@ -153,7 +164,7 @@ func init() {
 		cmd.Flags().StringP("option", "o", "", "Specify property=value,...")
 		cmd.Flags().Int64P("volume", "V", 0, "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size.")
 		cmd.Flags().StringP("volblocksize", "b", "512", "Volume block size "+
-			AddFlagsEnum(&g_datasetCreateUpdateEnums, "volblocksize", []string{"512","1K","2K","4K","8K","16K","32K","64K","128K"}))
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "volblocksize", []string{"512", "1K", "2K", "4K", "8K", "16K", "32K", "64K", "128K"}))
 		cmd.Flags().BoolP("sparse", "s", false, "Creates a sparse volume with no reservation")
 		cmd.Flags().Bool("force-size", false, "")
 		cmd.Flags().String("snapdev", "hidden", "Controls whether the volume snapshot devices are hidden or visible "+
@@ -173,7 +184,7 @@ func init() {
 	datasetListCmd.Flags().String("format", "table", "Output table format "+
 		AddFlagsEnum(&g_datasetListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	datasetListCmd.Flags().StringP("output", "o", "", "Output property list")
-	datasetListCmd.Flags().BoolP("parseable", "p", false, "")
+	datasetListCmd.Flags().BoolP("parseable", "p", false, "Show raw values instead of the already parsed values")
 	datasetListCmd.Flags().BoolP("all", "a", false, "Output all properties")
 	datasetListCmd.Flags().StringP("source", "s", "default", "A comma-separated list of sources to display.\n"+
 		"Those properties coming from a source other than those in this list are ignored.\n"+
@@ -223,7 +234,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		isProp := false
 		switch propName {
 		case "create_parents":
-			outMap["create_ancestors"] = true
+			outMap["create_ancestors"] = valueStr == "true"
 		case "volume":
 			volSize, err = strconv.ParseInt(valueStr, 10, 64)
 			if err != nil {
@@ -292,15 +303,15 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	return nil
 }
 
-func deleteDataset(api core.Session, args []string) error {
+func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	datasetDeleteCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
-	options, _ := GetCobraFlags(datasetDeleteCmd, nil)
+	options, _ := GetCobraFlags(cmd, nil)
 	params := BuildNameStrAndPropertiesJson(options, args[0])
 	DebugJson(params)
 
@@ -313,13 +324,13 @@ func deleteDataset(api core.Session, args []string) error {
 	return nil
 }
 
-func listDataset(api core.Session, args []string) error {
+func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	options, err := GetCobraFlags(datasetListCmd, g_datasetListEnums)
+	options, err := GetCobraFlags(cmd, g_datasetListEnums)
 	if err != nil {
 		return err
 	}
@@ -329,7 +340,7 @@ func listDataset(api core.Session, args []string) error {
 		return err
 	}
 
-	datasetListCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	properties := EnumerateOutputProperties(options.allFlags)
 	idTypes, err := getDatasetListTypes(args)
@@ -340,7 +351,7 @@ func listDataset(api core.Session, args []string) error {
 	// `zfs list` will "recurse" if no names are specified.
 	extras := typeRetrieveParams{
 		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
-		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: core.IsValueTrue(options.allFlags, "user_properties"),
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
@@ -369,19 +380,20 @@ func listDataset(api core.Session, args []string) error {
 		columnsList = required
 	}
 
-	core.PrintTableDataList(format, "datasets", columnsList, datasets)
-	return nil
+	str, err := core.BuildTableData(format, "datasets", columnsList, datasets)
+	PrintTable(api, str)
+	return err
 }
 
-func promoteDataset(api core.Session, args []string) error {
+func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	datasetPromoteCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
-	params := []interface{} {args[0]}
+	params := []interface{}{args[0]}
 	DebugJson(params)
 
 	out, err := core.ApiCall(api, "pool.dataset.promote", "10s", params)
@@ -393,15 +405,15 @@ func promoteDataset(api core.Session, args []string) error {
 	return nil
 }
 
-func renameDataset(api core.Session, args []string) error {
+func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	datasetRenameCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
-	options, _ := GetCobraFlags(datasetRenameCmd, nil)
+	options, _ := GetCobraFlags(cmd, nil)
 
 	source := args[0]
 	dest := args[1]
@@ -409,7 +421,7 @@ func renameDataset(api core.Session, args []string) error {
 	outMap := make(map[string]interface{})
 	outMap["new_name"] = dest
 
-	params := []interface{} {source, outMap}
+	params := []interface{}{source, outMap}
 	DebugJson(params)
 
 	out, err := core.ApiCall(api, "zfs.dataset.rename", "10s", params)
@@ -434,8 +446,8 @@ func renameDataset(api core.Session, args []string) error {
 		}
 
 		pathMap := make(map[string]interface{})
-		pathMap["path"] = "/mnt/"+dest
-		nfsParams := []interface{} {id, pathMap}
+		pathMap["path"] = "/mnt/" + dest
+		nfsParams := []interface{}{id, pathMap}
 
 		DebugJson(nfsParams)
 
@@ -459,11 +471,13 @@ func getDatasetListTypes(args []string) ([]string, error) {
 	for i := 0; i < len(args); i++ {
 		t, value := core.IdentifyObject(args[i])
 		if t == "id" || t == "share" {
-			return typeList, errors.New("querying datasets based on mount point is not yet supported")
+			return nil, errors.New("querying datasets based on mount point is not yet supported")
 		} else if t == "snapshot" || t == "snapshot_only" {
-			return typeList, errors.New("querying datasets based on shapshot is not yet supported")
+			return nil, errors.New("querying datasets based on shapshot is not yet supported")
 		} else if t == "dataset" {
 			t = "name"
+		} else if t != "pool" {
+			return nil, errors.New("Unrecognised namespec \"" + args[i] + "\"")
 		}
 		typeList[i] = t
 		args[i] = value

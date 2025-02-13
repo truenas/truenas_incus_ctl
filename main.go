@@ -1,6 +1,6 @@
 package main
 
-import "truenas/admin-tool/cmd"
+import "truenas/truenas-admin/cmd"
 
 func main() {
 	cmd.Execute()

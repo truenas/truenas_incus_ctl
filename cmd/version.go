@@ -16,11 +16,13 @@ import (
 0.1.6 `share nfs delete“ now supports <id|dataset|path>
 0.1.7 `share nfs update now supports `--create`
 0.1.8 most methods now return non-zero on error
+0.2.0 renamed to `truenas-admin`, first published version
 */
-const VERSION = "0.1.8"
+const VERSION = "0.2.0"
 
 var versionCmd = &cobra.Command{
-	Use: "version",
+	Use:   "version",
+	Short: "Print the version of this program",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println(VERSION)
 	},

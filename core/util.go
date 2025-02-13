@@ -18,14 +18,16 @@ func IdentifyObject(obj string) (string, string) {
 		return "share", obj
 	} else if obj[0] == '@' {
 		return "snapshot_only", obj[1:]
-	} else if strings.Index(obj, "@") >= 1 {
+	} else if pos := strings.Index(obj, "@"); pos >= 1 {
+		if pos == len(obj)-1 {
+			return "error", obj
+		}
 		return "snapshot", obj
 	} else if pos := strings.LastIndex(obj, "/"); pos >= 1 {
 		if pos == len(obj)-1 {
 			return IdentifyObject(obj[0:len(obj)-1])
-		} else {
-			return "dataset", obj
 		}
+		return "dataset", obj
 	}
 	return "pool", obj
 }

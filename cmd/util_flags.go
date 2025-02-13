@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -13,6 +14,25 @@ type FlagMap struct {
 	usedFlags map[string]string
 	allFlags  map[string]string
 	allTypes  map[string]string
+}
+
+var auxiliaryFlags map[*cobra.Command]map[string]interface{}
+
+func SetAuxCobraFlag(cmd *cobra.Command, rawKey string, parsedValue interface{}) {
+	if auxiliaryFlags == nil {
+		auxiliaryFlags = make(map[*cobra.Command]map[string]interface{})
+	}
+	if flags, exists := auxiliaryFlags[cmd]; !exists || flags == nil {
+		auxiliaryFlags[cmd] = make(map[string]interface{})
+	}
+	key := strings.ReplaceAll(rawKey, "-", "_")
+	auxiliaryFlags[cmd][key] = parsedValue
+}
+
+func ResetAuxCobraFlags(cmd *cobra.Command) {
+	if auxiliaryFlags != nil {
+		auxiliaryFlags[cmd] = nil
+	}
 }
 
 func GetCobraFlags(cmd *cobra.Command, cmdEnums map[string][]string) (FlagMap, error) {
@@ -32,6 +52,33 @@ func GetCobraFlags(cmd *cobra.Command, cmdEnums map[string][]string) (FlagMap, e
 		fm.allFlags[key] = flag.Value.String()
 		fm.allTypes[key] = flag.Value.Type()
 	})
+
+	if aux, exists := auxiliaryFlags[cmd]; exists {
+		for key, value := range aux {
+			knownType, exists := fm.allTypes[key]
+			if !exists {
+				return FlagMap{}, fmt.Errorf("aux flag %s was not found in command \"%s\"", key, cmd.Use)
+			}
+			var typeStr string
+			if _, ok := value.(string); ok {
+				typeStr = "string"
+			} else if _, ok := value.(bool); ok {
+				typeStr = "bool"
+			} else if _, ok := value.(int); ok {
+				typeStr = "int"
+			} else if _, ok := value.(int64); ok {
+				typeStr = "int64"
+			} else {
+				typeStr = "any"
+			}
+			if knownType[:3] != typeStr[:3] {
+				return FlagMap{}, fmt.Errorf("aux flag %s: type mismatch (existing: %s, type of given value: %s)", key, knownType, typeStr)
+			}
+			valueStr := fmt.Sprint(value)
+			fm.allFlags[key] = valueStr
+			fm.usedFlags[key] = valueStr
+		}
+	}
 
 	RemoveGlobalFlags(fm.usedFlags)
 	RemoveGlobalFlags(fm.allFlags)

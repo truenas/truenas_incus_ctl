@@ -5,20 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"truenas/admin-tool/core"
+	"truenas/truenas-admin/core"
 
 	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "admin-tool",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Use: "truenas-admin",
 }
 
 func Execute() {
@@ -30,26 +23,28 @@ func Execute() {
 
 var g_useMock bool
 var g_debug bool
+var g_configFileName string
+var g_configHost string
 var g_url string
 var g_apiKey string
-var g_keyFile string
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&g_debug, "debug", false, "Enable debug logs")
 	rootCmd.PersistentFlags().BoolVar(&g_useMock, "mock", false, "Use the mock API instead of a TrueNAS server")
+	rootCmd.PersistentFlags().StringVar(&g_configFileName, "config", "", "Override config filename (~/.truenas-admin/config.json)")
+	rootCmd.PersistentFlags().StringVar(&g_configHost, "host", "", "Name of config to look up in config.json, defaults to first entry")
 	rootCmd.PersistentFlags().StringVarP(&g_url, "url", "U", "", "Server URL")
 	rootCmd.PersistentFlags().StringVarP(&g_apiKey, "api-key", "K", "", "API key")
-	rootCmd.PersistentFlags().StringVar(&g_keyFile, "key-file", "", "Text file containing server URL on the first line, API key on the second")
 }
 
 func RemoveGlobalFlags(flags map[string]string) {
 	delete(flags, "debug")
 	delete(flags, "mock")
+	delete(flags, "config")
+	delete(flags, "host")
 	delete(flags, "url")
 	delete(flags, "api-key")
 	delete(flags, "api_key")
-	delete(flags, "key-file")
-	delete(flags, "key_file")
 }
 
 func ValidateAndLogin() core.Session {
@@ -59,10 +54,16 @@ func ValidateAndLogin() core.Session {
 			DatasetSource: &core.FileRawa{FileName: "datasets.tsv"},
 		}
 	} else {
+		if g_url == "" && g_apiKey == "" {
+			var err error
+			g_url, g_apiKey, err = loadConfig(g_configFileName, g_configHost)
+			if err != nil {
+				log.Fatal(fmt.Errorf("Failed to parse config: %v", err))
+			}
+		}
 		api = &core.RealSession{
 			HostUrl:     g_url,
 			ApiKey:      g_apiKey,
-			KeyFileName: g_keyFile,
 		}
 	}
 
@@ -75,6 +76,108 @@ func ValidateAndLogin() core.Session {
 	return api
 }
 
+func loadConfig(fileName, hostName string) (string, string, error) {
+	var data []byte
+	var err error
+
+	if fileName == "" {
+		fileName = getDefaultConfigPath()
+		data, err = os.ReadFile(fileName)
+	} else {
+		data, err = os.ReadFile(fileName)
+		if err != nil {
+			fileName = getDefaultConfigPath()
+			data, err = os.ReadFile(fileName)
+		}
+	}
+
+	if err != nil {
+		return "", "", err
+	}
+
+	var obj interface{}
+	if err = json.Unmarshal(data, &obj); err != nil {
+		return "", "", fmt.Errorf("\"%s\": %v", fileName, err)
+	}
+
+	config, ok := obj.(map[string]interface{})
+	if !ok {
+		return "", "", fmt.Errorf("Config was not a JSON object \"%s\"", fileName)
+	}
+
+	hosts, err := getMapFromMapAny(config, "hosts", fileName)
+	if err != nil {
+		return "", "", err
+	}
+
+	if hostName == "" {
+		for key, _ := range hosts {
+			if hostName == "" || key < hostName {
+				hostName = key
+			}
+		}
+		if hostName == "" {
+			return "", "", fmt.Errorf("Could not find any hosts in config \"%s\"", fileName)
+		}
+	}
+
+	host, err := getMapFromMapAny(hosts, hostName, fileName)
+	if err != nil {
+		return "", "", err
+	}
+
+	apiKey, err := getNonEmptyStringFromMapAny(host, "api_key", fileName)
+	if err != nil {
+		return "", "", err
+	}
+
+	url, err := getNonEmptyStringFromMapAny(host, "url", fileName)
+	if err != nil {
+		return "", "", err
+	}
+
+	return url, apiKey, nil
+}
+
+func getDefaultConfigPath() string {
+	p, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+	return p + "/.truenas-admin/config.json"
+}
+
+func getMapFromMapAny(dict map[string]interface{}, key, fileName string) (map[string]interface{}, error) {
+	var inner map[string]interface{}
+	if innerObj, exists := dict[key]; exists {
+		var ok bool
+		inner, ok = innerObj.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("\"%s\" in config \"%s\" was not a JSON object", key, fileName)
+		}
+	} else {
+		return nil, fmt.Errorf("Could not find \"%s\" in config \"%s\"", key, fileName)
+	}
+	return inner, nil
+}
+
+func getNonEmptyStringFromMapAny(dict map[string]interface{}, key, fileName string) (string, error) {
+	var str string
+	if strObj, exists := dict[key]; exists {
+		var ok bool
+		str, ok = strObj.(string)
+		if !ok {
+			return "", fmt.Errorf("\"%s\" in config \"%s\" was not a string", key, fileName)
+		}
+	} else {
+		return "", fmt.Errorf("Could not find \"%s\" in config \"%s\"", key, fileName)
+	}
+	if str == "" {
+		return "", fmt.Errorf("\"%s\" in config \"%s\" was left blank", key, fileName)
+	}
+	return str, nil
+}
+
 func DebugString(str string) {
 	if g_debug {
 		fmt.Println(str)
@@ -85,7 +188,7 @@ func DebugJson(obj interface{}) {
 	if g_debug {
 		data, err := json.Marshal(obj)
 		if err != nil {
-			fmt.Println("%v (%v)", obj, err)
+			fmt.Printf("%v (%v)", obj, err)
 		}
 		fmt.Println(string(data))
 	}

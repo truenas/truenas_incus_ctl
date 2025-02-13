@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"math"
+
 	//"os"
 	//"log"
 	"slices"
 	"strconv"
 	"strings"
-	"truenas/admin-tool/core"
+	"truenas/truenas-admin/core"
 )
 
 type typeRetrieveParams struct {
@@ -27,7 +28,7 @@ func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) []interface{
 		outMap[key] = parsed
 	}
 
-	return []interface{} {nameStr, outMap}
+	return []interface{}{nameStr, outMap}
 }
 
 func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
@@ -40,14 +41,19 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 	case "nfs":
 		endpoint = "sharing.nfs.query"
 	default:
-		return nil, fmt.Errorf("Unrecognised retrieve format \"" + endpointType + "\"")
+		return nil, fmt.Errorf("unrecognised retrieve format \"%s\"", endpointType)
 	}
 
 	if len(entryTypes) != len(entries) {
-		return nil, fmt.Errorf("Length mismatch between entries and entry types:", len(entries), "!=", len(entryTypes))
+		return nil, fmt.Errorf("length mismatch between entries and entry types: %d != %d", len(entries), len(entryTypes))
 	}
 
-	query := []interface{} {makeQueryFilter(entries, entryTypes, params)}
+	filter, err := makeQueryFilter(entries, entryTypes, params)
+	if err != nil {
+		return nil, err
+	}
+
+	query := []interface{}{filter}
 	if endpointType != "nfs" {
 		query = append(query, makeQueryOptions(propsList, params))
 	}
@@ -59,6 +65,7 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 		return nil, err
 	}
 
+	//fmt.Println(string(data))
 	//os.Stdout.WriteString(string(data))
 	//fmt.Println("\n")
 
@@ -144,13 +151,19 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 		outputList[i] = outputMap[strconv.Itoa(outputMapIntKeys[i])]
 	}
 	for i, _ := range outputMapStrKeys {
-		outputList[len(outputMapIntKeys) + i] = outputMap[outputMapStrKeys[i]]
+		outputList[len(outputMapIntKeys)+i] = outputMap[outputMapStrKeys[i]]
 	}
 
 	return outputList, nil
 }
 
-func makeQueryFilter(entries, entryTypes []string, params typeRetrieveParams) []interface{} {
+func makeQueryFilter(entries, entryTypes []string, params typeRetrieveParams) ([]interface{}, error) {
+	for i, e := range entries {
+		if e == "" {
+			return nil, fmt.Errorf("Cannot query based on empty %s", entryTypes[i])
+		}
+	}
+
 	filter := make([]interface{}, 0)
 
 	// first arg = query-filter
@@ -175,21 +188,21 @@ func makeQueryFilter(entries, entryTypes []string, params typeRetrieveParams) []
 		filter = append(filter, constructORChain(filterList))
 	}
 
-	return filter
+	return filter, nil
 }
 
 func makeIndividualFilter(key string, array []string, isRecursive bool) []interface{} {
 	if isRecursive && (key == "dataset" /* || key == "pool"*/) {
 		return constructORChain(makeRecursivePathsFilterList(key, array))
 	}
-	return []interface{} {key, "in", array}
+	return []interface{}{key, "in", array}
 }
 
 func makeRecursivePathsFilterList(key string, paths []string) [][]interface{} {
 	filterList := make([][]interface{}, 0)
 	for i := 0; i < len(paths); i++ {
-		filterList = append(filterList, []interface{} {key, "=", paths[i]})
-		filterList = append(filterList, []interface{} {key, "^", paths[i] + "/"})
+		filterList = append(filterList, []interface{}{key, "=", paths[i]})
+		filterList = append(filterList, []interface{}{key, "^", paths[i] + "/"})
 	}
 	return filterList
 }
@@ -199,11 +212,11 @@ func constructORChain(filterList [][]interface{}) []interface{} {
 	if nFilters == 0 {
 		return nil
 	}
-	top := [][]interface{} {filterList[0]}
+	top := [][]interface{}{filterList[0]}
 	for i := 1; i < nFilters; i++ {
 		top = append(top, filterList[i])
-		inner := []interface{} {"OR",top}
-		top = [][]interface{} {inner}
+		inner := []interface{}{"OR", top}
+		top = [][]interface{}{inner}
 	}
 	return top[0]
 }
@@ -223,7 +236,7 @@ func makeQueryOptions(propsList []string, params typeRetrieveParams) map[string]
 		options["properties"] = propsList
 	}
 	options["user_properties"] = params.shouldGetUserProps
-	return map[string]interface{} {"extra": options}
+	return map[string]interface{}{"extra": options}
 }
 
 func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []string, valueOrder []string) {

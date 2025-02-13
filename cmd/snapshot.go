@@ -3,20 +3,14 @@ package cmd
 import (
 	"errors"
 	"strings"
-	"truenas/admin-tool/core"
+	"truenas/truenas-admin/core"
 
 	"github.com/spf13/cobra"
 )
 
 var snapshotCmd = &cobra.Command{
 	Use:   "snapshot",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Edit or list snapshots on a remote or local machine",
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			cmd.HelpFunc()(cmd, args)
@@ -32,27 +26,27 @@ var snapshotCloneCmd = &cobra.Command{
 }
 
 var snapshotCreateCmd = &cobra.Command{
-	Use:   "create",
+	Use:   "create [flags] <dataset>@<snapshot>",
 	Short: "Take a snapshot of dataset, possibly recursive",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var snapshotDeleteCmd = &cobra.Command{
-	Use:     "delete",
+	Use:     "delete [flags] <dataset>@<snapshot>",
 	Short:   "Delete a snapshot of dataset, possibly recursive",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"rm"},
 }
 
 var snapshotListCmd = &cobra.Command{
-	Use:     "list",
+	Use:     "list [flags] [<dataset>][@<snapshot>]...",
 	Short:   "List all snapshots",
 	Aliases: []string{"ls"},
 }
 
 var snapshotRenameCmd = &cobra.Command{
-	Use:   "rename [flags]... <old dataset>@<old snapshot> <new snapshot>",
-	Short: "Rename a ZFS snapshot",
+	Use:     "rename [flags] <old dataset>@<old snapshot> <new snapshot>",
+	Short:   "Rename a ZFS snapshot",
 	Args:    cobra.ExactArgs(2),
 	Aliases: []string{"mv"},
 }
@@ -67,11 +61,11 @@ var g_snapshotListEnums map[string][]string
 
 func init() {
 	snapshotCloneCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return cloneSnapshot(ValidateAndLogin(), args)
+		return cloneSnapshot(cmd, ValidateAndLogin(), args)
 	}
 
 	snapshotCreateCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return createSnapshot(ValidateAndLogin(), args)
+		return createSnapshot(cmd, ValidateAndLogin(), args)
 	}
 
 	snapshotDeleteCmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -79,11 +73,11 @@ func init() {
 	}
 
 	snapshotListCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return listSnapshot(ValidateAndLogin(), args)
+		return listSnapshot(cmd, ValidateAndLogin(), args)
 	}
 
 	snapshotRenameCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return renameSnapshot(ValidateAndLogin(), args)
+		return renameSnapshot(cmd, ValidateAndLogin(), args)
 	}
 
 	snapshotRollbackCmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -103,11 +97,11 @@ func init() {
 	snapshotListCmd.Flags().BoolP("user-properties", "u", false, "Include user-properties")
 	snapshotListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
 	snapshotListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
-	snapshotListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" " +
-			AddFlagsEnum(&g_snapshotListEnums, "format", []string{"csv","json","table","compact"}))
+	snapshotListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
+		AddFlagsEnum(&g_snapshotListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	snapshotListCmd.Flags().StringP("output", "o", "", "Output property list")
-	snapshotListCmd.Flags().BoolP("parseable", "p", false, "")
-	snapshotListCmd.Flags().Bool("all", false, "")
+	snapshotListCmd.Flags().BoolP("parseable", "p", false, "Show raw values instead of the already parsed values")
+	snapshotListCmd.Flags().Bool("all", false, "Output all properties")
 
 	snapshotRollbackCmd.Flags().BoolP("force", "f", false, "force unmount of any clones")
 	snapshotRollbackCmd.Flags().BoolP("recursive", "r", false, "destroy any snapshots and bookmarks more recent than the one specified")
@@ -124,20 +118,20 @@ func init() {
 	rootCmd.AddCommand(snapshotCmd)
 }
 
-func cloneSnapshot(api core.Session, args []string) error {
+func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	snapshotCloneCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	outMap := make(map[string]interface{})
 	outMap["snapshot"] = args[0]
 	outMap["dataset_dst"] = args[1]
 	//outMap["dataset_properties"] = make(map[string]interface{})
 
-	params := []interface{} {outMap}
+	params := []interface{}{outMap}
 	DebugJson(params)
 
 	out, err := core.ApiCall(api, "zfs.snapshot.clone", "10s", params)
@@ -149,17 +143,17 @@ func cloneSnapshot(api core.Session, args []string) error {
 	return nil
 }
 
-func createSnapshot(api core.Session, args []string) error {
+func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	options, _ := GetCobraFlags(snapshotCreateCmd, nil)
+	options, _ := GetCobraFlags(cmd, nil)
 
 	snapshot := args[0]
 	datasetLen := strings.Index(snapshot, "@")
-	if datasetLen <= 0 {
+	if datasetLen <= 0 || datasetLen == len(snapshot)-1 {
 		return errors.New("No dataset name was found in snapshot specifier.\nExpected <datasetname>@<snapshotname>.")
 	}
 	dataset := snapshot[0:datasetLen]
@@ -185,10 +179,10 @@ func createSnapshot(api core.Session, args []string) error {
 	_ = WriteKvArrayToMap(outProps, ConvertParamsStringToKvArray(options.allFlags["option"]), nil)
 	outMap["properties"] = outProps
 
-	params := []interface{} {outMap}
+	params := []interface{}{outMap}
 	DebugJson(params)
 
-	snapshotCreateCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	out, err := core.ApiCall(api, "zfs.snapshot.create", "10s", params)
 	if err != nil {
@@ -231,13 +225,13 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	return nil
 }
 
-func renameSnapshot(api core.Session, args []string) error {
+func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	snapshotRenameCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	source := args[0]
 	dest := args[1]
@@ -245,7 +239,7 @@ func renameSnapshot(api core.Session, args []string) error {
 	outMap := make(map[string]interface{})
 	outMap["new_name"] = dest
 
-	params := []interface{} {source, outMap}
+	params := []interface{}{source, outMap}
 	DebugJson(params)
 
 	// For now, snapshot rename uses the same API as dataset rename. This may change in the future.
@@ -258,13 +252,13 @@ func renameSnapshot(api core.Session, args []string) error {
 	return nil
 }
 
-func listSnapshot(api core.Session, args []string) error {
+func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
-	options, err := GetCobraFlags(snapshotListCmd, g_snapshotListEnums)
+	options, err := GetCobraFlags(cmd, g_snapshotListEnums)
 	if err != nil {
 		return err
 	}
@@ -274,7 +268,7 @@ func listSnapshot(api core.Session, args []string) error {
 		return err
 	}
 
-	snapshotListCmd.SilenceUsage = true
+	cmd.SilenceUsage = true
 
 	properties := EnumerateOutputProperties(options.allFlags)
 	idTypes, err := getSnapshotListTypes(args)
@@ -285,7 +279,7 @@ func listSnapshot(api core.Session, args []string) error {
 	// `zfs list` will "recurse" if no names are specified.
 	extras := typeRetrieveParams{
 		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
-		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
@@ -307,8 +301,9 @@ func listSnapshot(api core.Session, args []string) error {
 		columnsList = required
 	}
 
-	core.PrintTableDataList(format, "snapshots", columnsList, snapshots)
-	return nil
+	str, err := core.BuildTableData(format, "snapshots", columnsList, snapshots)
+	PrintTable(api, str)
+	return err
 }
 
 func getSnapshotListTypes(args []string) ([]string, error) {
@@ -321,11 +316,13 @@ func getSnapshotListTypes(args []string) ([]string, error) {
 	for i := 0; i < len(args); i++ {
 		t, value := core.IdentifyObject(args[i])
 		if t == "id" || t == "share" {
-			return typeList, errors.New("querying snapshots based on mount point is not yet supported")
+			return nil, errors.New("querying snapshots based on mount point is not yet supported")
 		} else if t == "snapshot" {
 			t = "name"
 		} else if t == "snapshot_only" {
 			t = "snapshot_name"
+		} else if t != "dataset" && t != "pool" {
+			return nil, errors.New("Unrecognised namespec \"" + args[i] + "\"")
 		}
 		typeList[i] = t
 		args[i] = value
