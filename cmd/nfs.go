@@ -366,7 +366,7 @@ func listNfs(cmd *cobra.Command, api core.Session, args []string) error {
 
 	extras := typeRetrieveParams{
 		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
-		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
@@ -403,11 +403,13 @@ func getNfsListTypes(args []string) ([]string, error) {
 	for i := 0; i < len(args); i++ {
 		t, value := core.IdentifyObject(args[i])
 		if t == "snapshot" || t == "snapshot_only" {
-			return typeList, errors.New("querying nfs shares based on snapshot is not supported")
+			return nil, errors.New("querying nfs shares based on snapshot is not supported")
 		} else if t == "dataset" {
-			return typeList, errors.New("querying nfs shares based on dataset is not yet supported")
+			return nil, errors.New("querying nfs shares based on dataset is not yet supported")
 		} else if t == "share" {
 			t = "path"
+		} else if t != "id" && t != "pool" {
+			return nil, errors.New("Unrecognised namespec \"" + args[i] + "\"")
 		}
 		typeList[i] = t
 		args[i] = value

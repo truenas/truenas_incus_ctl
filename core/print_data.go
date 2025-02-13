@@ -1,12 +1,15 @@
 package core;
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
 
 func BuildTableData(format string, jsonName string, columnsList []string, data []map[string]interface{}) (string, error) {
 	var table strings.Builder
+	var err error
 	f := strings.ToLower(format)
 
 	switch f {
@@ -15,14 +18,14 @@ func BuildTableData(format string, jsonName string, columnsList []string, data [
 	case "csv":
 		WriteListCsv(&table, data, columnsList, true)
 	case "json":
-		WriteJson(&table, data, columnsList, jsonName)
+		err = WriteJson(&table, data, columnsList, jsonName)
 	case "table":
 		WriteListTable(&table, data, columnsList, true)
 	default:
 		return "", fmt.Errorf("Unrecognised table format \"%s\"", f)
 	}
 
-	return table.String(), nil
+	return table.String(), err
 }
 
 func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {
@@ -69,45 +72,38 @@ func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{},
 	}
 }
 
-func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, jsonName string) {
-	/*
-	table.WriteString("{")
-	WriteEncloseAndEscape(&table, jsonName, "\"")
-	table.WriteString(":")
-
-	if len(propsArray) == 0 {
-		builder.WriteString("{}")
-		return
-	}
-
-	builder.WriteString("{")
-	for i, p := range(propsArray) {
-		if i > 0 {
-			builder.WriteString(",")
-		}
-		name := EncloseAndEscape(p["name"].(string), "\"")
-		builder.WriteString(name)
-		builder.WriteString(":{\"name\":")
-		builder.WriteString(name)
-		for key, value := range(p) {
-			if key == "name" {
-				continue
-			}
-			builder.WriteString(",")
-			WriteEncloseAndEscape(builder, key, "\"")
-			builder.WriteString(":")
-			if value == nil {
-				builder.WriteString("null")
-			} else if valueStr, ok := value.(string); ok {
-				WriteEncloseAndEscape(builder, valueStr, "\"")
-			} else {
-				builder.WriteString(fmt.Sprint(value))
+func WriteJson(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, jsonName string) error {
+	obj := make(map[string]interface{})
+	for _, elem := range propsArray {
+		id, ok := elem["id"]
+		if !ok {
+			id, ok = elem["name"]
+			if !ok {
+				return errors.New("Could not find id or name in json table data")
 			}
 		}
-		builder.WriteString("}")
+
+		record := make(map[string]interface{})
+		for _, c := range columnsList {
+			if value, exists := elem[c]; exists {
+				record[c] = value
+			}
+		}
+
+		idStr := fmt.Sprint(id)
+		obj[idStr] = record
 	}
-	builder.WriteString("}")
-	*/
+
+	jsonObj := make(map[string]interface{})
+	jsonObj[jsonName] = obj
+	data, err := json.Marshal(jsonObj)
+	if err != nil {
+		return err
+	}
+
+	builder.WriteString(string(data))
+	builder.WriteString("\n")
+	return nil
 }
 
 func WriteListTable(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {

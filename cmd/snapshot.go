@@ -279,7 +279,7 @@ func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	// `zfs list` will "recurse" if no names are specified.
 	extras := typeRetrieveParams{
 		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
-		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
@@ -316,11 +316,13 @@ func getSnapshotListTypes(args []string) ([]string, error) {
 	for i := 0; i < len(args); i++ {
 		t, value := core.IdentifyObject(args[i])
 		if t == "id" || t == "share" {
-			return typeList, errors.New("querying snapshots based on mount point is not yet supported")
+			return nil, errors.New("querying snapshots based on mount point is not yet supported")
 		} else if t == "snapshot" {
 			t = "name"
 		} else if t == "snapshot_only" {
 			t = "snapshot_name"
+		} else if t != "dataset" && t != "pool" {
+			return nil, errors.New("Unrecognised namespec \"" + args[i] + "\"")
 		}
 		typeList[i] = t
 		args[i] = value

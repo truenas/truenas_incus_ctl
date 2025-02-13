@@ -95,7 +95,7 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 		} else if obj == "pool" {
 			qType = "pool"
 		} else {
-			return errors.New("Unrecognised object type \"" + obj + "\"")
+			return errors.New("Unrecognised namespec \"" + obj + "\"")
 		}
 		if _, exists := qEntriesMap[qType]; !exists {
 			qEntriesMap[qType] = make([]string, 0)
@@ -185,7 +185,7 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 
 	extras := typeRetrieveParams{
 		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
-		shouldGetAllProps:  format == "json" || core.IsValueTrue(options.allFlags, "all"),
+		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
 		shouldRecurse:      true, //len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
