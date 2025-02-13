@@ -16,19 +16,26 @@ func TestSnapshotClone(t *testing.T) {
 }
 
 func TestSnapshotCreate(t *testing.T) {
-	/*
-	MaybeCopyProperty(outMap, options.allFlags, "recursive")
-	MaybeCopyProperty(outMap, options.usedFlags, "suspend_vms")
-	MaybeCopyProperty(outMap, options.usedFlags, "vmware_sync")
+	FailIf(t, DoSimpleTest(
+		t,
+		snapshotCreateCmd,
+		createSnapshot,
+		map[string]interface{}{},
+		[]string{"dozer/testing/test4@readonly"},
+		"[{\"dataset\":\"dozer/testing/test4\",\"name\":\"readonly\",\"properties\":{},\"recursive\":false}]",
+	))
+}
 
-	if excludeStr := options.allFlags["exclude"]; excludeStr != "" {
-		outMap["exclude"] = strings.Split(excludeStr, ",")
-	}
-
-	outProps := make(map[string]interface{})
-	_ = WriteKvArrayToMap(outProps, ConvertParamsStringToKvArray(options.allFlags["option"]), nil)
-	outMap["properties"] = outProps
-	*/
+func TestSnapshotCreateFlags(t *testing.T) {
+	FailIf(t, DoSimpleTest(
+		t,
+		snapshotCreateCmd,
+		createSnapshot,
+		map[string]interface{}{"recursive":true,"suspend_vms":true,"vmware_sync":false,"exclude":"dozer/testing/test5","option":"readonly=ON"},
+		[]string{"dozer/testing/test4@readonly"},
+		"[{\"dataset\":\"dozer/testing/test4\",\"exclude\":[\"dozer/testing/test5\"],\"name\":\"readonly\","+
+			"\"properties\":{\"readonly\":\"ON\"},\"recursive\":true,\"suspend_vms\":true,\"vmware_sync\":false}]",
+	))
 }
 
 func TestSnapshotDelete(t *testing.T) {
