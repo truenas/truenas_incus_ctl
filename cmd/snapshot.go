@@ -301,8 +301,9 @@ func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 		columnsList = required
 	}
 
-	core.PrintTableDataList(format, "snapshots", columnsList, snapshots)
-	return nil
+	str, err := core.BuildTableData(format, "snapshots", columnsList, snapshots)
+	PrintTable(api, str)
+	return err
 }
 
 func getSnapshotListTypes(args []string) ([]string, error) {

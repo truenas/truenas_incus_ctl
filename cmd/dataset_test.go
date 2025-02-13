@@ -138,26 +138,36 @@ func TestDatasetDeleteRecursiveForce(t *testing.T) {
 }
 
 func TestDatasetList(t *testing.T) {
-	FailIf(t, DoSimpleTest(
+	FailIf(t, DoTest(
 		t,
 		datasetListCmd,
 		listDataset,
 		map[string]interface{}{},
 		[]string{"dozer/testing/test"},
-		"[[[\"name\",\"in\",[\"dozer/testing/test\"]]],{\"extra\":{\"flat\":false,"+
-			"\"properties\":[],\"retrieve_children\":false,\"user_properties\":false}}]",
+		[]string{"[[[\"name\",\"in\",[\"dozer/testing/test\"]]],{\"extra\":{\"flat\":false,"+ // expected
+			"\"properties\":[],\"retrieve_children\":false,\"user_properties\":false}}]"},
+		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test\",\"name\":\"dozer/testing/test\"}],\"id\":2}"}, //response
+		"        name        \n" + // table
+		"--------------------\n" +
+		" dozer/testing/test \n",
 	))
 }
 
 func TestDatasetListWithProperties(t *testing.T) {
-	FailIf(t, DoSimpleTest(
+	FailIf(t, DoTest(
 		t,
 		datasetListCmd,
 		listDataset,
-		map[string]interface{}{"parseable":true,"output":"name,atime,relatime"},
+		map[string]interface{}{"parseable":true,"output":"name,atime,exec"},
 		[]string{"dozer/testing/test"},
-		"[[[\"name\",\"in\",[\"dozer/testing/test\"]]],{\"extra\":{\"flat\":false,"+
-			"\"properties\":[\"name\",\"atime\",\"relatime\"],\"retrieve_children\":false,\"user_properties\":false}}]",
+		[]string{"[[[\"name\",\"in\",[\"dozer/testing/test\"]]],{\"extra\":{\"flat\":false,"+
+			"\"properties\":[\"name\",\"atime\",\"exec\"],\"retrieve_children\":false,\"user_properties\":false}}]"},
+		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test\",\"name\":\"dozer/testing/test\","+
+			"\"properties\":{\"atime\":{\"rawvalue\":\"off\",\"value\":\"OFF\",\"parsed\":false},"+
+			"\"exec\":{\"rawvalue\":\"off\",\"value\":\"OFF\",\"parsed\":false}}}],\"id\":2}"},
+		"        name        | atime | exec \n" +
+		"--------------------+-------+------\n" +
+		" dozer/testing/test | off   | off  \n",
 	))
 }
 
@@ -184,5 +194,22 @@ func TestDatasetRename(t *testing.T) {
 }
 
 func TestDatasetRenameUpdateShares(t *testing.T) {
-	
+	FailIf(t, DoTest(
+		t,
+		datasetRenameCmd,
+		renameDataset,
+		map[string]interface{}{"update-shares":true},
+		[]string{"dozer/testing/test", "dozer/testing/test3"},
+		[]string{ // expect
+			"[\"dozer/testing/test\",{\"new_name\":\"dozer/testing/test3\"}]",
+			"[[[\"path\",\"in\",[\"/mnt/dozer/testing/test\"]]]]",
+			"[1,{\"path\":\"/mnt/dozer/testing/test3\"}]",
+		},
+		[]string{ // response
+			"{}",
+			"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":1,\"path\":\"dozer/testing/test\"}],\"id\":2}",
+			"{}",
+		},
+		"", // table expected
+	))
 }

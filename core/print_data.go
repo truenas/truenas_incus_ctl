@@ -2,11 +2,10 @@ package core;
 
 import (
 	"fmt"
-	"os"
 	"strings"
 )
 
-func PrintTableDataList(format string, jsonName string, columnsList []string, data []map[string]interface{}) {
+func BuildTableData(format string, jsonName string, columnsList []string, data []map[string]interface{}) (string, error) {
 	var table strings.Builder
 	f := strings.ToLower(format)
 
@@ -20,11 +19,10 @@ func PrintTableDataList(format string, jsonName string, columnsList []string, da
 	case "table":
 		WriteListTable(&table, data, columnsList, true)
 	default:
-		fmt.Fprintln(os.Stderr, "Unrecognised table format", f)
-		return
+		return "", fmt.Errorf("Unrecognised table format \"%s\"", f)
 	}
 
-	os.Stdout.WriteString(table.String())
+	return table.String(), nil
 }
 
 func WriteListCsv(builder *strings.Builder, propsArray []map[string]interface{}, columnsList []string, useHeaders bool) {

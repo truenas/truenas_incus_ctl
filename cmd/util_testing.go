@@ -4,23 +4,29 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 	"truenas/truenas-admin/core"
 
 	"github.com/spf13/cobra"
 )
 
-type DummySession struct {
+type UnitTestSession struct {
 	test *testing.T
 	expects []string
 	responses []string
+	tableExpected string
 	callIdx int
+	shouldIncCallIdx bool
 }
 
-func (s *DummySession) Login() error { return nil }
-func (s *DummySession) Close() error { return nil }
+func (s *UnitTestSession) Login() error { return nil }
+func (s *UnitTestSession) Close() error { return nil }
 
-func (s *DummySession) CallRaw(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
+func (s *UnitTestSession) CallRaw(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
+	if s.shouldIncCallIdx {
+		s.callIdx++
+	}
 	data, err := json.Marshal(params)
 	FailIf(s.test, err)
 	expect := s.expects[s.callIdx]
@@ -28,18 +34,22 @@ func (s *DummySession) CallRaw(method string, timeoutStr string, params interfac
 		return nil, fmt.Errorf("\"%s\" != \"%s\"", string(data), expect)
 	}
 	response := []byte(s.responses[s.callIdx])
-	s.callIdx++
-	return response, errors.New(expect)
+	s.shouldIncCallIdx = true
+	return response, nil
 }
 
-func FailIf(t *testing.T, err error) {
-	if err != nil {
-		t.Error(err)
+func PrintTable(api core.Session, str string) {
+	if unit, isUnitTest := api.(*UnitTestSession); isUnitTest {
+		if unit.tableExpected != str {
+			unit.test.Error(errors.New("table:\n" + str + "did not match expected:\n" + unit.tableExpected))
+		}
+	} else {
+		os.Stdout.WriteString(str)
 	}
 }
 
-func SetupSimpleTest(t *testing.T, expect, response string) *DummySession {
-	api := &DummySession{}
+func SetupSimpleTest(t *testing.T, expect, response string) *UnitTestSession {
+	api := &UnitTestSession{}
 	//api.Login()
 	api.test = t
 	api.expects = []string{expect}
@@ -71,15 +81,16 @@ func DoSimpleTest(
 	return nil
 }
 
-func SetupMultiTest(t *testing.T, expectList, responseList []string) *DummySession {
+func SetupMultiTest(t *testing.T, expectList, responseList []string, tableExpected string) *UnitTestSession {
 	if len(expectList) != len(responseList) || len(expectList) < 1 {
 		return nil
 	}
-	api := &DummySession{}
+	api := &UnitTestSession{}
 	//api.Login()
 	api.test = t
 	api.expects = expectList
 	api.responses = responseList
+	api.tableExpected = tableExpected
 	return api
 }
 
@@ -91,12 +102,13 @@ func DoTest(
 	args []string,
 	expectList []string,
 	responseList []string,
+	tableExpected string,
 ) error {
 	for key, value := range props {
 		SetAuxCobraFlag(cmd, key, value)
 	}
 	defer ResetAuxCobraFlags(cmd)
-	api := SetupMultiTest(t, expectList, responseList)
+	api := SetupMultiTest(t, expectList, responseList, tableExpected)
 	if api == nil {
 		return errors.New("Failed to set up test correctly. Check expectList and responseList.")
 	}
@@ -110,4 +122,10 @@ func DoTest(
 		}
 	}
 	return nil
+}
+
+func FailIf(t *testing.T, err error) {
+	if err != nil {
+		t.Error(err)
+	}
 }

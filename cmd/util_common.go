@@ -59,6 +59,7 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 		return nil, err
 	}
 
+	//fmt.Println(string(data))
 	//os.Stdout.WriteString(string(data))
 	//fmt.Println("\n")
 

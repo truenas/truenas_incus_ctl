@@ -388,8 +388,9 @@ func listNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		columnsList = required
 	}
 
-	core.PrintTableDataList(format, "shares", columnsList, shares)
-	return nil
+	str, err := core.BuildTableData(format, "shares", columnsList, shares)
+	PrintTable(api, str)
+	return err
 }
 
 func getNfsListTypes(args []string) ([]string, error) {

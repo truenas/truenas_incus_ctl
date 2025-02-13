@@ -241,8 +241,9 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 		columnsList = required
 	}
 
-	core.PrintTableDataList(format, "all", columnsList, allResults)
-	return nil
+	str, err := core.BuildTableData(format, "all", columnsList, allResults)
+	PrintTable(api, str)
+	return err
 }
 
 func addEntriesFromInto(allValues, allTypes map[string][]string, srcKey, dstKey string, shouldCreateAnyway bool) {

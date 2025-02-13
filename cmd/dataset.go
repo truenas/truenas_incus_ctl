@@ -55,9 +55,9 @@ var datasetPromoteCmd = &cobra.Command{
 }
 
 var datasetRenameCmd = &cobra.Command{
-	Use:   "rename [flags]... <old dataset>[@<old snapshot>] <new dataset|new snapshot>",
-	Short: "Rename a ZFS dataset",
-	Long: `Renames the given dataset. The new target can be located anywhere in the ZFS hierarchy, with the exception of snapshots.
+	Use:     "rename [flags]... <old dataset>[@<old snapshot>] <new dataset|new snapshot>",
+	Short:   "Rename a ZFS dataset",
+	Long:    `Renames the given dataset. The new target can be located anywhere in the ZFS hierarchy, with the exception of snapshots.
 Snapshots can only be re‐named within the parent file system or volume.
 When renaming a snapshot, the parent file system of the snapshot does not need to be specified as part of the second argument.
 Renamed file systems can inherit new mount points, in which case they are unmounted and remounted at the new mount point.`,
@@ -118,6 +118,8 @@ func init() {
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "compression", g_compressionEnum[:]))
 		cmd.Flags().String("atime", "inherit", "Controls whether the access time for files is updated when they are read "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "atime", []string{"inherit", "on", "off"}))
+		//cmd.Flags().String("relatime", "inherit", "Controls whether the access time for files is updated periodically "+
+			//AddFlagsEnum(&g_datasetCreateUpdateEnums, "relatime", []string{"inherit", "on", "off"}))
 		cmd.Flags().String("exec", "inherit", "Controls whether processes can be executed from within this file system "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "exec", []string{"inherit", "on", "off"}))
 		cmd.Flags().String("acltype", "inherit", "Controls whether ACLs are enabled and if so what type of ACL to use "+
@@ -370,8 +372,9 @@ func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 		columnsList = required
 	}
 
-	core.PrintTableDataList(format, "datasets", columnsList, datasets)
-	return nil
+	str, err := core.BuildTableData(format, "datasets", columnsList, datasets)
+	PrintTable(api, str)
+	return err
 }
 
 func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
