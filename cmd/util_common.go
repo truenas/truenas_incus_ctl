@@ -14,11 +14,18 @@ import (
 	"truenas/truenas_incus_ctl/core"
 )
 
-type typeRetrieveParams struct {
+type typeQueryParams struct {
 	valueOrder         []string
+	shouldSkipKeyBuild bool
 	shouldGetAllProps  bool
 	shouldGetUserProps bool
 	shouldRecurse      bool
+}
+
+type typeQueryResponse struct {
+	resultsMap map[string]map[string]interface{}
+	intKeys []int
+	strKeys []string
 }
 
 func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) []interface{} {
@@ -31,7 +38,7 @@ func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) []interface{
 	return []interface{}{nameStr, outMap}
 }
 
-func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsList []string, params typeRetrieveParams) ([]map[string]interface{}, error) {
+func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsList []string, params typeQueryParams) (*typeQueryResponse, error) {
 	var endpoint string
 	switch endpointType {
 	case "dataset":
@@ -134,29 +141,44 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 		}
 
 		outputMap[primary] = dict
-		if primaryInt, errNotNumber := strconv.Atoi(primary); errNotNumber == nil {
-			outputMapIntKeys = append(outputMapIntKeys, primaryInt)
-		} else {
-			outputMapStrKeys = append(outputMapStrKeys, primary)
+		if !params.shouldSkipKeyBuild {
+			if primaryInt, errNotNumber := strconv.Atoi(primary); errNotNumber == nil {
+				outputMapIntKeys = append(outputMapIntKeys, primaryInt)
+			} else {
+				outputMapStrKeys = append(outputMapStrKeys, primary)
+			}
 		}
 	}
 
-	slices.Sort(outputMapIntKeys)
-	slices.Sort(outputMapStrKeys)
-	nKeys := len(outputMapIntKeys) + len(outputMapStrKeys)
-
-	outputList := make([]map[string]interface{}, nKeys, nKeys)
-	for i, _ := range outputMapIntKeys {
-		outputList[i] = outputMap[strconv.Itoa(outputMapIntKeys[i])]
-	}
-	for i, _ := range outputMapStrKeys {
-		outputList[len(outputMapIntKeys)+i] = outputMap[outputMapStrKeys[i]]
-	}
-
-	return outputList, nil
+	return &typeQueryResponse {
+		resultsMap: outputMap,
+		intKeys: outputMapIntKeys,
+		strKeys: outputMapStrKeys,
+	}, nil
 }
 
-func makeQueryFilter(entries, entryTypes []string, params typeRetrieveParams) ([]interface{}, error) {
+func GetListFromQueryResponse(response *typeQueryResponse) []map[string]interface{} {
+	if response == nil {
+		return nil
+	}
+
+	slices.Sort(response.intKeys)
+	slices.Sort(response.strKeys)
+
+	nKeys := len(response.intKeys) + len(response.strKeys)
+	resultsList := make([]map[string]interface{}, nKeys, nKeys)
+
+	for i, _ := range response.intKeys {
+		resultsList[i] = response.resultsMap[strconv.Itoa(response.intKeys[i])]
+	}
+	for i, _ := range response.strKeys {
+		resultsList[len(response.intKeys)+i] = response.resultsMap[response.strKeys[i]]
+	}
+
+	return resultsList
+}
+
+func makeQueryFilter(entries, entryTypes []string, params typeQueryParams) ([]interface{}, error) {
 	for i, e := range entries {
 		if e == "" {
 			return nil, fmt.Errorf("Cannot query based on empty %s", entryTypes[i])
@@ -220,7 +242,7 @@ func constructORChain(filterList [][]interface{}) []interface{} {
 	return top[0]
 }
 
-func makeQueryOptions(propsList []string, params typeRetrieveParams) map[string]interface{} {
+func makeQueryOptions(propsList []string, params typeQueryParams) map[string]interface{} {
 	// second arg = query-options
 	options := make(map[string]interface{})
 	options["flat"] = false
@@ -302,17 +324,19 @@ func LookupNfsIdByPath(api core.Session, sharePath string, optShareProperties ma
 		return "", false, errors.New("Error looking up NFS share: no path was specified")
 	}
 
-	extras := typeRetrieveParams{
+	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(false),
 		shouldGetAllProps:  optShareProperties != nil,
 		shouldGetUserProps: optShareProperties != nil,
 		shouldRecurse:      false,
 	}
 
-	shares, err := QueryApi(api, "nfs", []string{sharePath}, []string{"path"}, []string{"id", "path"}, extras)
+	response, err := QueryApi(api, "nfs", []string{sharePath}, []string{"path"}, []string{"id", "path"}, extras)
 	if err != nil {
 		return "", false, errors.New("API error: " + fmt.Sprint(err))
 	}
+
+	shares := GetListFromQueryResponse(response)
 	if len(shares) == 0 {
 		return "", false, nil
 	}
