@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
@@ -402,10 +403,14 @@ func getNfsListTypes(args []string) ([]string, error) {
 	typeList = make([]string, len(args), len(args))
 	for i := 0; i < len(args); i++ {
 		t, value := core.IdentifyObject(args[i])
-		if t == "snapshot" || t == "snapshot_only" {
+		if t == "snapshot_only" {
 			return nil, errors.New("querying nfs shares based on snapshot is not supported")
+		} else if t == "snapshot" {
+			value = "/mnt/" + value[0:strings.Index(value, "@")]
+			t = "path"
 		} else if t == "dataset" {
-			return nil, errors.New("querying nfs shares based on dataset is not yet supported")
+			value = "/mnt/" + value
+			t = "path"
 		} else if t == "share" {
 			t = "path"
 		} else if t != "id" && t != "pool" {

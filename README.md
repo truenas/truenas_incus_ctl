@@ -32,6 +32,7 @@ The default path is `~/.truenas_incus_ctl/config.json`. It can be overridden wit
 ## Run
 
 `truenas_incus_ctl <command>`
+
 `truenas_incus_ctl --url <websocket server> --api-key <api key> <command>`
 
 ### Commands
