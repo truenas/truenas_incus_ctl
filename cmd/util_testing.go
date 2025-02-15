@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"truenas/truenas-admin/core"
+	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
 )

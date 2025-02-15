@@ -4,7 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"truenas/truenas-admin/core"
+	"strings"
+	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
 )
@@ -364,18 +365,19 @@ func listNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	extras := typeRetrieveParams{
+	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
 		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	shares, err := QueryApi(api, "nfs", args, idTypes, properties, extras)
+	response, err := QueryApi(api, "nfs", args, idTypes, properties, extras)
 	if err != nil {
 		return err
 	}
 
+	shares := GetListFromQueryResponse(response)
 	LowerCaseValuesFromEnums(shares, g_nfsCreateUpdateEnums)
 
 	required := []string{"id", "path"}
@@ -402,10 +404,14 @@ func getNfsListTypes(args []string) ([]string, error) {
 	typeList = make([]string, len(args), len(args))
 	for i := 0; i < len(args); i++ {
 		t, value := core.IdentifyObject(args[i])
-		if t == "snapshot" || t == "snapshot_only" {
+		if t == "snapshot_only" {
 			return nil, errors.New("querying nfs shares based on snapshot is not supported")
+		} else if t == "snapshot" {
+			value = "/mnt/" + value[0:strings.Index(value, "@")]
+			t = "path"
 		} else if t == "dataset" {
-			return nil, errors.New("querying nfs shares based on dataset is not yet supported")
+			value = "/mnt/" + value
+			t = "path"
 		} else if t == "share" {
 			t = "path"
 		} else if t != "id" && t != "pool" {

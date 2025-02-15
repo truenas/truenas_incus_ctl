@@ -4,8 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
-	"truenas/truenas-admin/core"
+	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
 )
@@ -198,47 +199,55 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	extras := typeRetrieveParams{
+	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
+		shouldSkipKeyBuild: true,
 		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	allResults := make([]map[string]interface{}, 0)
+	combinedResponse := typeQueryResponse{}
+	combinedResponse.resultsMap = make(map[string]map[string]interface{})
+	combinedResponse.intKeys = make([]int, 0)
+	combinedResponse.strKeys = make([]string, 0)
 
 	for _, qType := range allTypes {
-		results, err := QueryApi(api, qType, qEntriesMap[qType], qEntryTypesMap[qType], properties, extras)
+		response, err := QueryApi(api, qType, qEntriesMap[qType], qEntryTypesMap[qType], properties, extras)
 		if err != nil {
 			return err
 		}
 
+		filterType := ""
 		if qType == "dataset" {
-			filterType := ""
 			if shouldQueryFs && !shouldQueryVol {
 				filterType = "filesystem"
 			} else if !shouldQueryFs && shouldQueryVol {
 				filterType = "volume"
 			}
-			if filterType != "" {
-				fResults := make([]map[string]interface{}, 0)
-				for _, r := range results {
-					if t, exists := r["type"]; exists {
-						if tStr, ok := t.(string); ok && strings.ToLower(tStr) == filterType {
-							fResults = append(fResults, r)
-						}
-					}
-				}
-				results = fResults
-			}
-		} else if qType == "nfs" {
-			for _, r := range results {
-				r["type"] = "nfs"
-			}
 		}
 
-		allResults = append(allResults, results...)
+		for key, r := range response.resultsMap {
+			shouldAdd := true
+			if qType == "nfs" {
+				r["type"] = "nfs"
+			} else if t, exists := r["type"]; filterType != "" && exists {
+				if tStr, ok := t.(string); ok && strings.ToLower(tStr) == filterType {
+					shouldAdd = false
+				}
+			}
+			if shouldAdd {
+				combinedResponse.resultsMap[key] = r
+				if number, errNotNumber := strconv.Atoi(key); errNotNumber == nil {
+					combinedResponse.intKeys = append(combinedResponse.intKeys, number)
+				} else {
+					combinedResponse.strKeys = append(combinedResponse.strKeys, key)
+				}
+			}
+		}
 	}
+
+	allResults := GetListFromQueryResponse(&combinedResponse)
 
 	required := []string{"id"}
 	if _, exists := qEntriesMap["nfs"]; exists {

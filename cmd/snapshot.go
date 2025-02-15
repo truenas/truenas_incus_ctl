@@ -3,7 +3,7 @@ package cmd
 import (
 	"errors"
 	"strings"
-	"truenas/truenas-admin/core"
+	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
 )
@@ -277,18 +277,19 @@ func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	// `zfs list` will "recurse" if no names are specified.
-	extras := typeRetrieveParams{
+	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
 		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	snapshots, err := QueryApi(api, "snapshot", args, idTypes, properties, extras)
+	response, err := QueryApi(api, "snapshot", args, idTypes, properties, extras)
 	if err != nil {
 		return err
 	}
 
+	snapshots := GetListFromQueryResponse(response)
 	//LowerCaseValuesFromEnums(snapshots, g_snapshotCreateUpdateEnums)
 
 	required := []string{"name"}

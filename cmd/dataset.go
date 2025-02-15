@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"truenas/truenas-admin/core"
+	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
 )
@@ -116,7 +116,7 @@ func init() {
 	createUpdateCmds := []*cobra.Command{datasetCreateCmd, datasetUpdateCmd}
 	for _, cmd := range createUpdateCmds {
 		cmd.Flags().String("comments", "", "User defined comments")
-		cmd.Flags().String("managedby", "truenas-admin", "Manager of this dataset, must not be empty")
+		cmd.Flags().String("managedby", "truenas_incus_ctl", "Manager of this dataset, must not be empty")
 		cmd.Flags().String("recordsize", "", "")
 		cmd.Flags().String("sync", "standard", "Controls the behavior of synchronous requests "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "sync", []string{"standard", "always", "disabled"}))
@@ -349,7 +349,7 @@ func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	// `zfs list` will "recurse" if no names are specified.
-	extras := typeRetrieveParams{
+	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
 		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: core.IsValueTrue(options.allFlags, "user_properties"),
@@ -363,11 +363,12 @@ func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	datasets, err := QueryApi(api, "dataset", args, idTypes, properties, extras)
+	response, err := QueryApi(api, "dataset", args, idTypes, properties, extras)
 	if err != nil {
 		return err
 	}
 
+	datasets := GetListFromQueryResponse(response)
 	LowerCaseValuesFromEnums(datasets, g_datasetCreateUpdateEnums)
 
 	required := []string{"name"}
