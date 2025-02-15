@@ -107,7 +107,7 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","share","nfs","create","--comment","made with truenas-admin","--maproot-user=root", "--maproot-group","root","dozer/created"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","share","nfs","create","--comment","made with truenas_incus_ctl","--maproot-user=root", "--maproot-group","root","dozer/created"]
         },
         {
           "name": "dataset share nfs update --create dozer/created",
@@ -115,7 +115,7 @@
           "request": "launch",
           "mode": "debug",
           "program": "${workspaceFolder}",
-          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","share","nfs","update","--create",/*"--comment","made with truenas-admin","--maproot-user=root", "--maproot-group","root",*/"dozer/created"]
+          "args": ["--debug","--key-file=${workspaceFolder}/key.txt","share","nfs","update","--create",/*"--comment","made with truenas_incus_ctl","--maproot-user=root", "--maproot-group","root",*/"dozer/created"]
         },
         {
           "name": "dataset share nfs list dozer/created",

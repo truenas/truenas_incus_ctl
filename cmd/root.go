@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"truenas/truenas-admin/core"
+	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
-	Use: "truenas-admin",
+	Use: "truenas_incus_ctl",
 }
 
 func Execute() {
@@ -31,7 +31,7 @@ var g_apiKey string
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&g_debug, "debug", false, "Enable debug logs")
 	rootCmd.PersistentFlags().BoolVar(&g_useMock, "mock", false, "Use the mock API instead of a TrueNAS server")
-	rootCmd.PersistentFlags().StringVar(&g_configFileName, "config", "", "Override config filename (~/.truenas-admin/config.json)")
+	rootCmd.PersistentFlags().StringVar(&g_configFileName, "config", "", "Override config filename (~/.truenas_incus_ctl/config.json)")
 	rootCmd.PersistentFlags().StringVar(&g_configHost, "host", "", "Name of config to look up in config.json, defaults to first entry")
 	rootCmd.PersistentFlags().StringVarP(&g_url, "url", "U", "", "Server URL")
 	rootCmd.PersistentFlags().StringVarP(&g_apiKey, "api-key", "K", "", "API key")
@@ -144,7 +144,7 @@ func getDefaultConfigPath() string {
 	if err != nil {
 		log.Fatal(err)
 	}
-	return p + "/.truenas-admin/config.json"
+	return p + "/.truenas_incus_ctl/config.json"
 }
 
 func getMapFromMapAny(dict map[string]interface{}, key, fileName string) (map[string]interface{}, error) {

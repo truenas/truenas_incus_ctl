@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"truenas/truenas-admin/core"
+	"truenas/truenas_incus_ctl/core"
 )
 
 type typeRetrieveParams struct {

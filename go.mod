@@ -1,4 +1,4 @@
-module truenas/truenas-admin
+module truenas/truenas_incus_ctl
 
 go 1.23.3
 

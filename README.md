@@ -1,6 +1,6 @@
-# truenas-admin
+# truenas_incus_ctl
 
-`truenas-admin` is a tool for administering datasets, snapshots and network shares that are hosted on a TrueNAS server.
+`truenas_incus_ctl` is a tool for administering datasets, snapshots and network shares that are hosted on a TrueNAS server.
 
 ## Install
 
@@ -21,17 +21,18 @@ TrueNAS hosts can be specified with a JSON configuration file.
     },
     "other":{
       "url":"wss://<servername>/api/current",
-      "api_key":"other api key",
+      "api_key":"other api key"
     }
   }
 }
 ```
 
-The default path is `~/.truenas-admin/config.json`. It can be overridden with --config.
+The default path is `~/.truenas_incus_ctl/config.json`. It can be overridden with --config.
 
 ## Run
 
-`truenas-admin --url <websocket server> --api-key <api key> <command>`
+`truenas_incus_ctl <command>`
+`truenas_incus_ctl --url <websocket server> --api-key <api key> <command>`
 
 ### Commands
 
