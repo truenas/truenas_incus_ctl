@@ -221,14 +221,14 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	}
 
 	specs := make([]string, len(args), len(args))
-	types := make([]string, len(args), len(args)) // always "dataset" repeated
+	types := make([]string, len(args), len(args)) // always "name" repeated
 	for i, ds := range args {
 		idType, spec := core.IdentifyObject(ds)
 		if idType != "dataset" {
 			return fmt.Errorf("dataset %s only operates on datasets (%s is a %s)", cmdType, spec, idType)
 		}
 		specs[i] = spec
-		types[i] = idType // always "dataset"
+		types[i] = "name" // always "name"
 	}
 
 	flagCreate := core.IsValueTrue(options.allFlags, "create")
@@ -329,7 +329,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	}
 
 	if len(listToUpdate) > 0 {
-		objRemap := map[string][]interface{} {"name": core.ToAnyArray(specs)}
+		objRemap := map[string][]interface{} {"": core.ToAnyArray(specs)}
 		out, err := MaybeBulkApiCall(api, "pool.dataset.update", "10s", []interface{} {outMap}, objRemap)
 		if err != nil {
 			return err
@@ -344,7 +344,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 			outMap["type"] = "FILESYSTEM"
 		}
 
-		objRemap := map[string][]interface{} {"": core.ToAnyArray(specs)}
+		objRemap := map[string][]interface{} {"name": core.ToAnyArray(specs)}
 		out, err := MaybeBulkApiCall(api, "pool.dataset.create", "10s", []interface{} {outMap}, objRemap)
 		if err != nil {
 			return err

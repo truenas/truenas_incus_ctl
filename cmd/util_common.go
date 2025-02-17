@@ -557,14 +557,11 @@ func MaybeBulkApiCall(api core.Session, endpoint, timeoutStr string, params inte
 	}
 	timeout = timeout * time.Duration(nParams)
 	timeoutStr = timeout.String()
-	DebugString("Bulk " + endpoint + " timeout: " + timeoutStr)
 
 	methodAndParams := make([]interface{}, 0)
 	methodAndParams = append(methodAndParams, endpoint)
-	for _, p := range allParams {
-		methodAndParams = append(methodAndParams, p)
-	}
+	methodAndParams = append(methodAndParams, allParams)
+
 	DebugJson(methodAndParams)
-	return nil, nil
-	//return core.ApiCall(api, "core.bulk", timeoutStr, methodAndParams)
+	return core.ApiCall(api, "core.bulk", timeoutStr, methodAndParams)
 }
