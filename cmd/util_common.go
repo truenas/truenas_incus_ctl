@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
-
-	//"os"
-	//"log"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"truenas/truenas_incus_ctl/core"
 )
 
@@ -38,7 +36,9 @@ func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) []interface{
 	return []interface{}{nameStr, outMap}
 }
 
-func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsList []string, params typeQueryParams) (*typeQueryResponse, error) {
+func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsList []string, params typeQueryParams) (typeQueryResponse, error) {
+	response := typeQueryResponse{}
+
 	var endpoint string
 	switch endpointType {
 	case "dataset":
@@ -48,16 +48,16 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 	case "nfs":
 		endpoint = "sharing.nfs.query"
 	default:
-		return nil, fmt.Errorf("unrecognised retrieve format \"%s\"", endpointType)
+		return response, fmt.Errorf("unrecognised retrieve format \"%s\"", endpointType)
 	}
 
 	if len(entryTypes) != len(entries) {
-		return nil, fmt.Errorf("length mismatch between entries and entry types: %d != %d", len(entries), len(entryTypes))
+		return response, fmt.Errorf("length mismatch between entries and entry types: %d != %d", len(entries), len(entryTypes))
 	}
 
 	filter, err := makeQueryFilter(entries, entryTypes, params)
 	if err != nil {
-		return nil, err
+		return response, err
 	}
 
 	query := []interface{}{filter}
@@ -69,29 +69,29 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 
 	data, err := core.ApiCall(api, endpoint, "20s", query)
 	if err != nil {
-		return nil, err
+		return response, err
 	}
 
 	//os.Stdout.WriteString(string(data))
 	//fmt.Println("\n")
 
-	var response interface{}
-	if err = json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("response error: %v", err)
+	var jsonResponse interface{}
+	if err = json.Unmarshal(data, &jsonResponse); err != nil {
+		return response, fmt.Errorf("response error: %v", err)
 	}
 
-	responseMap, ok := response.(map[string]interface{})
+	responseMap, ok := jsonResponse.(map[string]interface{})
 	if !ok {
-		return nil, errors.New("API response was not a JSON object")
+		return response, errors.New("API response was not a JSON object")
 	}
 
 	resultsList, errMsg := core.ExtractJsonArrayOfMaps(responseMap, "result")
 	if errMsg != "" {
-		return nil, errors.New("API response results: " + errMsg)
+		return response, errors.New("API response results: " + errMsg)
 	}
 	if len(resultsList) == 0 {
 		DebugString("resultsList was empty")
-		return nil, nil
+		return response, nil
 	}
 
 	outputMap := make(map[string]map[string]interface{})
@@ -150,11 +150,12 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 		}
 	}
 
-	return &typeQueryResponse {
+	response = typeQueryResponse {
 		resultsMap: outputMap,
 		intKeys: outputMapIntKeys,
 		strKeys: outputMapStrKeys,
-	}, nil
+	}
+	return response, nil
 }
 
 func GetListFromQueryResponse(response *typeQueryResponse) []map[string]interface{} {
@@ -216,7 +217,15 @@ func makeIndividualFilter(key string, array []string, isRecursive bool) []interf
 	if isRecursive && (key == "dataset" /* || key == "pool"*/) {
 		return constructORChain(makeRecursivePathsFilterList(key, array))
 	}
-	return []interface{}{key, "in", array}
+	arr := make([]interface{}, len(array), len(array))
+	for i := 0; i < len(array); i++ {
+		if n, errNotNumber := strconv.Atoi(array[i]); errNotNumber == nil {
+			arr[i] = n
+		} else {
+			arr[i] = array[i]
+		}
+	}
+	return []interface{}{key, "in", arr}
 }
 
 func makeRecursivePathsFilterList(key string, paths []string) [][]interface{} {
@@ -336,7 +345,7 @@ func LookupNfsIdByPath(api core.Session, sharePath string, optShareProperties ma
 		return "", false, errors.New("API error: " + fmt.Sprint(err))
 	}
 
-	shares := GetListFromQueryResponse(response)
+	shares := GetListFromQueryResponse(&response)
 	if len(shares) == 0 {
 		return "", false, nil
 	}
@@ -508,4 +517,55 @@ func GetTableFormat(properties map[string]string) (string, error) {
 	}
 
 	return properties["format"], nil
+}
+
+func MaybeBulkApiCall(api core.Session, endpoint, timeoutStr string, params interface{}, remapList map[string][]interface{}) (json.RawMessage, error) {
+	allParams := make([][]interface{}, 0)
+	for key, valueList := range remapList {
+		for i, value := range valueList {
+			if len(allParams) <= i {
+				allParams = append(allParams, core.DeepCopy(params).([]interface{}))
+			}
+			_, isObjFirst := allParams[i][0].(map[string]interface{})
+			if key == "" {
+				if isObjFirst {
+					allParams[i] = append([]interface{}{value}, allParams[i]...)
+				} else {
+					allParams[i][0] = value
+				}
+			} else {
+				objIdx := 1
+				if isObjFirst {
+					objIdx = 0
+				}
+				allParams[i][objIdx].(map[string]interface{})[key] = value
+			}
+		}
+	}
+
+	nParams := len(allParams)
+	if nParams == 0 {
+		return nil, errors.New("MaybeBulkApiCall: Nothing to do")
+	} else if nParams == 1 {
+		DebugJson(allParams[0])
+		return nil, nil
+		//return core.ApiCall(api, endpoint, timeoutStr, allParams[0])
+	}
+
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		return nil, err
+	}
+	timeout = timeout * time.Duration(nParams)
+	timeoutStr = timeout.String()
+	DebugString("Bulk " + endpoint + " timeout: " + timeoutStr)
+
+	methodAndParams := make([]interface{}, 0)
+	methodAndParams = append(methodAndParams, endpoint)
+	for _, p := range allParams {
+		methodAndParams = append(methodAndParams, p)
+	}
+	DebugJson(methodAndParams)
+	return nil, nil
+	//return core.ApiCall(api, "core.bulk", timeoutStr, methodAndParams)
 }
