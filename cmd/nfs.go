@@ -119,9 +119,9 @@ func createNfs(cmd *cobra.Command, api core.Session, args []string) error {
 
 		switch typeStr {
 		case "dataset":
-			paths[i] = "/mnt/" + spec
+			paths = append(paths, "/mnt/" + spec)
 		case "share":
-			paths[i] = spec
+			paths = append(paths, spec)
 		default:
 			return errors.New("Unrecognized nfs create spec \"" + spec + "\"")
 		}
@@ -138,7 +138,6 @@ func createNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	params := []interface{}{propsMap}
-	DebugJson(params)
 
 	cmd.SilenceUsage = true
 
@@ -337,8 +336,6 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	params := []interface{}{responseIdList[0]}
-	DebugJson(params)
-
 	objRemap := map[string][]interface{} {"": responseIdList}
 	out, err := MaybeBulkApiCall(api, "sharing.nfs.delete", "10s", params, objRemap)
 	if err != nil {

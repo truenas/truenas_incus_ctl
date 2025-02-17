@@ -365,7 +365,6 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 
 	options, _ := GetCobraFlags(cmd, nil)
 	params := BuildNameStrAndPropertiesJson(options, args[0])
-	DebugJson(params)
 
 	objRemap := map[string][]interface{} {"": core.ToAnyArray(args)}
 	out, err := MaybeBulkApiCall(api, "pool.dataset.delete", "10s", params, objRemap)
@@ -448,8 +447,6 @@ func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	params := []interface{}{args[0]}
-	DebugJson(params)
-
 	objRemap := map[string][]interface{} {"": core.ToAnyArray(args)}
 	out, err := MaybeBulkApiCall(api, "pool.dataset.promote", "10s", params, objRemap)
 	if err != nil {

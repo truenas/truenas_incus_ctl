@@ -186,7 +186,6 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	outMap["properties"] = outProps
 
 	params := []interface{}{outMap}
-	DebugJson(params)
 
 	cmd.SilenceUsage = true
 
@@ -221,7 +220,6 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 
 	options, _ := GetCobraFlags(cmd, nil)
 	params := BuildNameStrAndPropertiesJson(options, snapshots[0])
-	DebugJson(params)
 
 	cmd.SilenceUsage = true
 

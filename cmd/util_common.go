@@ -548,8 +548,7 @@ func MaybeBulkApiCall(api core.Session, endpoint, timeoutStr string, params inte
 		return nil, errors.New("MaybeBulkApiCall: Nothing to do")
 	} else if nParams == 1 {
 		DebugJson(allParams[0])
-		return nil, nil
-		//return core.ApiCall(api, endpoint, timeoutStr, allParams[0])
+		return core.ApiCall(api, endpoint, timeoutStr, allParams[0])
 	}
 
 	timeout, err := time.ParseDuration(timeoutStr)
