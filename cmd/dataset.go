@@ -329,7 +329,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	}
 
 	if len(listToUpdate) > 0 {
-		objRemap := map[string][]interface{} {"": core.ToAnyArray(specs)}
+		objRemap := map[string][]interface{} {"": core.ToAnyArray(listToUpdate)}
 		out, err := MaybeBulkApiCall(api, "pool.dataset.update", "10s", []interface{} {outMap}, objRemap)
 		if err != nil {
 			return err
@@ -344,7 +344,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 			outMap["type"] = "FILESYSTEM"
 		}
 
-		objRemap := map[string][]interface{} {"name": core.ToAnyArray(specs)}
+		objRemap := map[string][]interface{} {"name": core.ToAnyArray(listToCreate)}
 		out, err := MaybeBulkApiCall(api, "pool.dataset.create", "10s", []interface{} {outMap}, objRemap)
 		if err != nil {
 			return err
