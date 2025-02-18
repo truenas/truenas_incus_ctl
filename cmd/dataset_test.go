@@ -93,6 +93,60 @@ func TestDatasetUpdate(t *testing.T) {
 	))
 }
 
+func TestDatasetUpdateWithCreateExists(t *testing.T) {
+	FailIf(t, DoTest(
+		t,
+		datasetUpdateCmd,
+		createOrUpdateDataset,
+		map[string]interface{}{
+			"create":true,
+			"option":"exec=off,atime=off,acltype=posix,aclmode=discard",
+			"managedby":"incus.truenas",
+			"comments":"Managed by Incus.TrueNAS",
+		},
+		[]string{"dozer/testing/test"},
+		[]string{
+			"[[[\"name\",\"in\",[\"dozer/testing/test\"]]],{\"extra\":{\"flat\":false,"+
+			"\"properties\":[],\"retrieve_children\":false,\"user_properties\":false}}]",
+			"[\"dozer/testing/test\",{\"aclmode\":\"DISCARD\",\"acltype\":\"POSIX\","+
+			"\"atime\":\"OFF\",\"comments\":\"Managed by Incus.TrueNAS\","+
+			"\"exec\":\"OFF\",\"managedby\":\"incus.truenas\"}]",
+		},
+		[]string{
+			"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test\",\"name\":\"dozer/testing/test\"}],\"id\":2}",
+			"{}",
+		},
+		"",
+	))
+}
+
+func TestDatasetUpdateWithCreateDoesntExist(t *testing.T) {
+	FailIf(t, DoTest(
+		t,
+		datasetUpdateCmd,
+		createOrUpdateDataset,
+		map[string]interface{}{
+			"create":true,
+			"option":"exec=off,atime=off,acltype=posix,aclmode=discard",
+			"managedby":"incus.truenas",
+			"comments":"Managed by Incus.TrueNAS",
+		},
+		[]string{"dozer/testing/test"},
+		[]string{ // expected
+			"[[[\"name\",\"in\",[\"dozer/testing/test\"]]],{\"extra\":{\"flat\":false,"+
+			"\"properties\":[],\"retrieve_children\":false,\"user_properties\":false}}]",
+			"[{\"aclmode\":\"DISCARD\",\"acltype\":\"POSIX\",\"atime\":\"OFF\","+
+			"\"comments\":\"Managed by Incus.TrueNAS\",\"exec\":\"OFF\",\"managedby\":\"incus.truenas\","+
+			"\"name\":\"dozer/testing/test\",\"type\":\"FILESYSTEM\"}]",
+		},
+		[]string{
+			"{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":2}",
+			"{}",
+		},
+		"",
+	))
+}
+
 func TestDatasetDelete(t *testing.T) {
 	FailIf(t, DoSimpleTest(
 		t,
