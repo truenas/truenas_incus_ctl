@@ -20,39 +20,39 @@ var snapshotCmd = &cobra.Command{
 }
 
 var snapshotCloneCmd = &cobra.Command{
-	Use:   "clone",
+	Use:   "clone <dataset>@<snapshot>",
 	Short: "clone snapshot of ZFS dataset",
 	Args:  cobra.ExactArgs(2),
 }
 
 var snapshotCreateCmd = &cobra.Command{
-	Use:   "create [flags] <dataset>@<snapshot>",
+	Use:   "create <dataset>@<snapshot>...",
 	Short: "Take a snapshot of dataset, possibly recursive",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var snapshotDeleteCmd = &cobra.Command{
-	Use:     "delete [flags] <dataset>@<snapshot>",
+	Use:     "delete <dataset>@<snapshot>...",
 	Short:   "Delete a snapshot of dataset, possibly recursive",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"rm"},
 }
 
 var snapshotListCmd = &cobra.Command{
-	Use:     "list [flags] [<dataset>][@<snapshot>]...",
+	Use:     "list [<dataset>][@<snapshot>]...",
 	Short:   "List all snapshots",
 	Aliases: []string{"ls"},
 }
 
 var snapshotRenameCmd = &cobra.Command{
-	Use:     "rename [flags] <old dataset>@<old snapshot> <new snapshot>",
+	Use:     "rename <old dataset>@<old snapshot> <new snapshot>",
 	Short:   "Rename a ZFS snapshot",
 	Args:    cobra.ExactArgs(2),
 	Aliases: []string{"mv"},
 }
 
 var snapshotRollbackCmd = &cobra.Command{
-	Use:   "rollback",
+	Use:   "rollback <old dataset>@<old snapshot>",
 	Short: "Rollback to a given snapshot",
 	Args:  cobra.MinimumNArgs(1),
 }
@@ -189,7 +189,7 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 
 	cmd.SilenceUsage = true
 
-	objRemap := map[string][]interface{} {"dataset": core.ToAnyArray(datasetList), "name": core.ToAnyArray(nameList)}
+	objRemap := map[string][]interface{}{"dataset": core.ToAnyArray(datasetList), "name": core.ToAnyArray(nameList)}
 	out, err := MaybeBulkApiCall(api, "zfs.snapshot.create", "10s", params, objRemap)
 	if err != nil {
 		return err
@@ -223,7 +223,7 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 
 	cmd.SilenceUsage = true
 
-	objRemap := map[string][]interface{} {"": core.ToAnyArray(snapshots)}
+	objRemap := map[string][]interface{}{"": core.ToAnyArray(snapshots)}
 	out, err := MaybeBulkApiCall(api, "zfs.snapshot."+cmdType, "10s", params, objRemap)
 	if err != nil {
 		return err
