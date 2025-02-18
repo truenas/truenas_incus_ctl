@@ -12,8 +12,9 @@ import (
 )
 
 var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "Prints a table of datasets/snapshots/shares, given a source and an optional set of properties.",
+	Use:     "list",
+	Short:   "Prints a table of datasets/snapshots/shares, given a source and an optional set of properties.",
+	Aliases: []string{"ls"},
 }
 
 var g_genericListEnums map[string][]string

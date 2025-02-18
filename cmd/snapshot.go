@@ -11,6 +11,7 @@ import (
 var snapshotCmd = &cobra.Command{
 	Use:   "snapshot",
 	Short: "Edit or list snapshots on a remote or local machine",
+	Aliases: []string{"snap"},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			cmd.HelpFunc()(cmd, args)
