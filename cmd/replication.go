@@ -22,7 +22,8 @@ var replCmd = &cobra.Command{
 }
 
 var replStartCmd = &cobra.Command{
-	Use:   "start",
+	Use:  "start",
+	Args: cobra.MinimumNArgs(2),
 }
 
 var g_replStartEnums map[string][]string
@@ -32,8 +33,7 @@ func init() {
 		return startReplication(cmd, ValidateAndLogin(), args)
 	}
 
-	replStartCmd.Flags().StringP("sources", "s", "", "")
-	replStartCmd.Flags().StringP("target", "t", "", "")
+	replStartCmd.Flags().StringP("exclude", "e", "", "")
 	replStartCmd.Flags().BoolP("recursive", "r", false, "")
 	replStartCmd.Flags().StringP("direction", "d", "", ""+
 		AddFlagsEnum(&g_replStartEnums, "direction", []string{"push", "pull"}))
@@ -49,10 +49,6 @@ func init() {
 	"netcat_active_side_port_max",
 	"netcat_passive_side_connect_address",
 	"sudo",
-	"source_datasets",
-	"target_dataset",
-	"recursive",
-	"exclude",
 	"properties",
 	"properties_exclude",
 	"properties_override",
@@ -99,12 +95,12 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 		return err
 	}
 
-	_, sources, err := getHostAndDatasetSpecs(options.allFlags["sources"])
+	_, sources, err := getHostAndDatasetSpecs(args[0:len(args)-1])
 	if err != nil {
 		return err
 	}
 
-	_, targets, err := getHostAndDatasetSpecs(options.allFlags["target"])
+	_, targets, err := getHostAndDatasetSpecs([]string{args[len(args)-1]})
 	if err != nil {
 		return err
 	}
@@ -131,6 +127,14 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 	outMap["recursive"] = options.allFlags["recursive"]
 	outMap["retention_policy"] = options.allFlags["retention_policy"]
 
+	_, excludes, err := getHostAndDatasetSpecsFromString(options.allFlags["exclude"])
+	if err != nil {
+		return err
+	}
+	if len(excludes) > 0 {
+		outMap["exclude"] = excludes
+	}
+
 	params := []interface{}{outMap}
 	DebugJson(params)
 
@@ -143,11 +147,14 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 	return nil
 }
 
-func getHostAndDatasetSpecs(str string) ([]string, []string, error) {
+func getHostAndDatasetSpecsFromString(str string) ([]string, []string, error) {
+	return getHostAndDatasetSpecs(strings.Split(str, ","))
+}
+
+func getHostAndDatasetSpecs(array []string) ([]string, []string, error) {
 	hosts := make([]string, 0)
 	datasets := make([]string, 0)
 
-	array := strings.Split(str, ",")
 	for _, s := range array {
 		if s == "" || s == " " {
 			continue
