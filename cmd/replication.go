@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	//"errors"
-	//"strings"
-	//"os"
+	"errors"
+	"strings"
+	"fmt"
 	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
@@ -21,24 +21,157 @@ var replCmd = &cobra.Command{
 	},
 }
 
-var replRunCmd = &cobra.Command{
+var replStartCmd = &cobra.Command{
 	Use:   "start",
 }
 
+var g_replStartEnums map[string][]string
+
 func init() {
-	replRunCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return runReplication(cmd, ValidateAndLogin(), args)
+	replStartCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return startReplication(cmd, ValidateAndLogin(), args)
 	}
 
-	replCmd.AddCommand(replRunCmd)
+	replStartCmd.Flags().StringP("sources", "s", "", "")
+	replStartCmd.Flags().StringP("target", "t", "", "")
+	replStartCmd.Flags().BoolP("recursive", "r", false, "")
+	replStartCmd.Flags().StringP("direction", "d", "", ""+
+		AddFlagsEnum(&g_replStartEnums, "direction", []string{"push", "pull"}))
+	replStartCmd.Flags().StringP("retention-policy", "p", "", ""+
+		AddFlagsEnum(&g_replStartEnums, "retention-policy", []string{"source", "custom", "none"}))
+	/*
+	replStartCmd.Flags().String("transport", "", ""+
+		AddFlagsEnum(&g_replStartEnums, "transport", []string{"ssh","ssh+netcat","local"}))
+	replStartCmd.Flags().Int("ssh_credentials", 0, "")
+	"netcat_active_side",
+	"netcat_active_side_listen_address",
+	"netcat_active_side_port_min",
+	"netcat_active_side_port_max",
+	"netcat_passive_side_connect_address",
+	"sudo",
+	"source_datasets",
+	"target_dataset",
+	"recursive",
+	"exclude",
+	"properties",
+	"properties_exclude",
+	"properties_override",
+	"replicate",
+	"encryption",
+	"encryption_inherit",
+	"encryption_key",
+	"encryption_key_format",
+	"encryption_key_location",
+	"periodic_snapshot_tasks",
+	"naming_schema",
+	"also_include_naming_schema",
+	"name_regex",
+	"restrict_schedule",
+	"allow_from_scratch",
+	"readonly",
+	"hold_pending_snapshots",
+	"lifetime_value",
+	"lifetime_unit",
+	"lifetimes",
+	"compression",
+	"speed_limit",
+	"large_block",
+	"embed",
+	"compressed",
+	"retries",
+	"logging_level",
+	"exclude_mountpoint_property",
+	"only_from_scratch"
+	*/
+
+	replCmd.AddCommand(replStartCmd)
 	rootCmd.AddCommand(replCmd)
 }
 
-func runReplication(cmd *cobra.Command, api core.Session, args []string) error {
+func startReplication(cmd *cobra.Command, api core.Session, args []string) error {
 	if api == nil {
 		return nil
 	}
 	defer api.Close()
 
+	options, err := GetCobraFlags(cmd, g_replStartEnums)
+	if err != nil {
+		return err
+	}
+
+	_, sources, err := getHostAndDatasetSpecs(options.allFlags["sources"])
+	if err != nil {
+		return err
+	}
+
+	_, targets, err := getHostAndDatasetSpecs(options.allFlags["target"])
+	if err != nil {
+		return err
+	}
+
+	if len(sources) == 0 {
+		return errors.New("No dataset source(s) were given")
+	}
+	if len(targets) == 0 {
+		return errors.New("No dataset target was given")
+	}
+	if len(targets) != 1 {
+		return errors.New("Only one dataset target is allowed")
+	}
+
+	// TODO: Implement non-local replication
+	transportType := "LOCAL"
+
+	outMap := make(map[string]interface{})
+
+	outMap["direction"] = options.allFlags["direction"]
+	outMap["transport"] = transportType
+	outMap["source_datasets"] = sources
+	outMap["target_dataset"] = targets[0]
+	outMap["recursive"] = options.allFlags["recursive"]
+	outMap["retention_policy"] = options.allFlags["retention_policy"]
+
+	params := []interface{}{outMap}
+	DebugJson(params)
+
+	out, err := core.ApiCall(api, "replication.run_onetime", "10s", params)
+	if err != nil {
+		return err
+	}
+
+	DebugString(string(out))
 	return nil
+}
+
+func getHostAndDatasetSpecs(str string) ([]string, []string, error) {
+	hosts := make([]string, 0)
+	datasets := make([]string, 0)
+
+	array := strings.Split(str, ",")
+	for _, s := range array {
+		if s == "" || s == " " {
+			continue
+		}
+		div := strings.Index(s, ":")
+		if div < 0 {
+			return nil, nil, fmt.Errorf("Invalid spec \"%s\": must conform to <host>:<dataset>", s)
+		}
+
+		host := s[0:div]
+		obj := s[div+1:]
+
+		if s[0:div] != "local" {
+			return nil, nil, fmt.Errorf("For now, only local:<dataset> is supported (%s)", s)
+		}
+
+		t, spec := core.IdentifyObject(obj)
+		if t != "dataset" {
+			return nil, nil, fmt.Errorf("\"%s\" is not a dataset (%s)", spec, s)
+		}
+
+		hosts = append(hosts, host)
+		datasets = append(datasets, spec)
+	}
+
+	return hosts, datasets, nil
 }

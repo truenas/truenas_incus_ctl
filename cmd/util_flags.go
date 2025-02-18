@@ -174,7 +174,9 @@ func AddFlagsEnum(enumMap *map[string][]string, flagName string, newEnum []strin
 	if *enumMap == nil {
 		*enumMap = make(map[string][]string)
 	}
-	(*enumMap)[flagName] = newEnum
+
+	key := strings.ReplaceAll(flagName, "-", "_")
+	(*enumMap)[key] = newEnum
 
 	var builder strings.Builder
 	builder.WriteString("(")
