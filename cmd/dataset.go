@@ -31,39 +31,39 @@ var datasetCmd = &cobra.Command{
 */
 
 var datasetCreateCmd = &cobra.Command{
-	Use:   "create [flags] <dataset>",
+	Use:   "create <dataset>...",
 	Short: "Creates a dataset/zvol.",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var datasetUpdateCmd = &cobra.Command{
-	Use:     "update [flags] <dataset>",
+	Use:     "update <dataset>...",
 	Short:   "Updates an existing dataset/zvol.",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"set"},
 }
 
 var datasetDeleteCmd = &cobra.Command{
-	Use:     "delete [flags] <dataset>",
+	Use:     "delete <dataset>...",
 	Short:   "Deletes a dataset/zvol.",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"rm"},
 }
 
 var datasetListCmd = &cobra.Command{
-	Use:     "list [flags] [dataset]...",
+	Use:     "list [dataset]...",
 	Short:   "Prints a table of all datasets/zvols, given a source and an optional set of properties.",
 	Aliases: []string{"ls"},
 }
 
 var datasetPromoteCmd = &cobra.Command{
-	Use:   "promote [flags] <dataset>",
+	Use:   "promote <dataset>...",
 	Short: "Promote a clone dataset to no longer depend on the origin snapshot.",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MinimumNArgs(1),
 }
 
 var datasetRenameCmd = &cobra.Command{
-	Use:   "rename [flags] <old dataset>[@<old snapshot>] <new dataset|new snapshot>",
+	Use:   "rename <old dataset>[@<old snapshot>] <new dataset|new snapshot>",
 	Short: "Rename a ZFS dataset",
 	Long: `Renames the given dataset. The new target can be located anywhere in the ZFS hierarchy, with the exception of snapshots.
 Snapshots can only be re‐named within the parent file system or volume.
@@ -127,7 +127,7 @@ func init() {
 		cmd.Flags().String("atime", "inherit", "Controls whether the access time for files is updated when they are read "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "atime", []string{"inherit", "on", "off"}))
 		//cmd.Flags().String("relatime", "inherit", "Controls whether the access time for files is updated periodically "+
-			//AddFlagsEnum(&g_datasetCreateUpdateEnums, "relatime", []string{"inherit", "on", "off"}))
+		//AddFlagsEnum(&g_datasetCreateUpdateEnums, "relatime", []string{"inherit", "on", "off"}))
 		cmd.Flags().String("exec", "inherit", "Controls whether processes can be executed from within this file system "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "exec", []string{"inherit", "on", "off"}))
 		cmd.Flags().String("acltype", "inherit", "Controls whether ACLs are enabled and if so what type of ACL to use "+
@@ -171,6 +171,8 @@ func init() {
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "snapdev", []string{"hidden", "visible"}))
 	}
 
+	datasetUpdateCmd.Flags().BoolP("create", "c", false, "If a dataset doesn't exist, create it. Off by default.")
+
 	g_datasetCreateUpdateEnums["type"] = []string{"volume", "filesystem"}
 
 	datasetDeleteCmd.Flags().BoolP("recursive", "r", false, "Also delete/destroy all children datasets. When the root dataset is specified,\n"+
@@ -213,19 +215,27 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		return errors.New("cmdType was not create or update")
 	}
 
-	params := make([]interface{}, 0)
-	outMap := make(map[string]interface{})
-
-	if cmdType == "create" {
-		outMap["name"] = args[0]
-	} else {
-		params = append(params, args[0])
-	}
-
 	options, err := GetCobraFlags(cmd, g_datasetCreateUpdateEnums)
 	if err != nil {
 		return err
 	}
+
+	specs := make([]string, len(args), len(args))
+	types := make([]string, len(args), len(args)) // always "name" repeated
+	for i, ds := range args {
+		idType, spec := core.IdentifyObject(ds)
+		if idType != "dataset" {
+			return fmt.Errorf("dataset %s only operates on datasets (%s is a %s)", cmdType, spec, idType)
+		}
+		specs[i] = spec
+		types[i] = "name" // always "name"
+	}
+
+	flagCreate := core.IsValueTrue(options.allFlags, "create")
+	delete(options.allFlags, "create")
+	delete(options.usedFlags, "create")
+
+	outMap := make(map[string]interface{})
 
 	var volSize int64
 	var userPropsStr string
@@ -262,17 +272,6 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		}
 	}
 
-	if cmdType == "create" {
-		if volSize != 0 {
-			outMap["type"] = "VOLUME"
-			outMap["volsize"] = volSize
-		} else {
-			outMap["type"] = "FILESYSTEM"
-		}
-	} else if volSize != 0 {
-		outMap["volsize"] = volSize
-	}
-
 	if userPropsStr != "" {
 		kvParams := ConvertParamsStringToKvArray(userPropsStr)
 		userPropsArr := make([]map[string]interface{}, 0)
@@ -289,17 +288,70 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		outMap["user_properties"] = userPropsArr
 	}
 
-	params = append(params, outMap)
-	DebugJson(params)
+	if volSize != 0 {
+		outMap["volsize"] = volSize
+	}
 
 	cmd.SilenceUsage = true
 
-	out, err := core.ApiCall(api, "pool.dataset."+cmdType, "10s", params)
-	if err != nil {
-		return err
+	var listToCreate []string
+	var listToUpdate []string
+
+	if cmdType == "create" {
+		listToCreate = specs
+	} else if len(specs) > 1 || flagCreate {
+		extras := typeQueryParams{
+			valueOrder:         BuildValueOrder(true),
+			shouldGetAllProps:  false,
+			shouldGetUserProps: false,
+			shouldRecurse:      false,
+		}
+		response, err := QueryApi(api, "dataset", specs, types, nil, extras)
+		if err != nil {
+			return err
+		}
+
+		listToCreate = make([]string, 0)
+		listToUpdate = make([]string, 0)
+		for _, spec := range specs {
+			if _, exists := response.resultsMap[spec]; exists {
+				listToUpdate = append(listToUpdate, spec)
+			} else {
+				if !flagCreate {
+					return errors.New("Could not find dataset \"" + spec + "\".\n" +
+						"Try passing -c or --create to create a dataset if it doesn't exist.")
+				}
+				listToCreate = append(listToCreate, spec)
+			}
+		}
+	} else {
+		listToUpdate = specs
 	}
 
-	DebugString(string(out))
+	if len(listToUpdate) > 0 {
+		objRemap := map[string][]interface{}{"": core.ToAnyArray(listToUpdate)}
+		out, err := MaybeBulkApiCall(api, "pool.dataset.update", "10s", []interface{}{outMap}, objRemap)
+		if err != nil {
+			return err
+		}
+		DebugString(string(out))
+	}
+
+	if len(listToCreate) > 0 {
+		if volSize != 0 {
+			outMap["type"] = "VOLUME"
+		} else {
+			outMap["type"] = "FILESYSTEM"
+		}
+
+		objRemap := map[string][]interface{}{"name": core.ToAnyArray(listToCreate)}
+		out, err := MaybeBulkApiCall(api, "pool.dataset.create", "10s", []interface{}{outMap}, objRemap)
+		if err != nil {
+			return err
+		}
+		DebugString(string(out))
+	}
+
 	return nil
 }
 
@@ -313,9 +365,9 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 
 	options, _ := GetCobraFlags(cmd, nil)
 	params := BuildNameStrAndPropertiesJson(options, args[0])
-	DebugJson(params)
 
-	out, err := core.ApiCall(api, "pool.dataset.delete", "10s", params)
+	objRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
+	out, err := MaybeBulkApiCall(api, "pool.dataset.delete", "10s", params, objRemap)
 	if err != nil {
 		return err
 	}
@@ -368,7 +420,7 @@ func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	datasets := GetListFromQueryResponse(response)
+	datasets := GetListFromQueryResponse(&response)
 	LowerCaseValuesFromEnums(datasets, g_datasetCreateUpdateEnums)
 
 	required := []string{"name"}
@@ -395,9 +447,8 @@ func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	params := []interface{}{args[0]}
-	DebugJson(params)
-
-	out, err := core.ApiCall(api, "pool.dataset.promote", "10s", params)
+	objRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
+	out, err := MaybeBulkApiCall(api, "pool.dataset.promote", "10s", params, objRemap)
 	if err != nil {
 		return err
 	}

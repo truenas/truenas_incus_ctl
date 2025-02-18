@@ -34,8 +34,8 @@ func TestGenericListTypes(t *testing.T) {
 			"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test4@readonly\",\"name\":\"dozer/testing/test4@readonly\",\"properties\":{\"clones\":"+
 				"{\"rawvalue\":\"dozer/testing/test5\",\"value\":\"dozer/testing/test5\",\"parsed\":\"dozer/testing/test5\"}},\"type\":\"snapshot\"}],\"id\":2}",
 		},
-		"volume\tdozer/testing/test5\t-\n"+
-		"snapshot\tdozer/testing/test4@readonly\tdozer/testing/test5\n",
+		"snapshot\tdozer/testing/test4@readonly\tdozer/testing/test5\n"+
+		"volume\tdozer/testing/test5\t-\n",
 	))
 }
 
@@ -59,8 +59,8 @@ func TestGenericListParameters(t *testing.T) {
 				"\"properties\":{\"clones\":{\"rawvalue\":\"dozer/testing/test5\",\"value\":\"dozer/testing/test5\",\"parsed\":\"dozer/testing/test5\"}}}],\"id\":2}",
 		},
 		"dozer/testing/test\t-\n"+
-		"dozer/testing/test5\t-\n"+
-		"dozer/testing/test4@readonly\tdozer/testing/test5\n",
+		"dozer/testing/test4@readonly\tdozer/testing/test5\n"+
+		"dozer/testing/test5\t-\n",
 	))
 }
 
@@ -84,8 +84,8 @@ func TestGenericListParametersRecursive(t *testing.T) {
 				"\"properties\":{\"clones\":{\"rawvalue\":\"dozer/testing/test5\",\"value\":\"dozer/testing/test5\",\"parsed\":\"dozer/testing/test5\"}}}],\"id\":2}",
 		},
 		"dozer/testing/test\t-\n"+
-		"dozer/testing/test5\t-\n"+
-		"dozer/testing/test4@readonly\tdozer/testing/test5\n",
+		"dozer/testing/test4@readonly\tdozer/testing/test5\n"+
+		"dozer/testing/test5\t-\n",
 	))
 }
 
@@ -109,7 +109,7 @@ func TestGenericListTypesAndParameters(t *testing.T) {
 				"\"properties\":{\"clones\":{\"rawvalue\":\"dozer/testing/test5\",\"value\":\"dozer/testing/test5\",\"parsed\":\"dozer/testing/test5\"}}}],\"id\":2}",
 		},
 		"dozer/testing/test\t-\n"+
-		"dozer/testing/test5\t-\n"+
-		"dozer/testing/test4@readonly\tdozer/testing/test5\n",
+		"dozer/testing/test4@readonly\tdozer/testing/test5\n"+
+		"dozer/testing/test5\t-\n",
 	))
 }

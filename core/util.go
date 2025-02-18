@@ -45,6 +45,29 @@ func GetKeysSorted[T any](dict map[string]T) []string {
 	return keys
 }
 
+func ToAnyArray[T any](arr []T) []interface{} {
+	if arr == nil {
+		return nil
+	}
+	n := len(arr)
+	out := make([]interface{}, n, n)
+	for i := 0; i < n; i++ {
+		out[i] = arr[i]
+	}
+	return out
+}
+
+// Slow, but easy
+func DeepCopy(input interface{}) interface{} {
+	if input == nil {
+		return nil
+	}
+	data, _ := json.Marshal(input)
+	var output interface{}
+	json.Unmarshal(data, &output)
+	return output
+}
+
 func ExtractJsonArrayOfMaps(obj map[string]interface{}, key string) ([]map[string]interface{}, string) {
 	if value, ok := obj[key]; ok {
 		if array, ok := value.([]interface{}); ok {
