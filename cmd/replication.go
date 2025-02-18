@@ -152,16 +152,19 @@ func getHostAndDatasetSpecs(str string) ([]string, []string, error) {
 		if s == "" || s == " " {
 			continue
 		}
+
+		var host string
+		var obj string
+
 		div := strings.Index(s, ":")
 		if div < 0 {
-			return nil, nil, fmt.Errorf("Invalid spec \"%s\": must conform to <host>:<dataset>", s)
-		}
-
-		host := s[0:div]
-		obj := s[div+1:]
-
-		if s[0:div] != "local" {
-			return nil, nil, fmt.Errorf("For now, only local:<dataset> is supported (%s)", s)
+			host = ""
+			obj = s
+		} else if div == 0 || div == len(s)-1 {
+			return nil, nil, fmt.Errorf("Invalid spec \"%s\": must conform to <host>:<dataset> or <dataset>", s)
+		} else {
+			host = s[0:div]
+			obj = s[div+1:]
 		}
 
 		t, spec := core.IdentifyObject(obj)
