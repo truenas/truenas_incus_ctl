@@ -17,8 +17,9 @@ import (
 0.1.7 `share nfs update now supports `--create`
 0.1.8 most methods now return non-zero on error
 0.2.0 renamed to `truenas_incus_ctl`, first published version
+0.3.0 added bulk api calls, allowing for multiple datasets, snaps, shares to be edited in one go
 */
-const VERSION = "0.2.0"
+const VERSION = "0.3.0"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
