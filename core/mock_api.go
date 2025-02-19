@@ -58,6 +58,10 @@ func (s *MockSession) CallRaw(method string, timeoutStr string, params interface
 	}
 }
 
+func (s *MockSession) CallAsyncRaw(method string, params interface{}, callback func(progress float64, state string, desc string)) error {
+	return errors.New("async calls not supported in mock")
+}
+
 func getPoolNameFromDataset(datasetName string) string {
 	firstSlash := strings.Index(datasetName, "/")
 	var poolName string

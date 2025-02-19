@@ -254,6 +254,8 @@ func (c *Client) listen() {
 
 			// Handle collection update (e.g., job progress updates)
 			if method, ok := response["method"].(string); ok && method == "collection_update" {
+				fmt.Println("received collection_update")
+
 				params := response["params"].(map[string]interface{})
 				jobID := int64(params["id"].(float64))
 				fields := params["fields"].(map[string]interface{})

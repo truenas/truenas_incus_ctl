@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -151,6 +152,37 @@ func ExtractApiError(data json.RawMessage) string {
 	}
 
 	return builder.String()
+}
+
+func GetJobNumber(data json.RawMessage) (int, error) {
+	var responseJson interface{}
+	if err := json.Unmarshal(data, &responseJson); err != nil {
+		return -1, err
+	}
+	return GetJobNumberFromObject(responseJson)
+}
+
+func GetJobNumberFromObject(responseJson interface{}) (int, error) {
+	if responseJson == nil {
+		return -1, errors.New("response was nil")
+	}
+	if obj, ok := responseJson.(map[string]interface{}); ok {
+		if resultObj, exists := obj["result"]; exists {
+			if resultNumberFloat, ok := resultObj.(float64); ok {
+				return int(resultNumberFloat), nil
+			} else if resultNumber64, ok := resultObj.(int64); ok {
+				return int(resultNumber64), nil
+			} else if resultNumber, ok := resultObj.(int); ok {
+				return resultNumber, nil
+			} else {
+				return -1, errors.New("result in response was not a job number")
+			}
+		} else {
+			return -1, errors.New("result was not found in response")
+		}
+	} else {
+		return -1, errors.New("response was not a json object")
+	}
 }
 
 type ReadAllWriteAll interface {

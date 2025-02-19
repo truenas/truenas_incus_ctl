@@ -35,6 +35,7 @@ func init() {
 
 	replStartCmd.Flags().StringP("exclude", "e", "", "")
 	replStartCmd.Flags().BoolP("recursive", "r", false, "")
+	replStartCmd.Flags().StringP("options", "o", "", "")
 	replStartCmd.Flags().StringP("direction", "d", "", ""+
 		AddFlagsEnum(&g_replStartEnums, "direction", []string{"push", "pull"}))
 	replStartCmd.Flags().StringP("retention-policy", "p", "", ""+
@@ -135,15 +136,21 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 		outMap["exclude"] = excludes
 	}
 
+	if optStr := options.allFlags["options"]; optStr != "" {
+		err = WriteKvArrayToMap(outMap, ConvertParamsStringToKvArray(optStr), g_replStartEnums)
+		if err != nil {
+			return err
+		}
+	}
+
 	params := []interface{}{outMap}
 	DebugJson(params)
 
-	out, err := core.ApiCall(api, "replication.run_onetime", "10s", params)
+	err = core.ApiCallAsync(api, "replication.run_onetime", params)
 	if err != nil {
 		return err
 	}
 
-	DebugString(string(out))
 	return nil
 }
 

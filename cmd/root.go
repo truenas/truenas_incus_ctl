@@ -23,6 +23,7 @@ func Execute() {
 
 var g_useMock bool
 var g_debug bool
+var g_async bool
 var g_configFileName string
 var g_configHost string
 var g_url string
@@ -31,6 +32,7 @@ var g_apiKey string
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&g_debug, "debug", false, "Enable debug logs")
 	rootCmd.PersistentFlags().BoolVar(&g_useMock, "mock", false, "Use the mock API instead of a TrueNAS server")
+	rootCmd.PersistentFlags().BoolVar(&g_async, "nowait", false, "Disable waiting until every job completes")
 	rootCmd.PersistentFlags().StringVar(&g_configFileName, "config", "", "Override config filename (~/.truenas_incus_ctl/config.json)")
 	rootCmd.PersistentFlags().StringVar(&g_configHost, "host", "", "Name of config to look up in config.json, defaults to first entry")
 	rootCmd.PersistentFlags().StringVarP(&g_url, "url", "U", "", "Server URL")
@@ -40,6 +42,7 @@ func init() {
 func RemoveGlobalFlags(flags map[string]string) {
 	delete(flags, "debug")
 	delete(flags, "mock")
+	delete(flags, "nowait")
 	delete(flags, "config")
 	delete(flags, "host")
 	delete(flags, "url")
@@ -64,6 +67,7 @@ func ValidateAndLogin() core.Session {
 		api = &core.RealSession{
 			HostUrl:     g_url,
 			ApiKey:      g_apiKey,
+			ShouldWait:  !g_async,
 		}
 	}
 

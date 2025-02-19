@@ -38,6 +38,11 @@ func (s *UnitTestSession) CallRaw(method string, timeoutStr string, params inter
 	return response, nil
 }
 
+func (s *UnitTestSession) CallAsyncRaw(method string, params interface{}, callback func(progress float64, state string, desc string)) error {
+	_, err := s.CallRaw(method, "10s", params)
+	return err
+}
+
 func PrintTable(api core.Session, str string) {
 	if unit, isUnitTest := api.(*UnitTestSession); isUnitTest {
 		if unit.tableExpected != str {

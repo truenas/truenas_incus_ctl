@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 	"truenas/truenas_incus_ctl/core"
 )
 
@@ -551,17 +550,10 @@ func MaybeBulkApiCall(api core.Session, endpoint, timeoutStr string, params inte
 		return core.ApiCall(api, endpoint, timeoutStr, allParams[0])
 	}
 
-	timeout, err := time.ParseDuration(timeoutStr)
-	if err != nil {
-		return nil, err
-	}
-	timeout = timeout * time.Duration(nParams)
-	timeoutStr = timeout.String()
-
 	methodAndParams := make([]interface{}, 0)
 	methodAndParams = append(methodAndParams, endpoint)
 	methodAndParams = append(methodAndParams, allParams)
 
 	DebugJson(methodAndParams)
-	return core.ApiCall(api, "core.bulk", timeoutStr, methodAndParams)
+	return nil, core.ApiCallAsync(api, "core.bulk", methodAndParams)
 }
