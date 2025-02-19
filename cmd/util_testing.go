@@ -129,3 +129,9 @@ func FailIf(t *testing.T, err error) {
 		t.Error(err)
 	}
 }
+
+func FailUnless(t *testing.T, err error) {
+	if err == nil {
+		t.Error(errors.New("test expected an error, none was received"))
+	}
+}

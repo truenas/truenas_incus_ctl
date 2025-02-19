@@ -233,7 +233,7 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 			if qType == "nfs" {
 				r["type"] = "nfs"
 			} else if t, exists := r["type"]; filterType != "" && exists {
-				if tStr, ok := t.(string); ok && strings.ToLower(tStr) == filterType {
+				if tStr, ok := t.(string); ok && strings.ToLower(tStr) != filterType {
 					shouldAdd = false
 				}
 			}

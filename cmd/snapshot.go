@@ -21,39 +21,39 @@ var snapshotCmd = &cobra.Command{
 }
 
 var snapshotCloneCmd = &cobra.Command{
-	Use:   "clone",
+	Use:   "clone <dataset>@<snapshot>",
 	Short: "clone snapshot of ZFS dataset",
-	Args:  cobra.MinimumNArgs(2),
+	Args:  cobra.ExactArgs(2),
 }
 
 var snapshotCreateCmd = &cobra.Command{
-	Use:   "create [flags] <dataset>@<snapshot>",
+	Use:   "create <dataset>@<snapshot>...",
 	Short: "Take a snapshot of dataset, possibly recursive",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var snapshotDeleteCmd = &cobra.Command{
-	Use:     "delete [flags] <dataset>@<snapshot>",
+	Use:     "delete <dataset>@<snapshot>...",
 	Short:   "Delete a snapshot of dataset, possibly recursive",
 	Args:    cobra.MinimumNArgs(1),
 	Aliases: []string{"rm"},
 }
 
 var snapshotListCmd = &cobra.Command{
-	Use:     "list [flags] [<dataset>][@<snapshot>]...",
+	Use:     "list [<dataset>][@<snapshot>]...",
 	Short:   "List all snapshots",
 	Aliases: []string{"ls"},
 }
 
 var snapshotRenameCmd = &cobra.Command{
-	Use:     "rename [flags] <old dataset>@<old snapshot> <new snapshot>",
+	Use:     "rename <old dataset>@<old snapshot> <new snapshot>",
 	Short:   "Rename a ZFS snapshot",
 	Args:    cobra.ExactArgs(2),
 	Aliases: []string{"mv"},
 }
 
 var snapshotRollbackCmd = &cobra.Command{
-	Use:   "rollback",
+	Use:   "rollback <old dataset>@<old snapshot>",
 	Short: "Rollback to a given snapshot",
 	Args:  cobra.MinimumNArgs(1),
 }
@@ -151,20 +151,26 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	defer api.Close()
 
 	options, _ := GetCobraFlags(cmd, nil)
+	datasetList := make([]string, len(args), len(args))
+	nameList := make([]string, len(args), len(args))
 
-	snapshot := args[0]
-	datasetLen := strings.Index(snapshot, "@")
-	if datasetLen <= 0 || datasetLen == len(snapshot)-1 {
-		return errors.New("No dataset name was found in snapshot specifier.\nExpected <datasetname>@<snapshotname>.")
+	for i := 0; i < len(args); i++ {
+		snapshot := args[i]
+		datasetLen := strings.Index(snapshot, "@")
+		if datasetLen <= 0 || datasetLen == len(snapshot)-1 {
+			return errors.New("No dataset name was found in snapshot specifier.\nExpected <datasetname>@<snapshotname>.")
+		}
+
+		dataset := snapshot[0:datasetLen]
+		snapshotIsolated := snapshot[datasetLen+1:]
+
+		datasetList[i] = dataset
+		nameList[i] = snapshotIsolated
 	}
-	dataset := snapshot[0:datasetLen]
-
-	snapshotIsolated := snapshot[datasetLen+1:]
 
 	outMap := make(map[string]interface{})
-
-	outMap["dataset"] = dataset
-	outMap["name"] = snapshotIsolated
+	outMap["dataset"] = datasetList[0]
+	outMap["name"] = nameList[0]
 
 	MaybeCopyProperty(outMap, options.allFlags, "recursive")
 	MaybeCopyProperty(outMap, options.usedFlags, "suspend_vms")
@@ -181,11 +187,11 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	outMap["properties"] = outProps
 
 	params := []interface{}{outMap}
-	DebugJson(params)
 
 	cmd.SilenceUsage = true
 
-	out, err := core.ApiCall(api, "zfs.snapshot.create", "10s", params)
+	objRemap := map[string][]interface{}{"dataset": core.ToAnyArray(datasetList), "name": core.ToAnyArray(nameList)}
+	out, err := MaybeBulkApiCall(api, "zfs.snapshot.create", "10s", params, objRemap)
 	if err != nil {
 		return err
 	}
@@ -205,19 +211,21 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 		return errors.New("cmdType was not delete or rollback")
 	}
 
-	snapshot := args[0]
-	datasetLen := strings.Index(snapshot, "@")
-	if datasetLen <= 0 {
-		return errors.New("No dataset name was found in snapshot specifier.\nExpected <datasetname>@<snapshotname>.")
+	snapshots := args
+	for i := 0; i < len(args); i++ {
+		datasetLen := strings.Index(snapshots[i], "@")
+		if datasetLen <= 0 {
+			return errors.New("No dataset name was found in snapshot specifier.\nExpected <datasetname>@<snapshotname>.")
+		}
 	}
 
 	options, _ := GetCobraFlags(cmd, nil)
-	params := BuildNameStrAndPropertiesJson(options, snapshot)
-	DebugJson(params)
+	params := BuildNameStrAndPropertiesJson(options, snapshots[0])
 
 	cmd.SilenceUsage = true
 
-	out, err := core.ApiCall(api, "zfs.snapshot."+cmdType, "10s", params)
+	objRemap := map[string][]interface{}{"": core.ToAnyArray(snapshots)}
+	out, err := MaybeBulkApiCall(api, "zfs.snapshot."+cmdType, "10s", params, objRemap)
 	if err != nil {
 		return err
 	}
@@ -290,7 +298,7 @@ func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	snapshots := GetListFromQueryResponse(response)
+	snapshots := GetListFromQueryResponse(&response)
 	//LowerCaseValuesFromEnums(snapshots, g_snapshotCreateUpdateEnums)
 
 	required := []string{"name"}
