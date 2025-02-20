@@ -85,11 +85,13 @@ func init() {
 	rootCmd.AddCommand(replCmd)
 }
 
-func startReplication(cmd *cobra.Command, api core.Session, args []string) error {
+func startReplication(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	options, err := GetCobraFlags(cmd, g_replStartEnums)
 	if err != nil {

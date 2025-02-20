@@ -204,11 +204,13 @@ func init() {
 	rootCmd.AddCommand(datasetCmd)
 }
 
-func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) error {
+func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmdType := strings.Split(cmd.Use, " ")[0]
 	if cmdType != "create" && cmdType != "update" {
@@ -355,11 +357,13 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	return nil
 }
 
-func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
+func deleteDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmd.SilenceUsage = true
 
@@ -376,11 +380,13 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
+func listDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	options, err := GetCobraFlags(cmd, g_datasetListEnums)
 	if err != nil {
@@ -438,11 +444,13 @@ func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	return err
 }
 
-func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
+func promoteDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmd.SilenceUsage = true
 
@@ -457,11 +465,13 @@ func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
+func renameDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmd.SilenceUsage = true
 

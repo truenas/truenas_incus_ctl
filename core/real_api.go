@@ -3,18 +3,28 @@ package core
 import (
 	"errors"
 	"fmt"
+	//"strconv"
 	"strings"
 	"encoding/json"
 	"truenas/truenas_incus_ctl/truenas_api"
 )
+
+type ApiJobResult struct {
+	JobID  int64
+	Method string
+	State  string
+	Result interface{}
+	Error  interface{}
+}
 
 type RealSession struct {
 	HostUrl string
 	ApiKey string
 	ShouldWait bool
 	client *truenas_api.Client
-	jobsList []*truenas_api.Job
 	subscribedToJobs bool
+	paramsChan chan *ApiJobResult
+	jobsList []int64
 }
 
 func (s *RealSession) Login() error {
@@ -26,7 +36,17 @@ func (s *RealSession) Login() error {
 		return errors.New("--url and --api-key were not provided")
 	}
 
-	client, err := truenas_api.NewClient(s.HostUrl, strings.HasPrefix(s.HostUrl, "wss://"))
+	if s.paramsChan == nil {
+		s.paramsChan = make(chan *ApiJobResult, 256)
+	}
+
+	client, err := truenas_api.NewClientWithCallback(
+		s.HostUrl,
+		strings.HasPrefix(s.HostUrl, "wss://"),
+		func(waitingJobId int64, innerJobId int64, params map[string]interface{}) {
+			s.HandleJobUpdate(waitingJobId, innerJobId, params)
+		},
+	)
 	if err != nil {
 		return errors.New("Failed to create client: " + err.Error())
 	}
@@ -47,33 +67,33 @@ func (s *RealSession) CallRaw(method string, timeoutStr string, params interface
 
 func (s *RealSession) CallAsyncRaw(method string, params interface{}, callback func(progress float64, state string, desc string)) error {
 	if s.ShouldWait && !s.subscribedToJobs {
-		event := []interface{}{"core.get_jobs"}
-		out, err := s.CallRaw("core.subscribe", "10s", event)
-		if err != nil {
+		// For every async call that we call "core.job_wait" on, we'll be notified whenever the original call is updated or completes.
+		// In order to get those notifications, we have to subscribe to "core.get_jobs".
+		if err := s.client.SubscribeToJobs(); err != nil {
 			return err
 		}
-		fmt.Println(string(out))
 		s.subscribedToJobs = true
 	}
 
 	mainJob, err := s.client.CallWithJob(method, params, callback)
 	if err != nil {
+		FlushString("Main call error: " + err.Error() + "\n")
 		return err
 	}
-	fmt.Printf("job1=%d\n", mainJob.ID)
 
 	if s.ShouldWait {
-		jobWait, err := s.client.CallWithJob("core.job_wait", []interface{}{mainJob.ID}, callback)
+		// This is to ensure we get notified when mainJob completes.
+		_, err := s.client.CallWithJob("core.job_wait", []interface{}{mainJob.ID}, callback)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("job2=%d\n", jobWait.ID)
 
 		if s.jobsList == nil {
-			s.jobsList = make([]*truenas_api.Job, 0)
+			s.jobsList = make([]int64, 0)
 		}
-		s.jobsList = append(s.jobsList, mainJob)
+		s.jobsList = append(s.jobsList, mainJob.ID)
 	}
+
 	return nil
 }
 
@@ -82,21 +102,101 @@ func (s *RealSession) Close() error {
 		return nil
 	}
 
-	if s.ShouldWait {
-		fmt.Println("Waiting for", len(s.jobsList), "jobs to finish")
-	}
+	errorList := make([]error, 0)
 
-	var err error
-	for _, job := range s.jobsList {
-		if job != nil {
-			// TODO: Also wait on either timeout or SIGKILL
-			fmt.Printf("%d\t%s\t%s", job.ID, job.State, job.Method)
-			status := <- job.DoneCh
-			fmt.Printf("\t%s\n", status)
+	if s.ShouldWait {
+		for len(s.jobsList) > 0 {
+			jr := <- s.paramsChan
+			if jr == nil {
+				continue
+			}
+			//jr.Print()
+			for i := 0; i < len(s.jobsList); i++ {
+				if s.jobsList[i] == jr.JobID {
+					if err := jr.GetError(); err != nil {
+						errorList = append(errorList, err)
+					}
+					// remove it
+					s.jobsList[i] = s.jobsList[len(s.jobsList)-1]
+					s.jobsList = s.jobsList[:len(s.jobsList)-1]
+				}
+			}
 		}
 	}
 
-	err = s.client.Close()
+	err := s.client.Close()
 	s.client = nil
+
+	if err != nil {
+		errorList = append(errorList, err)
+	}
+
+	err = MakeErrorFromList(errorList)
 	return err
+}
+
+// This is called from the listen thread in truenas_api
+func (s *RealSession) HandleJobUpdate(waitingJobId int64, innerJobId int64, params map[string]interface{}) {
+	st, _ := params["state"].(string)
+	state := strings.ToUpper(st)
+	if state == "SUCCESS" || state == "FAILED" {
+		res, _ := params["result"]
+		err, _ := params["error"]
+		jr := &ApiJobResult{
+			JobID:  innerJobId,
+			State:  state,
+			Result: res,
+			Error:  err,
+		}
+		s.paramsChan <- jr
+	}
+}
+
+func (jr *ApiJobResult) GetError() error {
+	if jr == nil {
+		return nil
+	}
+	if jr.Error != nil {
+		return errors.New(fmt.Sprint(jr.Error))
+	}
+	if jr.Result == nil {
+		return nil
+	}
+
+	arrayOfResults := make([]map[string]interface{}, 0)
+	if arr, ok := jr.Result.([]interface{}); ok {
+		for _, elem := range arr {
+			if res, ok := elem.(map[string]interface{}); ok {
+				arrayOfResults = append(arrayOfResults, res)
+			} else {
+				arrayOfResults = append(arrayOfResults, nil)
+			}
+		}
+	} else if res, ok := jr.Result.(map[string]interface{}); ok {
+		arrayOfResults = append(arrayOfResults, res)
+	}
+
+	errorList := make([]error, 0)
+	for i, res := range arrayOfResults {
+		if res == nil {
+			continue
+		}
+		if value, exists := res["error"]; exists {
+			if str, ok := value.(string); ok && str != "" {
+				errorList = append(errorList, fmt.Errorf("%d: %s", i, str))
+			} else if value != nil {
+				errorList = append(errorList, fmt.Errorf("%d: %v", i, value))
+			}
+		}
+	}
+
+	return MakeErrorFromList(errorList)
+}
+
+func (jr *ApiJobResult) Print() {
+	if jr == nil {
+		fmt.Println("nil")
+		return
+	}
+	fmt.Printf("Job: %d, State: %s, Result: %v, Error: %v\n", jr.JobID, jr.State, jr.Result, jr.Error)
 }

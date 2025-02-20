@@ -3,7 +3,7 @@ package core
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
+	//"fmt"
 )
 
 type Session interface {
@@ -25,7 +25,5 @@ func ApiCall(s Session, method string, timeoutStr string, params interface{}) (j
 }
 
 func ApiCallAsync(s Session, method string, params interface{}) error {
-	return s.CallAsyncRaw(method, params, func(progress float64, state string, desc string) {
-		fmt.Println(progress, state, desc)
-	})
+	return s.CallAsyncRaw(method, params, nil)
 }

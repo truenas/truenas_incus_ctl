@@ -119,11 +119,13 @@ func init() {
 	rootCmd.AddCommand(snapshotCmd)
 }
 
-func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
+func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmd.SilenceUsage = true
 
@@ -144,11 +146,13 @@ func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
+func createSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	options, _ := GetCobraFlags(cmd, nil)
 	datasetList := make([]string, len(args), len(args))
@@ -200,11 +204,13 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
+func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmdType := strings.Split(cmd.Use, " ")[0]
 	if cmdType != "delete" && cmdType != "rollback" {
@@ -234,11 +240,13 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	return nil
 }
 
-func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
+func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmd.SilenceUsage = true
 
@@ -261,11 +269,13 @@ func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
+func listSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	options, err := GetCobraFlags(cmd, g_snapshotListEnums)
 	if err != nil {

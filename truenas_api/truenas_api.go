@@ -24,6 +24,7 @@ type Client struct {
 	notifyChan chan os.Signal               // For handling notifications (e.g., OS signals)
 	closeChan  chan struct{}                // Channel to signal when the connection should be closed
 	jobs       *Jobs                        // Jobs manager to track long-running jobs
+	jobsCb     func(int64, int64, map[string]interface{})
 }
 
 // Job represents a long-running job in TrueNAS.
@@ -140,6 +141,10 @@ func (c *Client) SubscribeToJobs() error {
 
 // NewClient creates a new WebSocket client connection.
 func NewClient(serverURL string, verifySSL bool) (*Client, error) {
+	return NewClientWithCallback(serverURL, verifySSL, nil)
+}
+
+func NewClientWithCallback(serverURL string, verifySSL bool, jobsCallback func(int64, int64, map[string]interface{})) (*Client, error) {
 	u, err := url.Parse(serverURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL: %w", err)
@@ -163,6 +168,7 @@ func NewClient(serverURL string, verifySSL bool) (*Client, error) {
 		pending:   make(map[int]chan json.RawMessage),
 		closeChan: make(chan struct{}),
 		jobs:      NewJobs(nil),
+		jobsCb:    jobsCallback,
 	}
 
 	client.jobs = NewJobs(client)
@@ -254,14 +260,20 @@ func (c *Client) listen() {
 
 			// Handle collection update (e.g., job progress updates)
 			if method, ok := response["method"].(string); ok && method == "collection_update" {
-				fmt.Println("received collection_update")
-
 				params := response["params"].(map[string]interface{})
 				jobID := int64(params["id"].(float64))
 				fields := params["fields"].(map[string]interface{})
 
-				// Only handle jobs started by this client
-				if c.jobs.IsOwnedJob(jobID) {
+				if c.jobsCb != nil {
+					innerJobID := jobID
+					if args, ok := fields["arguments"].([]interface{}); ok && len(args) > 0 {
+						if value, ok := args[0].(float64); ok {
+							innerJobID = int64(value)
+						}
+					}
+					c.jobsCb(jobID, innerJobID, fields)
+				} else if c.jobs.IsOwnedJob(jobID) {
+					// Only handle jobs started by this client
 					progress := fields["progress"].(map[string]interface{})
 					description, _ := progress["description"].(string)
 					percent, _ := progress["percent"].(float64)

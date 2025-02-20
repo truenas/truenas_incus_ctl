@@ -33,6 +33,20 @@ func IdentifyObject(obj string) (string, string) {
 	return "pool", obj
 }
 
+func MakeErrorFromList(errorList []error) error {
+	if len(errorList) == 0 {
+		return nil
+	}
+
+	var combinedErrMsg strings.Builder
+	for _, e := range errorList {
+		combinedErrMsg.WriteString("\n")
+		combinedErrMsg.WriteString(e.Error())
+	}
+
+	return errors.New(combinedErrMsg.String())
+}
+
 func GetKeysSorted[T any](dict map[string]T) []string {
 	var keys []string
 	size := len(dict)
@@ -183,6 +197,11 @@ func GetJobNumberFromObject(responseJson interface{}) (int, error) {
 	} else {
 		return -1, errors.New("response was not a json object")
 	}
+}
+
+func FlushString(str string) {
+	os.Stdout.WriteString(str)
+	os.Stdout.Sync()
 }
 
 type ReadAllWriteAll interface {
