@@ -13,10 +13,9 @@ type RealSession struct {
 	ApiKey string
 	ShouldWait bool
 	client *truenas_api.Client
+	jobsList []*truenas_api.Job
+	subscribedToJobs bool
 }
-
-var realApiJobsList []*truenas_api.Job
-var realApiSubscriptions map[string]bool
 
 func (s *RealSession) Login() error {
 	if s.client != nil {
@@ -47,32 +46,33 @@ func (s *RealSession) CallRaw(method string, timeoutStr string, params interface
 }
 
 func (s *RealSession) CallAsyncRaw(method string, params interface{}, callback func(progress float64, state string, desc string)) error {
-	if s.ShouldWait {
-		if realApiSubscriptions == nil {
-			realApiSubscriptions = make(map[string]bool)
+	if s.ShouldWait && !s.subscribedToJobs {
+		event := []interface{}{"core.get_jobs"}
+		out, err := s.CallRaw("core.subscribe", "10s", event)
+		if err != nil {
+			return err
 		}
-		subscribeStr := "sharing.nfs.update"
-		if _, exists := realApiSubscriptions[subscribeStr]; !exists {
-			realApiSubscriptions[subscribeStr] = true
-			event := []interface{}{subscribeStr}
-			out, err := s.CallRaw("core.subscribe", "10s", event)
-			if err != nil {
-				return err
-			}
-			fmt.Println(string(out))
-		}
+		fmt.Println(string(out))
+		s.subscribedToJobs = true
 	}
 
-	job, err := s.client.CallWithJob(method, params, callback)
+	mainJob, err := s.client.CallWithJob(method, params, callback)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("job=%d\n", job.ID)
+	fmt.Printf("job1=%d\n", mainJob.ID)
+
 	if s.ShouldWait {
-		if realApiJobsList == nil {
-			realApiJobsList = make([]*truenas_api.Job, 0)
+		jobWait, err := s.client.CallWithJob("core.job_wait", []interface{}{mainJob.ID}, callback)
+		if err != nil {
+			return err
 		}
-		realApiJobsList = append(realApiJobsList, job)
+		fmt.Printf("job2=%d\n", jobWait.ID)
+
+		if s.jobsList == nil {
+			s.jobsList = make([]*truenas_api.Job, 0)
+		}
+		s.jobsList = append(s.jobsList, mainJob)
 	}
 	return nil
 }
@@ -83,11 +83,11 @@ func (s *RealSession) Close() error {
 	}
 
 	if s.ShouldWait {
-		fmt.Println("Waiting for", len(realApiJobsList), "jobs to finish")
+		fmt.Println("Waiting for", len(s.jobsList), "jobs to finish")
 	}
 
 	var err error
-	for _, job := range realApiJobsList {
+	for _, job := range s.jobsList {
 		if job != nil {
 			// TODO: Also wait on either timeout or SIGKILL
 			fmt.Printf("%d\t%s\t%s", job.ID, job.State, job.Method)
