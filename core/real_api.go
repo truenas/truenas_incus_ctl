@@ -23,7 +23,7 @@ type RealSession struct {
 	ShouldWait bool
 	client *truenas_api.Client
 	subscribedToJobs bool
-	paramsChan chan *ApiJobResult
+	resultsQueue *SimpleQueue[ApiJobResult]
 	jobsList []int64
 }
 
@@ -36,8 +36,8 @@ func (s *RealSession) Login() error {
 		return errors.New("--url and --api-key were not provided")
 	}
 
-	if s.paramsChan == nil {
-		s.paramsChan = make(chan *ApiJobResult, 256)
+	if s.resultsQueue == nil {
+		s.resultsQueue = MakeSimpleQueue[ApiJobResult]()
 	}
 
 	client, err := truenas_api.NewClientWithCallback(
@@ -106,10 +106,7 @@ func (s *RealSession) Close() error {
 
 	if s.ShouldWait {
 		for len(s.jobsList) > 0 {
-			jr := <- s.paramsChan
-			if jr == nil {
-				continue
-			}
+			jr := s.resultsQueue.Take()
 			//jr.Print()
 			for i := 0; i < len(s.jobsList); i++ {
 				if s.jobsList[i] == jr.JobID {
@@ -140,15 +137,17 @@ func (s *RealSession) HandleJobUpdate(waitingJobId int64, innerJobId int64, para
 	st, _ := params["state"].(string)
 	state := strings.ToUpper(st)
 	if state == "SUCCESS" || state == "FAILED" {
+		method, _ := params["params"].(string)
 		res, _ := params["result"]
 		err, _ := params["error"]
-		jr := &ApiJobResult{
+		jr := ApiJobResult{
 			JobID:  innerJobId,
+			Method: method,
 			State:  state,
 			Result: res,
 			Error:  err,
 		}
-		s.paramsChan <- jr
+		s.resultsQueue.Add(jr)
 	}
 }
 
