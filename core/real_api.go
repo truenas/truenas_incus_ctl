@@ -61,8 +61,8 @@ func (s *RealSession) Login() error {
 	return nil
 }
 
-func (s *RealSession) CallRaw(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
-	return s.client.Call(method, timeoutStr, params)
+func (s *RealSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
+	return s.client.Call(method, timeoutSeconds, params)
 }
 
 func (s *RealSession) CallAsyncRaw(method string, params interface{}, callback func(progress float64, state string, desc string)) error {

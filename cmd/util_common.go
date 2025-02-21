@@ -66,7 +66,7 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 
 	DebugJson(query)
 
-	data, err := core.ApiCall(api, endpoint, "20s", query)
+	data, err := core.ApiCall(api, endpoint, 20, query)
 	if err != nil {
 		return response, err
 	}
@@ -518,7 +518,7 @@ func GetTableFormat(properties map[string]string) (string, error) {
 	return properties["format"], nil
 }
 
-func MaybeBulkApiCall(api core.Session, endpoint, timeoutStr string, params interface{}, remapList map[string][]interface{}) (json.RawMessage, error) {
+func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, params interface{}, remapList map[string][]interface{}) (json.RawMessage, error) {
 	allParams := make([][]interface{}, 0)
 	for key, valueList := range remapList {
 		for i, value := range valueList {
@@ -547,7 +547,7 @@ func MaybeBulkApiCall(api core.Session, endpoint, timeoutStr string, params inte
 		return nil, errors.New("MaybeBulkApiCall: Nothing to do")
 	} else if nParams == 1 {
 		DebugJson(allParams[0])
-		return core.ApiCall(api, endpoint, timeoutStr, allParams[0])
+		return core.ApiCall(api, endpoint, timeoutSeconds, allParams[0])
 	}
 
 	methodAndParams := make([]interface{}, 0)

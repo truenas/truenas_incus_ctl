@@ -125,7 +125,7 @@ func (c *Client) SubscribeToJobs() error {
 	params := []interface{}{"core.get_jobs"} // Core function to subscribe to job updates
 
 	// Make the subscription call via WebSocket
-	res, err := c.Call("core.subscribe", "10s", params)
+	res, err := c.Call("core.subscribe", 10, params)
 	if err != nil {
 		return err
 	}
@@ -196,11 +196,8 @@ func (c *Client) Close() error {
 }
 
 // Call sends an RPC call to the server and waits for a response.
-func (c *Client) Call(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
-	timeout, err := time.ParseDuration(timeoutStr)
-	if err != nil || timeout < 0 {
-		return nil, errors.New("Invalid timeout was given: " + timeoutStr)
-	}
+func (c *Client) Call(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
+	timeout := time.Duration(timeoutSeconds) * time.Second
 
 	c.mu.Lock()
 	c.callID++ // Increment callID for each call
@@ -310,7 +307,7 @@ func (c *Client) listen() {
 // CallWithJob sends an RPC call that returns a job ID and tracks the long-running job.
 func (c *Client) CallWithJob(method string, params interface{}, callback func(progress float64, state string, desc string)) (*Job, error) {
 	// Call the API method
-	res, err := c.Call(method, "10s", params)
+	res, err := c.Call(method, 10, params)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +343,7 @@ func (c *Client) CallWithJob(method string, params interface{}, callback func(pr
 
 // Ping sends a ping request to the server to check connectivity.
 func (c *Client) Ping() (string, error) {
-	res, err := c.Call("core.ping", "10s", []interface{}{}) // Empty array as params
+	res, err := c.Call("core.ping", 10, []interface{}{}) // Empty array as params
 
 	if err != nil {
 		return "", err
@@ -384,7 +381,7 @@ func (c *Client) Login(username, password, apiKey string) error {
 	}
 
 	// Make the login call
-	res, err := c.Call(method, "10s", params)
+	res, err := c.Call(method, 10, params)
 	if err != nil {
 		return fmt.Errorf("login failed: %w", err)
 	}

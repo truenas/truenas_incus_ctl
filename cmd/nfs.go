@@ -144,7 +144,7 @@ func createNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr er
 	cmd.SilenceUsage = true
 
 	objRemap := map[string][]interface{}{"path": core.ToAnyArray(paths)}
-	out, err := MaybeBulkApiCall(api, "sharing.nfs.create", "10s", params, objRemap)
+	out, err := MaybeBulkApiCall(api, "sharing.nfs.create", 10, params, objRemap)
 	if err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr er
 
 	if len(listToUpdate) > 0 {
 		objRemap := map[string][]interface{}{"": core.ToAnyArray(listToUpdate)}
-		out, err := MaybeBulkApiCall(api, "sharing.nfs.update", "10s", params, objRemap)
+		out, err := MaybeBulkApiCall(api, "sharing.nfs.update", 10, params, objRemap)
 		if err != nil {
 			return err
 		}
@@ -254,7 +254,7 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr er
 
 	if len(listToCreate) > 0 {
 		objRemap := map[string][]interface{}{"path": core.ToAnyArray(listToCreate)}
-		out, err := MaybeBulkApiCall(api, "sharing.nfs.create", "10s", params, objRemap)
+		out, err := MaybeBulkApiCall(api, "sharing.nfs.create", 10, params, objRemap)
 		if err != nil {
 			return err
 		}
@@ -310,7 +310,7 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr er
 		params := []interface{}{id}
 		DebugJson(params)
 
-		out, err := core.ApiCall(api, "sharing.nfs.delete", "10s", params)
+		out, err := core.ApiCall(api, "sharing.nfs.delete", 10, params)
 		DebugString(string(out))
 		return err
 	}
@@ -343,7 +343,7 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr er
 
 	params := []interface{}{responseIdList[0]}
 	objRemap := map[string][]interface{}{"": responseIdList}
-	out, err := MaybeBulkApiCall(api, "sharing.nfs.delete", "10s", params, objRemap)
+	out, err := MaybeBulkApiCall(api, "sharing.nfs.delete", 10, params, objRemap)
 	if err != nil {
 		return err
 	}

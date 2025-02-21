@@ -23,7 +23,7 @@ func (s *MockSession) Close() error {
 	return nil
 }
 
-func (s *MockSession) CallRaw(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
+func (s *MockSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
 	if s.closed {
 		return nil, errors.New("API connection closed")
 	}

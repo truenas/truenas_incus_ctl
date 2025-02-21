@@ -8,13 +8,13 @@ import (
 
 type Session interface {
 	Login() error
-	CallRaw(method string, timeoutStr string, params interface{}) (json.RawMessage, error)
+	CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error)
 	CallAsyncRaw(method string, params interface{}, callback func(progress float64, state string, desc string)) error
 	Close() error
 }
 
-func ApiCall(s Session, method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
-	out, err := s.CallRaw(method, timeoutStr, params)
+func ApiCall(s Session, method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
+	out, err := s.CallRaw(method, timeoutSeconds, params)
 	if err != nil {
 		return out, err
 	}

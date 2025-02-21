@@ -137,7 +137,7 @@ func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferEr
 	params := []interface{}{outMap}
 	DebugJson(params)
 
-	out, err := core.ApiCall(api, "zfs.snapshot.clone", "10s", params)
+	out, err := core.ApiCall(api, "zfs.snapshot.clone", 10, params)
 	if err != nil {
 		return err
 	}
@@ -195,7 +195,7 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferE
 	cmd.SilenceUsage = true
 
 	objRemap := map[string][]interface{}{"dataset": core.ToAnyArray(datasetList), "name": core.ToAnyArray(nameList)}
-	out, err := MaybeBulkApiCall(api, "zfs.snapshot.create", "10s", params, objRemap)
+	out, err := MaybeBulkApiCall(api, "zfs.snapshot.create", 10, params, objRemap)
 	if err != nil {
 		return err
 	}
@@ -231,7 +231,7 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	cmd.SilenceUsage = true
 
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(snapshots)}
-	out, err := MaybeBulkApiCall(api, "zfs.snapshot."+cmdType, "10s", params, objRemap)
+	out, err := MaybeBulkApiCall(api, "zfs.snapshot."+cmdType, 10, params, objRemap)
 	if err != nil {
 		return err
 	}
@@ -260,7 +260,7 @@ func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferE
 	DebugJson(params)
 
 	// For now, snapshot rename uses the same API as dataset rename. This may change in the future.
-	out, err := core.ApiCall(api, "zfs.dataset.rename", "10s", params)
+	out, err := core.ApiCall(api, "zfs.dataset.rename", 10, params)
 	if err != nil {
 		return err
 	}
