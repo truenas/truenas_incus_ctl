@@ -136,10 +136,12 @@ func (s *RealSession) Close() error {
 func (s *RealSession) HandleJobUpdate(waitingJobId int64, innerJobId int64, params map[string]interface{}) {
 	st, _ := params["state"].(string)
 	state := strings.ToUpper(st)
+
 	if state == "SUCCESS" || state == "FAILED" {
 		method, _ := params["params"].(string)
 		res, _ := params["result"]
 		err, _ := params["error"]
+
 		jr := ApiJobResult{
 			JobID:  innerJobId,
 			Method: method,

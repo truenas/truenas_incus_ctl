@@ -266,9 +266,11 @@ func (c *Client) listen() {
 
 				if c.jobsCb != nil {
 					innerJobID := jobID
-					if args, ok := fields["arguments"].([]interface{}); ok && len(args) > 0 {
-						if value, ok := args[0].(float64); ok {
-							innerJobID = int64(value)
+					if innerMethod, _ := fields["method"].(string); innerMethod == "core.job_wait" {
+						if args, ok := fields["arguments"].([]interface{}); ok && len(args) > 0 {
+							if value, ok := args[0].(float64); ok {
+								innerJobID = int64(value)
+							}
 						}
 					}
 					c.jobsCb(jobID, innerJobID, fields)
