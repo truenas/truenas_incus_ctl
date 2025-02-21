@@ -328,11 +328,20 @@ func (c *Client) CallWithJob(method string, params interface{}, callback func(pr
 		return nil, fmt.Errorf("unexpected response format for job")
 	}
 
-	// Add the job to the Jobs manager
-	job := c.jobs.AddJob(int64(jobID), method)
+	var job *Job
+	if c.jobsCb != nil {
+		job = &Job{
+			ID:     int64(jobID),
+			Method: method,
+			State:  "PENDING",
+		}
+	} else {
+		// Add the job to the Jobs manager
+		job = c.jobs.AddJob(int64(jobID), method)
 
-	// Mark this job as owned by this client
-	c.jobs.AddOwnedJob(int64(jobID))
+		// Mark this job as owned by this client
+		c.jobs.AddOwnedJob(int64(jobID))
+	}
 
 	// Set the callback function for job updates
 	job.Callback = callback
