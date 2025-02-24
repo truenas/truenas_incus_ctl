@@ -23,7 +23,7 @@ type UnitTestSession struct {
 func (s *UnitTestSession) Login() error { return nil }
 func (s *UnitTestSession) Close() error { return nil }
 
-func (s *UnitTestSession) CallRaw(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
+func (s *UnitTestSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
 	if s.shouldIncCallIdx {
 		s.callIdx++
 	}
@@ -36,6 +36,11 @@ func (s *UnitTestSession) CallRaw(method string, timeoutStr string, params inter
 	response := []byte(s.responses[s.callIdx])
 	s.shouldIncCallIdx = true
 	return response, nil
+}
+
+func (s *UnitTestSession) CallAsyncRaw(method string, params interface{}, callback func(progress float64, state string, desc string)) error {
+	_, err := s.CallRaw(method, 10, params)
+	return err
 }
 
 func PrintTable(api core.Session, str string) {

@@ -204,11 +204,13 @@ func init() {
 	rootCmd.AddCommand(datasetCmd)
 }
 
-func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) error {
+func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmdType := strings.Split(cmd.Use, " ")[0]
 	if cmdType != "create" && cmdType != "update" {
@@ -330,7 +332,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 
 	if len(listToUpdate) > 0 {
 		objRemap := map[string][]interface{}{"": core.ToAnyArray(listToUpdate)}
-		out, err := MaybeBulkApiCall(api, "pool.dataset.update", "10s", []interface{}{outMap}, objRemap)
+		out, err := MaybeBulkApiCall(api, "pool.dataset.update", 10, []interface{}{outMap}, objRemap)
 		if err != nil {
 			return err
 		}
@@ -345,7 +347,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		}
 
 		objRemap := map[string][]interface{}{"name": core.ToAnyArray(listToCreate)}
-		out, err := MaybeBulkApiCall(api, "pool.dataset.create", "10s", []interface{}{outMap}, objRemap)
+		out, err := MaybeBulkApiCall(api, "pool.dataset.create", 10, []interface{}{outMap}, objRemap)
 		if err != nil {
 			return err
 		}
@@ -355,11 +357,13 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	return nil
 }
 
-func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
+func deleteDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmd.SilenceUsage = true
 
@@ -367,7 +371,7 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	params := BuildNameStrAndPropertiesJson(options, args[0])
 
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
-	out, err := MaybeBulkApiCall(api, "pool.dataset.delete", "10s", params, objRemap)
+	out, err := MaybeBulkApiCall(api, "pool.dataset.delete", 10, params, objRemap)
 	if err != nil {
 		return err
 	}
@@ -376,11 +380,13 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
+func listDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	options, err := GetCobraFlags(cmd, g_datasetListEnums)
 	if err != nil {
@@ -438,17 +444,19 @@ func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	return err
 }
 
-func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
+func promoteDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmd.SilenceUsage = true
 
 	params := []interface{}{args[0]}
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
-	out, err := MaybeBulkApiCall(api, "pool.dataset.promote", "10s", params, objRemap)
+	out, err := MaybeBulkApiCall(api, "pool.dataset.promote", 10, params, objRemap)
 	if err != nil {
 		return err
 	}
@@ -457,11 +465,13 @@ func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
+func renameDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmd.SilenceUsage = true
 
@@ -476,7 +486,7 @@ func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	params := []interface{}{source, outMap}
 	DebugJson(params)
 
-	out, err := core.ApiCall(api, "zfs.dataset.rename", "10s", params)
+	out, err := core.ApiCall(api, "zfs.dataset.rename", 10, params)
 	if err != nil {
 		return err
 	}
@@ -503,7 +513,7 @@ func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
 
 		DebugJson(nfsParams)
 
-		out, err = core.ApiCall(api, "sharing.nfs.update", "10s", nfsParams)
+		out, err = core.ApiCall(api, "sharing.nfs.update", 10, nfsParams)
 		if err != nil {
 			return err
 		}

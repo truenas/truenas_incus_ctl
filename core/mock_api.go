@@ -23,7 +23,7 @@ func (s *MockSession) Close() error {
 	return nil
 }
 
-func (s *MockSession) CallRaw(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
+func (s *MockSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
 	if s.closed {
 		return nil, errors.New("API connection closed")
 	}
@@ -56,6 +56,10 @@ func (s *MockSession) CallRaw(method string, timeoutStr string, params interface
 	default:
 		return nil, errors.New("Unrecognised command " + method)
 	}
+}
+
+func (s *MockSession) CallAsyncRaw(method string, params interface{}, callback func(progress float64, state string, desc string)) error {
+	return errors.New("async calls not supported in mock")
 }
 
 func getPoolNameFromDataset(datasetName string) string {

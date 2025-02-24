@@ -24,6 +24,7 @@ type Client struct {
 	notifyChan chan os.Signal               // For handling notifications (e.g., OS signals)
 	closeChan  chan struct{}                // Channel to signal when the connection should be closed
 	jobs       *Jobs                        // Jobs manager to track long-running jobs
+	jobsCb     func(int64, int64, map[string]interface{})
 }
 
 // Job represents a long-running job in TrueNAS.
@@ -124,7 +125,7 @@ func (c *Client) SubscribeToJobs() error {
 	params := []interface{}{"core.get_jobs"} // Core function to subscribe to job updates
 
 	// Make the subscription call via WebSocket
-	res, err := c.Call("core.subscribe", "10s", params)
+	res, err := c.Call("core.subscribe", 10, params)
 	if err != nil {
 		return err
 	}
@@ -140,6 +141,10 @@ func (c *Client) SubscribeToJobs() error {
 
 // NewClient creates a new WebSocket client connection.
 func NewClient(serverURL string, verifySSL bool) (*Client, error) {
+	return NewClientWithCallback(serverURL, verifySSL, nil)
+}
+
+func NewClientWithCallback(serverURL string, verifySSL bool, jobsCallback func(int64, int64, map[string]interface{})) (*Client, error) {
 	u, err := url.Parse(serverURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL: %w", err)
@@ -163,6 +168,7 @@ func NewClient(serverURL string, verifySSL bool) (*Client, error) {
 		pending:   make(map[int]chan json.RawMessage),
 		closeChan: make(chan struct{}),
 		jobs:      NewJobs(nil),
+		jobsCb:    jobsCallback,
 	}
 
 	client.jobs = NewJobs(client)
@@ -190,11 +196,8 @@ func (c *Client) Close() error {
 }
 
 // Call sends an RPC call to the server and waits for a response.
-func (c *Client) Call(method string, timeoutStr string, params interface{}) (json.RawMessage, error) {
-	timeout, err := time.ParseDuration(timeoutStr)
-	if err != nil || timeout < 0 {
-		return nil, errors.New("Invalid timeout was given: " + timeoutStr)
-	}
+func (c *Client) Call(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
+	timeout := time.Duration(timeoutSeconds) * time.Second
 
 	c.mu.Lock()
 	c.callID++ // Increment callID for each call
@@ -258,8 +261,18 @@ func (c *Client) listen() {
 				jobID := int64(params["id"].(float64))
 				fields := params["fields"].(map[string]interface{})
 
-				// Only handle jobs started by this client
-				if c.jobs.IsOwnedJob(jobID) {
+				if c.jobsCb != nil {
+					innerJobID := jobID
+					if innerMethod, _ := fields["method"].(string); innerMethod == "core.job_wait" {
+						if args, ok := fields["arguments"].([]interface{}); ok && len(args) > 0 {
+							if value, ok := args[0].(float64); ok {
+								innerJobID = int64(value)
+							}
+						}
+					}
+					c.jobsCb(jobID, innerJobID, fields)
+				} else if c.jobs.IsOwnedJob(jobID) {
+					// Only handle jobs started by this client
 					progress := fields["progress"].(map[string]interface{})
 					description, _ := progress["description"].(string)
 					percent, _ := progress["percent"].(float64)
@@ -294,7 +307,7 @@ func (c *Client) listen() {
 // CallWithJob sends an RPC call that returns a job ID and tracks the long-running job.
 func (c *Client) CallWithJob(method string, params interface{}, callback func(progress float64, state string, desc string)) (*Job, error) {
 	// Call the API method
-	res, err := c.Call(method, "10s", params)
+	res, err := c.Call(method, 10, params)
 	if err != nil {
 		return nil, err
 	}
@@ -315,11 +328,20 @@ func (c *Client) CallWithJob(method string, params interface{}, callback func(pr
 		return nil, fmt.Errorf("unexpected response format for job")
 	}
 
-	// Add the job to the Jobs manager
-	job := c.jobs.AddJob(int64(jobID), method)
+	var job *Job
+	if c.jobsCb != nil {
+		job = &Job{
+			ID:     int64(jobID),
+			Method: method,
+			State:  "PENDING",
+		}
+	} else {
+		// Add the job to the Jobs manager
+		job = c.jobs.AddJob(int64(jobID), method)
 
-	// Mark this job as owned by this client
-	c.jobs.AddOwnedJob(int64(jobID))
+		// Mark this job as owned by this client
+		c.jobs.AddOwnedJob(int64(jobID))
+	}
 
 	// Set the callback function for job updates
 	job.Callback = callback
@@ -330,7 +352,7 @@ func (c *Client) CallWithJob(method string, params interface{}, callback func(pr
 
 // Ping sends a ping request to the server to check connectivity.
 func (c *Client) Ping() (string, error) {
-	res, err := c.Call("core.ping", "10s", []interface{}{}) // Empty array as params
+	res, err := c.Call("core.ping", 10, []interface{}{}) // Empty array as params
 
 	if err != nil {
 		return "", err
@@ -368,7 +390,7 @@ func (c *Client) Login(username, password, apiKey string) error {
 	}
 
 	// Make the login call
-	res, err := c.Call(method, "10s", params)
+	res, err := c.Call(method, 10, params)
 	if err != nil {
 		return fmt.Errorf("login failed: %w", err)
 	}

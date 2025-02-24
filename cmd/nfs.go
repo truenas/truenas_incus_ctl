@@ -107,11 +107,13 @@ func init() {
 	shareCmd.AddCommand(nfsCmd)
 }
 
-func createNfs(cmd *cobra.Command, api core.Session, args []string) error {
+func createNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	paths := make([]string, 0)
 	for i := 0; i < len(args); i++ {
@@ -142,7 +144,7 @@ func createNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	objRemap := map[string][]interface{}{"path": core.ToAnyArray(paths)}
-	out, err := MaybeBulkApiCall(api, "sharing.nfs.create", "10s", params, objRemap)
+	out, err := MaybeBulkApiCall(api, "sharing.nfs.create", 10, params, objRemap)
 	if err != nil {
 		return err
 	}
@@ -151,11 +153,13 @@ func createNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
+func updateNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	paths, idList, specs, types, err := getIdAndPathLists(args)
 	if err != nil {
@@ -239,7 +243,7 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 
 	if len(listToUpdate) > 0 {
 		objRemap := map[string][]interface{}{"": core.ToAnyArray(listToUpdate)}
-		out, err := MaybeBulkApiCall(api, "sharing.nfs.update", "10s", params, objRemap)
+		out, err := MaybeBulkApiCall(api, "sharing.nfs.update", 10, params, objRemap)
 		if err != nil {
 			return err
 		}
@@ -250,7 +254,7 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 
 	if len(listToCreate) > 0 {
 		objRemap := map[string][]interface{}{"path": core.ToAnyArray(listToCreate)}
-		out, err := MaybeBulkApiCall(api, "sharing.nfs.create", "10s", params, objRemap)
+		out, err := MaybeBulkApiCall(api, "sharing.nfs.create", 10, params, objRemap)
 		if err != nil {
 			return err
 		}
@@ -286,11 +290,13 @@ func writeNfsCreateUpdateProperties(options FlagMap) (map[string]interface{}, er
 	return outMap, nil
 }
 
-func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
+func deleteNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	_, idList, specs, types, err := getIdAndPathLists(args)
 	if err != nil {
@@ -304,7 +310,7 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		params := []interface{}{id}
 		DebugJson(params)
 
-		out, err := core.ApiCall(api, "sharing.nfs.delete", "10s", params)
+		out, err := core.ApiCall(api, "sharing.nfs.delete", 10, params)
 		DebugString(string(out))
 		return err
 	}
@@ -337,7 +343,7 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 
 	params := []interface{}{responseIdList[0]}
 	objRemap := map[string][]interface{}{"": responseIdList}
-	out, err := MaybeBulkApiCall(api, "sharing.nfs.delete", "10s", params, objRemap)
+	out, err := MaybeBulkApiCall(api, "sharing.nfs.delete", 10, params, objRemap)
 	if err != nil {
 		return err
 	}
@@ -383,11 +389,13 @@ func getIdAndPathLists(args []string) ([]string, []string, []string, []string, e
 	return paths, idList, specs, types, nil
 }
 
-func listNfs(cmd *cobra.Command, api core.Session, args []string) error {
+func listNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	options, err := GetCobraFlags(cmd, g_nfsListEnums)
 	if err != nil {
