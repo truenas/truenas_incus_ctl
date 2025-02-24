@@ -29,9 +29,7 @@ var replStartCmd = &cobra.Command{
 var g_replStartEnums map[string][]string
 
 func init() {
-	replStartCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return startReplication(cmd, ValidateAndLogin(), args)
-	}
+	replStartCmd.RunE = WrapCommandFunc(startReplication)
 
 	replStartCmd.Flags().StringP("exclude", "e", "", "")
 	replStartCmd.Flags().BoolP("recursive", "r", false, "")
@@ -85,14 +83,7 @@ func init() {
 	rootCmd.AddCommand(replCmd)
 }
 
-func startReplication(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
+func startReplication(cmd *cobra.Command, api core.Session, args []string) error {
 	options, err := GetCobraFlags(cmd, g_replStartEnums)
 	if err != nil {
 		return err
@@ -148,11 +139,12 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) (defe
 	params := []interface{}{outMap}
 	DebugJson(params)
 
-	err = core.ApiCallAsync(api, "replication.run_onetime", params)
+	jobId, err := core.ApiCallAsync(api, "replication.run_onetime", params, false)
 	if err != nil {
 		return err
 	}
 
+	fmt.Println(jobId)
 	return nil
 }
 
