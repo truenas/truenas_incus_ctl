@@ -187,7 +187,7 @@ func init() {
 	rootCmd.AddCommand(datasetCmd)
 }
 
-func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
+func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmdType := strings.Split(cmd.Use, " ")[0]
 	if cmdType != "create" && cmdType != "update" {
 		return errors.New("cmdType was not create or update")
@@ -333,7 +333,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	return nil
 }
 
-func deleteDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
+func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	options, _ := GetCobraFlags(cmd, nil)
@@ -349,7 +349,7 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) (deferEr
 	return nil
 }
 
-func listDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
+func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	options, err := GetCobraFlags(cmd, g_datasetListEnums)
 	if err != nil {
 		return err
@@ -406,7 +406,7 @@ func listDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr 
 	return err
 }
 
-func promoteDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
+func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	params := []interface{}{args[0]}
@@ -420,7 +420,7 @@ func promoteDataset(cmd *cobra.Command, api core.Session, args []string) (deferE
 	return nil
 }
 
-func renameDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
+func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	options, _ := GetCobraFlags(cmd, nil)

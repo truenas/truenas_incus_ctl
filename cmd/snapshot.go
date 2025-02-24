@@ -103,7 +103,7 @@ func init() {
 	rootCmd.AddCommand(snapshotCmd)
 }
 
-func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
+func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	outMap := make(map[string]interface{})
@@ -123,7 +123,7 @@ func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferEr
 	return nil
 }
 
-func createSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
+func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	options, _ := GetCobraFlags(cmd, nil)
 	datasetList := make([]string, len(args), len(args))
 	nameList := make([]string, len(args), len(args))
@@ -206,7 +206,7 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferE
 	return nil
 }
 
-func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
+func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	cmdType := strings.Split(cmd.Use, " ")[0]
 	if cmdType != "delete" && cmdType != "rollback" {
 		return errors.New("cmdType was not delete or rollback")
@@ -235,7 +235,7 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	return nil
 }
 
-func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
+func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	source := args[0]
@@ -257,7 +257,7 @@ func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferE
 	return nil
 }
 
-func listSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
+func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	options, err := GetCobraFlags(cmd, g_snapshotListEnums)
 	if err != nil {
 		return err

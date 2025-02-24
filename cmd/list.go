@@ -37,7 +37,7 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 }
 
-func doList(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
+func doList(cmd *cobra.Command, api core.Session, args []string) error {
 	options, err := GetCobraFlags(cmd, g_genericListEnums)
 	if err != nil {
 		return err
