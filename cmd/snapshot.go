@@ -84,6 +84,7 @@ func init() {
 		return deleteOrRollbackSnapshot(cmd, ValidateAndLogin(), args)
 	}
 
+	snapshotCreateCmd.Flags().BoolP("delete", "d", false, "Delete snapshot if it exists already")
 	snapshotCreateCmd.Flags().BoolP("recursive", "r", false, "")
 	snapshotCreateCmd.Flags().String("exclude", "", "List of datasets to exclude")
 	snapshotCreateCmd.Flags().StringP("option", "o", "", "Specify property=value,...")
@@ -159,6 +160,9 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 		if datasetLen <= 0 || datasetLen == len(snapshot)-1 {
 			return errors.New("No dataset name was found in snapshot specifier.\nExpected <datasetname>@<snapshotname>.")
 		}
+		if snapshot[0] == '/' {
+			return errors.New("Dataset names must not start with '/'.")
+		}
 
 		dataset := snapshot[0:datasetLen]
 		snapshotIsolated := snapshot[datasetLen+1:]
@@ -188,6 +192,36 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	params := []interface{}{outMap}
 
 	cmd.SilenceUsage = true
+
+	if core.IsValueTrue(options.allFlags, "delete") {
+		extras := typeQueryParams{
+			valueOrder:         BuildValueOrder(false),
+			shouldGetAllProps:  false,
+			shouldGetUserProps: false,
+			shouldRecurse:      core.IsValueTrue(options.allFlags, "recursive"),
+		}
+
+		response, err := QueryApi(api, "snapshot", args, core.StringRepeated("snapshot", len(args)), nil, extras)
+		if err != nil {
+			return err
+		}
+
+		toDelete := make([]string, 0)
+		for key, _ := range response.resultsMap {
+			toDelete = append(toDelete, key)
+		}
+
+		if len(toDelete) >= 1 {
+			delMap := make(map[string]interface{})
+			delMap["recursive"] = true
+			delMap["force"] = true
+			delObjRemap := map[string][]interface{}{"": core.ToAnyArray(toDelete)}
+			_, err := MaybeBulkApiCall(api, "zfs.snapshot.delete", "10s", []interface{} {toDelete[0], delMap}, delObjRemap)
+			if err != nil {
+				return err
+			}
+		}
+	}
 
 	objRemap := map[string][]interface{}{"dataset": core.ToAnyArray(datasetList), "name": core.ToAnyArray(nameList)}
 	out, err := MaybeBulkApiCall(api, "zfs.snapshot.create", "10s", params, objRemap)
