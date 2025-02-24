@@ -22,14 +22,6 @@ var datasetCmd = &cobra.Command{
 	},
 }
 
-/*
-	TODO: most of these commands should be modified to support specifying multiple datasets,
-	thus allowing a cheap "batch" mode.
-
-	Ie, even when the underlying API doesn't support multiple datasets, we would instead use
-	core.bulk, or worst case, iteration
-*/
-
 var datasetCreateCmd = &cobra.Command{
 	Use:   "create <dataset>...",
 	Short: "Creates a dataset/zvol.",
@@ -308,7 +300,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 
 	if len(listToUpdate) > 0 {
 		objRemap := map[string][]interface{}{"": core.ToAnyArray(listToUpdate)}
-		out, err := MaybeBulkApiCall(api, "pool.dataset.update", 10, []interface{}{outMap}, objRemap)
+		out, err := MaybeBulkApiCall(api, "pool.dataset.update", 10, []interface{}{outMap}, objRemap, false)
 		if err != nil {
 			return err
 		}
@@ -323,7 +315,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		}
 
 		objRemap := map[string][]interface{}{"name": core.ToAnyArray(listToCreate)}
-		out, err := MaybeBulkApiCall(api, "pool.dataset.create", 10, []interface{}{outMap}, objRemap)
+		out, err := MaybeBulkApiCall(api, "pool.dataset.create", 10, []interface{}{outMap}, objRemap, false)
 		if err != nil {
 			return err
 		}
@@ -340,7 +332,7 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	params := BuildNameStrAndPropertiesJson(options, args[0])
 
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
-	out, err := MaybeBulkApiCall(api, "pool.dataset.delete", 10, params, objRemap)
+	out, err := MaybeBulkApiCall(api, "pool.dataset.delete", 10, params, objRemap, false)
 	if err != nil {
 		return err
 	}
@@ -411,7 +403,7 @@ func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 
 	params := []interface{}{args[0]}
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
-	out, err := MaybeBulkApiCall(api, "pool.dataset.promote", 10, params, objRemap)
+	out, err := MaybeBulkApiCall(api, "pool.dataset.promote", 10, params, objRemap, false)
 	if err != nil {
 		return err
 	}

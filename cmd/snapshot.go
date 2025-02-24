@@ -168,36 +168,14 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	if core.IsValueTrue(options.allFlags, "delete") {
-		extras := typeQueryParams{
-			valueOrder:         BuildValueOrder(false),
-			shouldGetAllProps:  false,
-			shouldGetUserProps: false,
-			shouldRecurse:      core.IsValueTrue(options.allFlags, "recursive"),
-		}
-
-		response, err := QueryApi(api, "snapshot", args, core.StringRepeated("name", len(args)), nil, extras)
-		if err != nil {
-			return err
-		}
-
-		toDelete := make([]string, 0)
-		for key, _ := range response.resultsMap {
-			toDelete = append(toDelete, key)
-		}
-
-		if len(toDelete) >= 1 {
-			delMap := make(map[string]interface{})
-			delMap["recursive"] = true
-			delObjRemap := map[string][]interface{}{"": core.ToAnyArray(toDelete)}
-			_, err := MaybeBulkApiCall(api, "zfs.snapshot.delete", 10, []interface{} {toDelete[0], delMap}, delObjRemap)
-			if err != nil {
-				return err
-			}
-		}
+		delMap := make(map[string]interface{})
+		delMap["recursive"] = true
+		delObjRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
+		_, _ = MaybeBulkApiCall(api, "zfs.snapshot.delete", 10, []interface{} {args[0], delMap}, delObjRemap, true)
 	}
 
 	objRemap := map[string][]interface{}{"dataset": core.ToAnyArray(datasetList), "name": core.ToAnyArray(nameList)}
-	out, err := MaybeBulkApiCall(api, "zfs.snapshot.create", 10, params, objRemap)
+	out, err := MaybeBulkApiCall(api, "zfs.snapshot.create", 10, params, objRemap, false)
 	if err != nil {
 		return err
 	}
@@ -226,7 +204,7 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	cmd.SilenceUsage = true
 
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(snapshots)}
-	out, err := MaybeBulkApiCall(api, "zfs.snapshot."+cmdType, 10, params, objRemap)
+	out, err := MaybeBulkApiCall(api, "zfs.snapshot."+cmdType, 10, params, objRemap, false)
 	if err != nil {
 		return err
 	}

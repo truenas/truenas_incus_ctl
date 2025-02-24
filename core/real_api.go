@@ -66,27 +66,29 @@ func (s *RealSession) CallRaw(method string, timeoutSeconds int64, params interf
 	return s.client.Call(method, timeoutSeconds, params)
 }
 
-func (s *RealSession) CallAsyncRaw(method string, params interface{}, callback func(progress float64, state string, desc string)) error {
-	if s.ShouldWait && !s.subscribedToJobs {
+func (s *RealSession) CallAsyncRaw(method string, params interface{}, awaitThisJob bool) (int64, error) {
+	awaitThisJob = awaitThisJob || s.ShouldWait
+
+	if awaitThisJob && !s.subscribedToJobs {
 		// For every async call that we call "core.job_wait" on, we'll be notified whenever the original call is updated or completes.
 		// In order to get those notifications, we have to subscribe to "core.get_jobs".
 		if err := s.client.SubscribeToJobs(); err != nil {
-			return err
+			return -1, err
 		}
 		s.subscribedToJobs = true
 	}
 
-	mainJob, err := s.client.CallWithJob(method, params, callback)
+	mainJob, err := s.client.CallWithJob(method, params, nil)
 	if err != nil {
 		FlushString("Main call error: " + err.Error() + "\n")
-		return err
+		return mainJob.ID, err
 	}
 
-	if s.ShouldWait {
+	if awaitThisJob {
 		// This is to ensure we get notified when mainJob completes.
-		_, err := s.client.CallWithJob("core.job_wait", []interface{}{mainJob.ID}, callback)
+		_, err := s.client.CallWithJob("core.job_wait", []interface{}{mainJob.ID}, nil)
 		if err != nil {
-			return err
+			return mainJob.ID, err
 		}
 
 		if s.jobsList == nil {
@@ -95,7 +97,51 @@ func (s *RealSession) CallAsyncRaw(method string, params interface{}, callback f
 		s.jobsList = append(s.jobsList, mainJob.ID)
 	}
 
-	return nil
+	return mainJob.ID, nil
+}
+
+func (s *RealSession) WaitForJob(jobId int64) (json.RawMessage, error) {
+	//fmt.Println([]interface{}{"Waiting for job", jobId}...)
+	idx := -1
+	for i, job := range s.jobsList {
+		if job == jobId {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return nil, fmt.Errorf("Job ID %d was not submitted during this session", jobId)
+	}
+
+	var res interface{}
+	var err error
+
+	irrelevantList := make([]ApiJobResult, 0)
+	for true {
+		jr := s.resultsQueue.Take()
+		if jr.JobID == jobId {
+			res = jr.Result
+			err = jr.GetError()
+			break
+		} else {
+			irrelevantList = append(irrelevantList, jr)
+		}
+	}
+
+	for _, jr := range irrelevantList {
+		s.resultsQueue.Add(jr)
+	}
+	s.jobsList[idx] = s.jobsList[len(s.jobsList)-1]
+	s.jobsList = s.jobsList[:len(s.jobsList)-1]
+
+	if err != nil || res == nil {
+		//fmt.Println([]interface{}{"Job", jobId, "returned with error", err}...)
+		return nil, err
+	}
+
+	data, err := json.Marshal(res)
+	//fmt.Println([]interface{}{"Job", jobId, "returned with result", string(data)}...)
+	return data, err
 }
 
 func (s *RealSession) Close(internalError error) error {
