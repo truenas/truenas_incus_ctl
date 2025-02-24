@@ -20,9 +20,7 @@ var listCmd = &cobra.Command{
 var g_genericListEnums map[string][]string
 
 func init() {
-	listCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return doList(cmd, ValidateAndLogin(), args)
-	}
+	listCmd.RunE = WrapCommandFunc(doList)
 
 	g_genericListEnums = make(map[string][]string)
 
@@ -39,14 +37,7 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 }
 
-func doList(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
+func doList(cmd *cobra.Command, api core.Session, args []string) error {
 	options, err := GetCobraFlags(cmd, g_genericListEnums)
 	if err != nil {
 		return err

@@ -518,7 +518,7 @@ func GetTableFormat(properties map[string]string) (string, error) {
 	return properties["format"], nil
 }
 
-func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, params interface{}, remapList map[string][]interface{}) (json.RawMessage, error) {
+func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, params interface{}, remapList map[string][]interface{}, shouldWaitNow bool) (json.RawMessage, error) {
 	allParams := make([][]interface{}, 0)
 	for key, valueList := range remapList {
 		for i, value := range valueList {
@@ -555,5 +555,10 @@ func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, p
 	methodAndParams = append(methodAndParams, allParams)
 
 	DebugJson(methodAndParams)
-	return nil, core.ApiCallAsync(api, "core.bulk", methodAndParams)
+	jobId, err := core.ApiCallAsync(api, "core.bulk", methodAndParams, shouldWaitNow)
+	if !shouldWaitNow || err != nil || jobId < 0 {
+		return nil, err
+	}
+
+	return api.WaitForJob(jobId)
 }

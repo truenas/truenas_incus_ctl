@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -183,4 +184,15 @@ func AddFlagsEnum(enumMap *map[string][]string, flagName string, newEnum []strin
 	builder.WriteString(strings.Join(newEnum, ", "))
 	builder.WriteString(")")
 	return builder.String()
+}
+
+func WrapCommandFunc(cmdFunc func(*cobra.Command,core.Session,[]string)error) func(*cobra.Command,[]string)error {
+	return func(cmd *cobra.Command, args []string) error {
+		api := ValidateAndLogin()
+		if api == nil {
+			return nil
+		}
+		err := cmdFunc(cmd, api, args)
+		return api.Close(err)
+	}
 }
