@@ -21,7 +21,7 @@ type UnitTestSession struct {
 }
 
 func (s *UnitTestSession) Login() error { return nil }
-func (s *UnitTestSession) Close() error { return nil }
+func (s *UnitTestSession) Close(internalError error) error { return nil }
 
 func (s *UnitTestSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
 	if s.shouldIncCallIdx {

@@ -18,7 +18,7 @@ func (s *MockSession) Login() error {
 	return nil
 }
 
-func (s *MockSession) Close() error {
+func (s *MockSession) Close(internalError error) error {
 	s.closed = true
 	return nil
 }

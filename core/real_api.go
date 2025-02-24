@@ -29,7 +29,8 @@ type RealSession struct {
 
 func (s *RealSession) Login() error {
 	if s.client != nil {
-		_ = s.Close()
+		// TODO: Clear resultsQueue before calling close here, since we want to log in again immediately after
+		_ = s.Close(nil)
 	}
 
 	if s.HostUrl == "" || s.ApiKey == "" {
@@ -97,12 +98,15 @@ func (s *RealSession) CallAsyncRaw(method string, params interface{}, callback f
 	return nil
 }
 
-func (s *RealSession) Close() error {
+func (s *RealSession) Close(internalError error) error {
 	if s.client == nil {
-		return nil
+		return internalError
 	}
 
 	errorList := make([]error, 0)
+	if internalError != nil {
+		errorList = append(errorList, internalError)
+	}
 
 	if s.ShouldWait {
 		for len(s.jobsList) > 0 {
@@ -128,8 +132,7 @@ func (s *RealSession) Close() error {
 		errorList = append(errorList, err)
 	}
 
-	err = MakeErrorFromList(errorList)
-	return err
+	return MakeErrorFromList(errorList)
 }
 
 // This is called from the listen thread in truenas_api

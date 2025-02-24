@@ -51,21 +51,10 @@ var g_nfsCreateUpdateEnums map[string][]string
 var g_nfsListEnums map[string][]string
 
 func init() {
-	nfsCreateCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return createNfs(cmd, ValidateAndLogin(), args)
-	}
-
-	nfsUpdateCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return updateNfs(cmd, ValidateAndLogin(), args)
-	}
-
-	nfsDeleteCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return deleteNfs(cmd, ValidateAndLogin(), args)
-	}
-
-	nfsListCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return listNfs(cmd, ValidateAndLogin(), args)
-	}
+	nfsCreateCmd.RunE = WrapCommandFunc(createNfs)
+	nfsUpdateCmd.RunE = WrapCommandFunc(updateNfs)
+	nfsDeleteCmd.RunE = WrapCommandFunc(deleteNfs)
+	nfsListCmd.RunE = WrapCommandFunc(listNfs)
 
 	nfsUpdateCmd.Flags().String("path", "", "Mount path")
 
@@ -108,13 +97,6 @@ func init() {
 }
 
 func createNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
 	paths := make([]string, 0)
 	for i := 0; i < len(args); i++ {
 		typeStr, spec := core.IdentifyObject(args[0])
@@ -154,13 +136,6 @@ func createNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr er
 }
 
 func updateNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
 	paths, idList, specs, types, err := getIdAndPathLists(args)
 	if err != nil {
 		return err
@@ -291,13 +266,6 @@ func writeNfsCreateUpdateProperties(options FlagMap) (map[string]interface{}, er
 }
 
 func deleteNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
 	_, idList, specs, types, err := getIdAndPathLists(args)
 	if err != nil {
 		return err
@@ -390,13 +358,6 @@ func getIdAndPathLists(args []string) ([]string, []string, []string, []string, e
 }
 
 func listNfs(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
 	options, err := GetCobraFlags(cmd, g_nfsListEnums)
 	if err != nil {
 		return err
