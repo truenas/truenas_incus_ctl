@@ -12,8 +12,9 @@ import (
 )
 
 var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "Prints a table of datasets/snapshots/shares, given a source and an optional set of properties.",
+	Use:     "list",
+	Short:   "Prints a table of datasets/snapshots/shares, given a source and an optional set of properties.",
+	Aliases: []string{"ls"},
 }
 
 var g_genericListEnums map[string][]string
@@ -38,11 +39,13 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 }
 
-func doList(cmd *cobra.Command, api core.Session, args []string) error {
+func doList(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	options, err := GetCobraFlags(cmd, g_genericListEnums)
 	if err != nil {
@@ -232,7 +235,7 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 			if qType == "nfs" {
 				r["type"] = "nfs"
 			} else if t, exists := r["type"]; filterType != "" && exists {
-				if tStr, ok := t.(string); ok && strings.ToLower(tStr) == filterType {
+				if tStr, ok := t.(string); ok && strings.ToLower(tStr) != filterType {
 					shouldAdd = false
 				}
 			}

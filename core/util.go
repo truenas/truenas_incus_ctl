@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -32,6 +33,20 @@ func IdentifyObject(obj string) (string, string) {
 	return "pool", obj
 }
 
+func MakeErrorFromList(errorList []error) error {
+	if len(errorList) == 0 {
+		return nil
+	}
+
+	var combinedErrMsg strings.Builder
+	for _, e := range errorList {
+		combinedErrMsg.WriteString("\n")
+		combinedErrMsg.WriteString(e.Error())
+	}
+
+	return errors.New(combinedErrMsg.String())
+}
+
 func GetKeysSorted[T any](dict map[string]T) []string {
 	var keys []string
 	size := len(dict)
@@ -43,6 +58,29 @@ func GetKeysSorted[T any](dict map[string]T) []string {
 		slices.Sort(keys)
 	}
 	return keys
+}
+
+func ToAnyArray[T any](arr []T) []interface{} {
+	if arr == nil {
+		return nil
+	}
+	n := len(arr)
+	out := make([]interface{}, n, n)
+	for i := 0; i < n; i++ {
+		out[i] = arr[i]
+	}
+	return out
+}
+
+// Slow, but easy
+func DeepCopy(input interface{}) interface{} {
+	if input == nil {
+		return nil
+	}
+	data, _ := json.Marshal(input)
+	var output interface{}
+	json.Unmarshal(data, &output)
+	return output
 }
 
 func ExtractJsonArrayOfMaps(obj map[string]interface{}, key string) ([]map[string]interface{}, string) {
@@ -128,6 +166,42 @@ func ExtractApiError(data json.RawMessage) string {
 	}
 
 	return builder.String()
+}
+
+func GetJobNumber(data json.RawMessage) (int, error) {
+	var responseJson interface{}
+	if err := json.Unmarshal(data, &responseJson); err != nil {
+		return -1, err
+	}
+	return GetJobNumberFromObject(responseJson)
+}
+
+func GetJobNumberFromObject(responseJson interface{}) (int, error) {
+	if responseJson == nil {
+		return -1, errors.New("response was nil")
+	}
+	if obj, ok := responseJson.(map[string]interface{}); ok {
+		if resultObj, exists := obj["result"]; exists {
+			if resultNumberFloat, ok := resultObj.(float64); ok {
+				return int(resultNumberFloat), nil
+			} else if resultNumber64, ok := resultObj.(int64); ok {
+				return int(resultNumber64), nil
+			} else if resultNumber, ok := resultObj.(int); ok {
+				return resultNumber, nil
+			} else {
+				return -1, errors.New("result in response was not a job number")
+			}
+		} else {
+			return -1, errors.New("result was not found in response")
+		}
+	} else {
+		return -1, errors.New("response was not a json object")
+	}
+}
+
+func FlushString(str string) {
+	os.Stdout.WriteString(str)
+	os.Stdout.Sync()
 }
 
 type ReadAllWriteAll interface {
