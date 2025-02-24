@@ -206,7 +206,7 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferE
 			shouldRecurse:      core.IsValueTrue(options.allFlags, "recursive"),
 		}
 
-		response, err := QueryApi(api, "snapshot", args, core.StringRepeated("snapshot", len(args)), nil, extras)
+		response, err := QueryApi(api, "snapshot", args, core.StringRepeated("name", len(args)), nil, extras)
 		if err != nil {
 			return err
 		}
@@ -219,7 +219,6 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferE
 		if len(toDelete) >= 1 {
 			delMap := make(map[string]interface{})
 			delMap["recursive"] = true
-			delMap["force"] = true
 			delObjRemap := map[string][]interface{}{"": core.ToAnyArray(toDelete)}
 			_, err := MaybeBulkApiCall(api, "zfs.snapshot.delete", 10, []interface{} {toDelete[0], delMap}, delObjRemap)
 			if err != nil {
