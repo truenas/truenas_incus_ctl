@@ -11,6 +11,7 @@ import (
 var snapshotCmd = &cobra.Command{
 	Use:   "snapshot",
 	Short: "Edit or list snapshots on a remote or local machine",
+	Aliases: []string{"snap"},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			cmd.HelpFunc()(cmd, args)
@@ -118,11 +119,13 @@ func init() {
 	rootCmd.AddCommand(snapshotCmd)
 }
 
-func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
+func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmd.SilenceUsage = true
 
@@ -134,7 +137,7 @@ func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	params := []interface{}{outMap}
 	DebugJson(params)
 
-	out, err := core.ApiCall(api, "zfs.snapshot.clone", "10s", params)
+	out, err := core.ApiCall(api, "zfs.snapshot.clone", 10, params)
 	if err != nil {
 		return err
 	}
@@ -143,11 +146,13 @@ func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
+func createSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	options, _ := GetCobraFlags(cmd, nil)
 	datasetList := make([]string, len(args), len(args))
@@ -190,7 +195,7 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	objRemap := map[string][]interface{}{"dataset": core.ToAnyArray(datasetList), "name": core.ToAnyArray(nameList)}
-	out, err := MaybeBulkApiCall(api, "zfs.snapshot.create", "10s", params, objRemap)
+	out, err := MaybeBulkApiCall(api, "zfs.snapshot.create", 10, params, objRemap)
 	if err != nil {
 		return err
 	}
@@ -199,11 +204,13 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
+func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmdType := strings.Split(cmd.Use, " ")[0]
 	if cmdType != "delete" && cmdType != "rollback" {
@@ -224,7 +231,7 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	cmd.SilenceUsage = true
 
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(snapshots)}
-	out, err := MaybeBulkApiCall(api, "zfs.snapshot."+cmdType, "10s", params, objRemap)
+	out, err := MaybeBulkApiCall(api, "zfs.snapshot."+cmdType, 10, params, objRemap)
 	if err != nil {
 		return err
 	}
@@ -233,11 +240,13 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	return nil
 }
 
-func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
+func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	cmd.SilenceUsage = true
 
@@ -251,7 +260,7 @@ func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	DebugJson(params)
 
 	// For now, snapshot rename uses the same API as dataset rename. This may change in the future.
-	out, err := core.ApiCall(api, "zfs.dataset.rename", "10s", params)
+	out, err := core.ApiCall(api, "zfs.dataset.rename", 10, params)
 	if err != nil {
 		return err
 	}
@@ -260,11 +269,13 @@ func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
+func listSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
 	if api == nil {
 		return nil
 	}
-	defer api.Close()
+	defer func() {
+		deferErr = api.Close()
+	}()
 
 	options, err := GetCobraFlags(cmd, g_snapshotListEnums)
 	if err != nil {
