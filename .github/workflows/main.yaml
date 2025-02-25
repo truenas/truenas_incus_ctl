@@ -1,18 +1,18 @@
 name: RunTests
 on:
-	push:
-		branches:
-			- *
+  push:
+    branches:
+      - *
 jobs:
-	run_tests:
-		runs-on: ubuntu-latest
-		steps:
-			- uses: actions/checkout@v4
-			- name: Setup Go
-				uses: actions/setup-go@v5
-				with:
-					go-version: 1.23.3
-			- name: Run Tests
-				run: |
-					go test -v ./cmd
-					go test -v ./core
+  run_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.23.3
+      - name: Run Tests
+        run: |
+          go test -v ./cmd
+          go test -v ./core
