@@ -128,4 +128,5 @@ func TestSimpleQueueAddTake(t *testing.T) {
 
 	c.FailOnWait = false
 	AssertPanics(t, func(){sq.Take()})
+	AssertEqual(t, c.WaitCalls, 1)
 }
