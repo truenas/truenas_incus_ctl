@@ -61,30 +61,14 @@ var snapshotRollbackCmd = &cobra.Command{
 var g_snapshotListEnums map[string][]string
 
 func init() {
-	snapshotCloneCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return cloneSnapshot(cmd, ValidateAndLogin(), args)
-	}
+	snapshotCloneCmd.RunE = WrapCommandFunc(cloneSnapshot)
+	snapshotCreateCmd.RunE = WrapCommandFunc(createSnapshot)
+	snapshotDeleteCmd.RunE = WrapCommandFunc(deleteOrRollbackSnapshot)
+	snapshotListCmd.RunE = WrapCommandFunc(listSnapshot)
+	snapshotRenameCmd.RunE = WrapCommandFunc(renameSnapshot)
+	snapshotRollbackCmd.RunE = WrapCommandFunc(deleteOrRollbackSnapshot)
 
-	snapshotCreateCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return createSnapshot(cmd, ValidateAndLogin(), args)
-	}
-
-	snapshotDeleteCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return deleteOrRollbackSnapshot(cmd, ValidateAndLogin(), args)
-	}
-
-	snapshotListCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return listSnapshot(cmd, ValidateAndLogin(), args)
-	}
-
-	snapshotRenameCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return renameSnapshot(cmd, ValidateAndLogin(), args)
-	}
-
-	snapshotRollbackCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return deleteOrRollbackSnapshot(cmd, ValidateAndLogin(), args)
-	}
-
+	snapshotCreateCmd.Flags().BoolP("delete", "d", false, "Delete snapshot if it exists already")
 	snapshotCreateCmd.Flags().BoolP("recursive", "r", false, "")
 	snapshotCreateCmd.Flags().String("exclude", "", "List of datasets to exclude")
 	snapshotCreateCmd.Flags().StringP("option", "o", "", "Specify property=value,...")
@@ -119,14 +103,7 @@ func init() {
 	rootCmd.AddCommand(snapshotCmd)
 }
 
-func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
+func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	outMap := make(map[string]interface{})
@@ -146,14 +123,7 @@ func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferEr
 	return nil
 }
 
-func createSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
+func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	options, _ := GetCobraFlags(cmd, nil)
 	datasetList := make([]string, len(args), len(args))
 	nameList := make([]string, len(args), len(args))
@@ -163,6 +133,9 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferE
 		datasetLen := strings.Index(snapshot, "@")
 		if datasetLen <= 0 || datasetLen == len(snapshot)-1 {
 			return errors.New("No dataset name was found in snapshot specifier.\nExpected <datasetname>@<snapshotname>.")
+		}
+		if snapshot[0] == '/' {
+			return errors.New("Dataset names must not start with '/'.")
 		}
 
 		dataset := snapshot[0:datasetLen]
@@ -194,8 +167,15 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferE
 
 	cmd.SilenceUsage = true
 
+	if core.IsValueTrue(options.allFlags, "delete") {
+		delMap := make(map[string]interface{})
+		delMap["recursive"] = true
+		delObjRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
+		_, _ = MaybeBulkApiCall(api, "zfs.snapshot.delete", 10, []interface{} {args[0], delMap}, delObjRemap, true)
+	}
+
 	objRemap := map[string][]interface{}{"dataset": core.ToAnyArray(datasetList), "name": core.ToAnyArray(nameList)}
-	out, err := MaybeBulkApiCall(api, "zfs.snapshot.create", 10, params, objRemap)
+	out, err := MaybeBulkApiCall(api, "zfs.snapshot.create", 10, params, objRemap, false)
 	if err != nil {
 		return err
 	}
@@ -204,14 +184,7 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferE
 	return nil
 }
 
-func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
+func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	cmdType := strings.Split(cmd.Use, " ")[0]
 	if cmdType != "delete" && cmdType != "rollback" {
 		return errors.New("cmdType was not delete or rollback")
@@ -231,7 +204,7 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	cmd.SilenceUsage = true
 
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(snapshots)}
-	out, err := MaybeBulkApiCall(api, "zfs.snapshot."+cmdType, 10, params, objRemap)
+	out, err := MaybeBulkApiCall(api, "zfs.snapshot."+cmdType, 10, params, objRemap, false)
 	if err != nil {
 		return err
 	}
@@ -240,14 +213,7 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 	return nil
 }
 
-func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
+func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	source := args[0]
@@ -269,14 +235,7 @@ func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferE
 	return nil
 }
 
-func listSnapshot(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
+func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	options, err := GetCobraFlags(cmd, g_snapshotListEnums)
 	if err != nil {
 		return err

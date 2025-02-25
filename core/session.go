@@ -9,8 +9,9 @@ import (
 type Session interface {
 	Login() error
 	CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error)
-	CallAsyncRaw(method string, params interface{}, callback func(progress float64, state string, desc string)) error
-	Close() error
+	CallAsyncRaw(method string, params interface{}, awaitThisJob bool) (int64, error)
+	WaitForJob(jobId int64) (json.RawMessage, error)
+	Close(error) error
 }
 
 func ApiCall(s Session, method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
@@ -24,6 +25,6 @@ func ApiCall(s Session, method string, timeoutSeconds int64, params interface{})
 	return out, nil
 }
 
-func ApiCallAsync(s Session, method string, params interface{}) error {
-	return s.CallAsyncRaw(method, params, nil)
+func ApiCallAsync(s Session, method string, params interface{}, awaitThisJob bool) (int64, error) {
+	return s.CallAsyncRaw(method, params, awaitThisJob)
 }

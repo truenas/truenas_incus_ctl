@@ -22,14 +22,6 @@ var datasetCmd = &cobra.Command{
 	},
 }
 
-/*
-	TODO: most of these commands should be modified to support specifying multiple datasets,
-	thus allowing a cheap "batch" mode.
-
-	Ie, even when the underlying API doesn't support multiple datasets, we would instead use
-	core.bulk, or worst case, iteration
-*/
-
 var datasetCreateCmd = &cobra.Command{
 	Use:   "create <dataset>...",
 	Short: "Creates a dataset/zvol.",
@@ -89,29 +81,12 @@ var g_datasetCreateUpdateEnums map[string][]string
 var g_datasetListEnums map[string][]string
 
 func init() {
-	datasetCreateCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return createOrUpdateDataset(cmd, ValidateAndLogin(), args)
-	}
-
-	datasetUpdateCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return createOrUpdateDataset(cmd, ValidateAndLogin(), args)
-	}
-
-	datasetDeleteCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return deleteDataset(cmd, ValidateAndLogin(), args)
-	}
-
-	datasetListCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return listDataset(cmd, ValidateAndLogin(), args)
-	}
-
-	datasetPromoteCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return promoteDataset(cmd, ValidateAndLogin(), args)
-	}
-
-	datasetRenameCmd.RunE = func(cmd *cobra.Command, args []string) error {
-		return renameDataset(cmd, ValidateAndLogin(), args)
-	}
+	datasetCreateCmd.RunE = WrapCommandFunc(createOrUpdateDataset)
+	datasetUpdateCmd.RunE = WrapCommandFunc(createOrUpdateDataset)
+	datasetDeleteCmd.RunE = WrapCommandFunc(deleteDataset)
+	datasetListCmd.RunE = WrapCommandFunc(listDataset)
+	datasetPromoteCmd.RunE = WrapCommandFunc(promoteDataset)
+	datasetRenameCmd.RunE = WrapCommandFunc(renameDataset)
 
 	createUpdateCmds := []*cobra.Command{datasetCreateCmd, datasetUpdateCmd}
 	for _, cmd := range createUpdateCmds {
@@ -204,14 +179,7 @@ func init() {
 	rootCmd.AddCommand(datasetCmd)
 }
 
-func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
+func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmdType := strings.Split(cmd.Use, " ")[0]
 	if cmdType != "create" && cmdType != "update" {
 		return errors.New("cmdType was not create or update")
@@ -332,7 +300,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 
 	if len(listToUpdate) > 0 {
 		objRemap := map[string][]interface{}{"": core.ToAnyArray(listToUpdate)}
-		out, err := MaybeBulkApiCall(api, "pool.dataset.update", 10, []interface{}{outMap}, objRemap)
+		out, err := MaybeBulkApiCall(api, "pool.dataset.update", 10, []interface{}{outMap}, objRemap, false)
 		if err != nil {
 			return err
 		}
@@ -347,7 +315,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		}
 
 		objRemap := map[string][]interface{}{"name": core.ToAnyArray(listToCreate)}
-		out, err := MaybeBulkApiCall(api, "pool.dataset.create", 10, []interface{}{outMap}, objRemap)
+		out, err := MaybeBulkApiCall(api, "pool.dataset.create", 10, []interface{}{outMap}, objRemap, false)
 		if err != nil {
 			return err
 		}
@@ -357,21 +325,14 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	return nil
 }
 
-func deleteDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
+func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	options, _ := GetCobraFlags(cmd, nil)
 	params := BuildNameStrAndPropertiesJson(options, args[0])
 
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
-	out, err := MaybeBulkApiCall(api, "pool.dataset.delete", 10, params, objRemap)
+	out, err := MaybeBulkApiCall(api, "pool.dataset.delete", 10, params, objRemap, false)
 	if err != nil {
 		return err
 	}
@@ -380,14 +341,7 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) (deferEr
 	return nil
 }
 
-func listDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
+func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	options, err := GetCobraFlags(cmd, g_datasetListEnums)
 	if err != nil {
 		return err
@@ -444,19 +398,12 @@ func listDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr 
 	return err
 }
 
-func promoteDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
+func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	params := []interface{}{args[0]}
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
-	out, err := MaybeBulkApiCall(api, "pool.dataset.promote", 10, params, objRemap)
+	out, err := MaybeBulkApiCall(api, "pool.dataset.promote", 10, params, objRemap, false)
 	if err != nil {
 		return err
 	}
@@ -465,14 +412,7 @@ func promoteDataset(cmd *cobra.Command, api core.Session, args []string) (deferE
 	return nil
 }
 
-func renameDataset(cmd *cobra.Command, api core.Session, args []string) (deferErr error) {
-	if api == nil {
-		return nil
-	}
-	defer func() {
-		deferErr = api.Close()
-	}()
-
+func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	options, _ := GetCobraFlags(cmd, nil)

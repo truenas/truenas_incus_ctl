@@ -21,7 +21,8 @@ type UnitTestSession struct {
 }
 
 func (s *UnitTestSession) Login() error { return nil }
-func (s *UnitTestSession) Close() error { return nil }
+func (s *UnitTestSession) WaitForJob(jobId int64) (json.RawMessage, error) { return nil, nil }
+func (s *UnitTestSession) Close(internalError error) error { return nil }
 
 func (s *UnitTestSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
 	if s.shouldIncCallIdx {
@@ -38,9 +39,9 @@ func (s *UnitTestSession) CallRaw(method string, timeoutSeconds int64, params in
 	return response, nil
 }
 
-func (s *UnitTestSession) CallAsyncRaw(method string, params interface{}, callback func(progress float64, state string, desc string)) error {
+func (s *UnitTestSession) CallAsyncRaw(method string, params interface{}, awaitThisJob bool) (int64, error) {
 	_, err := s.CallRaw(method, 10, params)
-	return err
+	return -1, err
 }
 
 func PrintTable(api core.Session, str string) {
