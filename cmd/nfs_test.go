@@ -89,5 +89,14 @@ func TestNfsDeleteBulkWithLookup(t *testing.T) {
 }
 
 func TestNfsList(t *testing.T) {
-
+	FailIf(t, DoTest(
+		t,
+		nfsListCmd,
+		listNfs,
+		map[string]interface{}{"json":true},
+		[]string{"/mnt/dozer/testing/test3","dozer/testing/test4"},
+		[]string{"[[[\"path\",\"in\",[\"/mnt/dozer/testing/test3\",\"/mnt/dozer/testing/test4\"]]]]"},
+		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":3,\"path\":\"/mnt/dozer/testing/test3\"},{\"id\":4,\"path\":\"/mnt/dozer/testing/test4\"}],\"id\":2}"},
+		"{\"shares\":{\"3\":{\"id\":3,\"path\":\"/mnt/dozer/testing/test3\"},\"4\":{\"id\":4,\"path\":\"/mnt/dozer/testing/test4\"}}}\n",
+	))
 }

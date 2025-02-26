@@ -106,7 +106,8 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 		}
 
 		var primary string
-		if primaryValue, ok := resultsList[i]["id"]; ok {
+		var primaryValue interface{}
+		if primaryValue, ok = resultsList[i]["id"]; ok {
 			if primaryStr, ok := primaryValue.(string); ok {
 				primary = primaryStr
 			} else {
@@ -121,7 +122,7 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 		}
 
 		dict := make(map[string]interface{})
-		dict["id"] = primary
+		dict["id"] = primaryValue
 
 		if endpointType == "nfs" {
 			dict["type"] = "NFS"
