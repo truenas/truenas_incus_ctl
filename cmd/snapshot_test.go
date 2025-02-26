@@ -68,6 +68,17 @@ func TestSnapshotDelete(t *testing.T) {
 	))
 }
 
+func TestSnapshotDeleteBulk(t *testing.T) {
+	FailIf(t, DoSimpleTest(
+		t,
+		snapshotDeleteCmd,
+		deleteOrRollbackSnapshot,
+		map[string]interface{}{},
+		[]string{"dozer/testing/test3@readonly","dozer/testing/test4@readonly"},
+		"[\"zfs.snapshot.delete\",[[\"dozer/testing/test3@readonly\",{}],[\"dozer/testing/test4@readonly\",{}]]]",
+	))
+}
+
 func TestSnapshotList(t *testing.T) {
 	FailIf(t, DoTest(
 		t,

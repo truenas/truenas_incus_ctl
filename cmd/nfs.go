@@ -273,13 +273,16 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 
 	cmd.SilenceUsage = true
 
-	if len(idList) == 1 && len(specs) == 1 {
-		id, _ := strconv.Atoi(idList[0])
-		params := []interface{}{id}
+	if len(idList) == len(specs) {
+		idListInts := make([]int, len(idList))
+		for i, idStr := range idList {
+			idListInts[i], _ = strconv.Atoi(idStr)
+		}
+		params := []interface{}{idListInts[0]}
 		DebugJson(params)
 
-		out, err := core.ApiCall(api, "sharing.nfs.delete", 10, params)
-		DebugString(string(out))
+		objRemap := map[string][]interface{}{"": core.ToAnyArray(idListInts)}
+		_, err := MaybeBulkApiCall(api, "sharing.nfs.delete", 10, params, objRemap, false)
 		return err
 	}
 

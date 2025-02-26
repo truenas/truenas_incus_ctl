@@ -118,7 +118,7 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 	outMap["transport"] = transportType
 	outMap["source_datasets"] = sources
 	outMap["target_dataset"] = targets[0]
-	outMap["recursive"] = options.allFlags["recursive"]
+	outMap["recursive"] = core.IsValueTrue(options.allFlags, "recursive")
 	outMap["retention_policy"] = options.allFlags["retention_policy"]
 
 	_, excludes, err := getHostAndDatasetSpecsFromString(options.allFlags["exclude"])
