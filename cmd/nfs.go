@@ -96,6 +96,14 @@ func init() {
 	shareCmd.AddCommand(nfsCmd)
 }
 
+type typeNfsSpecs struct {
+	paths []string
+	idList []string
+	specs []string
+	types []string
+	existsMap map[string]int
+}
+
 func createNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	paths := make([]string, 0)
 	for i := 0; i < len(args); i++ {
@@ -136,7 +144,7 @@ func createNfs(cmd *cobra.Command, api core.Session, args []string) error {
 }
 
 func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
-	paths, idList, specs, types, err := getIdAndPathLists(args)
+	specs, err := getIdAndPathLists(args)
 	if err != nil {
 		return err
 	}
@@ -161,7 +169,7 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		shouldGetUserProps: false,
 		shouldRecurse:      false,
 	}
-	response, err := QueryApi(api, "nfs", specs, types, nil, extras)
+	response, err := QueryApi(api, "nfs", specs.specs, specs.types, nil, extras)
 	if err != nil {
 		return err
 	}
@@ -176,7 +184,7 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	// list of ids not found in response: if not empty, then error
-	for _, id := range idList {
+	for _, id := range specs.idList {
 		if _, exists := foundIds[id]; !exists {
 			return fmt.Errorf("Could not update nfs share with ID %s: did not exist", id)
 		}
@@ -185,7 +193,7 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	// list of paths not found in response: if not empty, and no --create, then error
 	listToCreate := make([]string, 0)
 	listToUpdate := make([]int, 0)
-	for _, p := range paths {
+	for _, p := range specs.paths {
 		if idStr, exists := foundPaths[p]; exists {
 			anyDiffs := false
 			props := response.resultsMap[idStr]
@@ -266,16 +274,16 @@ func writeNfsCreateUpdateProperties(options FlagMap) (map[string]interface{}, er
 }
 
 func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
-	_, idList, specs, types, err := getIdAndPathLists(args)
+	specs, err := getIdAndPathLists(args)
 	if err != nil {
 		return err
 	}
 
 	cmd.SilenceUsage = true
 
-	if len(idList) == len(specs) {
-		idListInts := make([]int, len(idList))
-		for i, idStr := range idList {
+	if len(specs.idList) == len(specs.specs) {
+		idListInts := make([]int, len(specs.idList))
+		for i, idStr := range specs.idList {
 			idListInts[i], _ = strconv.Atoi(idStr)
 		}
 		params := []interface{}{idListInts[0]}
@@ -292,18 +300,28 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		shouldGetUserProps: false,
 		shouldRecurse:      false,
 	}
-	response, err := QueryApi(api, "nfs", specs, types, nil, extras)
+	response, err := QueryApi(api, "nfs", specs.specs, specs.types, nil, extras)
 	if err != nil {
 		return err
 	}
 
-	responseIdList := make([]interface{}, 0)
+	responseIdList := make([]interface{}, len(specs.specs))
 	for _, r := range response.resultsMap {
 		idStr := fmt.Sprint(r["id"])
+		path := fmt.Sprint(r["path"])
+		idx := -1
+		if index, ok := specs.existsMap[path]; ok {
+			idx = index
+		} else if index, ok := specs.existsMap[idStr]; ok {
+			idx = index
+		}
+		if idx < 0 {
+			return fmt.Errorf("Could not find %s or %s in API response", idStr, path)
+		}
 		if n, errNotNumber := strconv.Atoi(idStr); errNotNumber == nil {
-			responseIdList = append(responseIdList, n)
+			responseIdList[idx] = n
 		} else {
-			responseIdList = append(responseIdList, idStr)
+			responseIdList[idx] = idStr
 		}
 	}
 
@@ -323,41 +341,47 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func getIdAndPathLists(args []string) ([]string, []string, []string, []string, error) {
-	paths := make([]string, 0)
-	idList := make([]string, 0)
-	specs := make([]string, 0)
-	types := make([]string, 0)
+func getIdAndPathLists(args []string) (typeNfsSpecs, error) {
+	s := typeNfsSpecs{}
+	s.paths = make([]string, 0)
+	s.idList = make([]string, 0)
+	s.specs = make([]string, 0)
+	s.types = make([]string, 0)
+	s.existsMap = make(map[string]int)
 
 	for i := 0; i < len(args); i++ {
 		typeStr, spec := core.IdentifyObject(args[i])
 		switch typeStr {
 		case "id":
 			if _, err := strconv.Atoi(spec); err != nil {
-				return nil, nil, nil, nil, err
+				return s, err
 			}
-			idList = append(idList, spec)
-			specs = append(specs, spec)
-			types = append(types, "id")
+			s.idList = append(s.idList, spec)
+			s.specs = append(s.specs, spec)
+			s.types = append(s.types, "id")
 		case "dataset":
 			p := "/mnt/" + spec
-			paths = append(paths, p)
-			specs = append(specs, p)
-			types = append(types, "path")
+			s.paths = append(s.paths, p)
+			s.specs = append(s.specs, p)
+			s.types = append(s.types, "path")
 		case "share":
-			paths = append(paths, spec)
-			specs = append(specs, spec)
-			types = append(types, "path")
+			s.paths = append(s.paths, spec)
+			s.specs = append(s.specs, spec)
+			s.types = append(s.types, "path")
 		default:
-			return nil, nil, nil, nil, errors.New("Unrecognized NFS spec \"" + spec + "\"")
+			return s, errors.New("Unrecognized NFS spec \"" + spec + "\"")
 		}
 	}
 
-	if len(specs) == 0 {
-		return nil, nil, nil, nil, errors.New("No valid NFS specs were found")
+	if len(s.specs) == 0 {
+		return s, errors.New("No valid NFS specs were found")
 	}
 
-	return paths, idList, specs, types, nil
+	for i, spec := range s.specs {
+		s.existsMap[spec] = i
+	}
+
+	return s, nil
 }
 
 func listNfs(cmd *cobra.Command, api core.Session, args []string) error {
