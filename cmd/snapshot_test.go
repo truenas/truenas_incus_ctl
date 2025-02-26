@@ -26,6 +26,25 @@ func TestSnapshotCreate(t *testing.T) {
 	))
 }
 
+func TestSnapshotCreateDelete(t *testing.T) {
+	FailIf(t, DoTest(
+		t,
+		snapshotCreateCmd,
+		createSnapshot,
+		map[string]interface{}{"delete":true},
+		[]string{"dozer/testing/test4@readonly"},
+		[]string{
+			"[\"dozer/testing/test4@readonly\",{\"recursive\":true}]",
+			"[{\"dataset\":\"dozer/testing/test4\",\"name\":\"readonly\",\"properties\":{},\"recursive\":false}]",
+		},
+		[]string{
+			"{}",
+			"{}",
+		},
+		"",
+	))
+}
+
 func TestSnapshotCreateFlags(t *testing.T) {
 	FailIf(t, DoSimpleTest(
 		t,

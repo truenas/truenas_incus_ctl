@@ -32,7 +32,8 @@ func (s *UnitTestSession) CallRaw(method string, timeoutSeconds int64, params in
 	FailIf(s.test, err)
 	expect := s.expects[s.callIdx]
 	if string(data) != expect {
-		return nil, fmt.Errorf("\"%s\" != \"%s\"", string(data), expect)
+		msg := fmt.Errorf("\"%s\" != \"%s\"", string(data), expect)
+		return nil, msg
 	}
 	response := []byte(s.responses[s.callIdx])
 	s.shouldIncCallIdx = true
