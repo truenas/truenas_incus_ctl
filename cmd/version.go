@@ -19,8 +19,9 @@ import (
 0.2.0 renamed to `truenas_incus_ctl`, first published version
 0.3.0 added bulk api calls, allowing for multiple datasets, snaps, shares to be edited in one go
 0.3.1 fixed job waiting
+0.3.2 added snapshot create --delete flag
 */
-const VERSION = "0.3.1"
+const VERSION = "0.3.2"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",

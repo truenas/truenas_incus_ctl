@@ -18,7 +18,7 @@ func (s *MockSession) Login() error {
 	return nil
 }
 
-func (s *MockSession) Close() error {
+func (s *MockSession) Close(internalError error) error {
 	s.closed = true
 	return nil
 }
@@ -58,8 +58,12 @@ func (s *MockSession) CallRaw(method string, timeoutSeconds int64, params interf
 	}
 }
 
-func (s *MockSession) CallAsyncRaw(method string, params interface{}, callback func(progress float64, state string, desc string)) error {
-	return errors.New("async calls not supported in mock")
+func (s *MockSession) CallAsyncRaw(method string, params interface{}, awaitThisJob bool) (int64, error) {
+	return -1, errors.New("async calls not supported in mock")
+}
+
+func (s *MockSession) WaitForJob(jobId int64) (json.RawMessage, error) {
+	return nil, errors.New("jobs are not supported in mock")
 }
 
 func getPoolNameFromDataset(datasetName string) string {

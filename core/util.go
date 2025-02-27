@@ -33,6 +33,17 @@ func IdentifyObject(obj string) (string, string) {
 	return "pool", obj
 }
 
+func StringRepeated(str string, count int) []string {
+	if count <= 0 {
+		return nil
+	}
+	arr := make([]string, count)
+	for i := 0; i < count; i++ {
+		arr[i] = str
+	}
+	return arr
+}
+
 func MakeErrorFromList(errorList []error) error {
 	if len(errorList) == 0 {
 		return nil

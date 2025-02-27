@@ -73,7 +73,7 @@ func ValidateAndLogin() core.Session {
 
 	err := api.Login()
 	if err != nil {
-		api.Close()
+		api.Close(err)
 		log.Fatal(err)
 	}
 
