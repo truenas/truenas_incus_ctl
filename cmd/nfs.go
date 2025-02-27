@@ -107,7 +107,7 @@ type typeNfsSpecs struct {
 func createNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	paths := make([]string, 0)
 	for i := 0; i < len(args); i++ {
-		typeStr, spec := core.IdentifyObject(args[0])
+		typeStr, spec := core.IdentifyObject(args[i])
 
 		switch typeStr {
 		case "dataset":
@@ -190,11 +190,23 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	// list of paths not found in response: if not empty, and no --create, then error
+	// list of specifiers found in response: if not empty, and no --create, then error
 	listToCreate := make([]string, 0)
 	listToUpdate := make([]int, 0)
-	for _, p := range specs.paths {
-		if idStr, exists := foundPaths[p]; exists {
+	for i, s := range specs.specs {
+		var idStr string
+		if _, exists := foundIds[s]; exists {
+			idStr = s
+		} else {
+			idStr, _ = foundPaths[s]
+		}
+		if idStr == "" {
+			if !flagCreate || specs.types[i] != "path" {
+				return errors.New("Could not find NFS share \"" + s + "\".\n" +
+					"Try passing -c or --create to create a share if it doesn't exist.")
+			}
+			listToCreate = append(listToCreate, s)
+		} else {
 			anyDiffs := false
 			props := response.resultsMap[idStr]
 			for key, value := range options.usedFlags {
@@ -213,12 +225,6 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 				id, _ := strconv.Atoi(idStr)
 				listToUpdate = append(listToUpdate, id)
 			}
-		} else {
-			if !flagCreate {
-				return errors.New("Could not find NFS share \"" + p + "\".\n" +
-					"Try passing -c or --create to create a share if it doesn't exist.")
-			}
-			listToCreate = append(listToCreate, p)
 		}
 	}
 
@@ -260,7 +266,7 @@ func writeNfsCreateUpdateProperties(options FlagMap) (map[string]interface{}, er
 			}
 			outMap["security"] = securityList
 		} else {
-			if propName == "read-only" {
+			if propName == "read-only" || propName == "read_only" {
 				propName = "ro"
 			}
 			value, err := ParseStringAndValidate(propName, valueStr, nil)
