@@ -38,6 +38,9 @@ func init() {
 		AddFlagsEnum(&g_replStartEnums, "direction", []string{"push", "pull"}))
 	replStartCmd.Flags().StringP("retention-policy", "p", "", ""+
 		AddFlagsEnum(&g_replStartEnums, "retention-policy", []string{"source", "custom", "none"}))
+	replStartCmd.Flags().StringP("naming-schema-main", "n", "", "")
+	replStartCmd.Flags().StringP("naming-schema-aux", "N", "", "")
+	replStartCmd.Flags().StringP("name-regex", "R", "", "")
 	/*
 	replStartCmd.Flags().String("transport", "", ""+
 		AddFlagsEnum(&g_replStartEnums, "transport", []string{"ssh","ssh+netcat","local"}))
@@ -89,6 +92,14 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 		return err
 	}
 
+	mainSchemaStr := options.allFlags["naming_schema_main"] // -> ,
+	auxSchemaStr := options.allFlags["naming_schema_aux"] // -> ,
+	regexStr := options.allFlags["name_regex"]
+
+	if mainSchemaStr == "" && auxSchemaStr == "" && regexStr == "" {
+		return errors.New("At least one of -n, -N and -R must be provided")
+	}
+
 	_, sources, err := getHostAndDatasetSpecs(args[0:len(args)-1])
 	if err != nil {
 		return err
@@ -120,6 +131,16 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 	outMap["target_dataset"] = targets[0]
 	outMap["recursive"] = core.IsValueTrue(options.allFlags, "recursive")
 	outMap["retention_policy"] = options.allFlags["retention_policy"]
+
+	if mainSchemaStr != "" {
+		outMap["naming_schema"] = strings.Split(mainSchemaStr, ",")
+	}
+	if auxSchemaStr != "" {
+		outMap["also_include_naming_schema"] = strings.Split(auxSchemaStr, ",")
+	}
+	if regexStr != "" {
+		outMap["name_regex"] = regexStr
+	}
 
 	_, excludes, err := getHostAndDatasetSpecsFromString(options.allFlags["exclude"])
 	if err != nil {
