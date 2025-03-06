@@ -207,7 +207,16 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 	combinedResponse.strKeys = make([]string, 0)
 
 	for _, qType := range allTypes {
-		response, err := QueryApi(api, qType, qEntriesMap[qType], qEntryTypesMap[qType], properties, extras)
+		var category string
+		switch qType {
+		case "dataset":
+			category = "pool.dataset"
+		case "snapshot":
+			category = "zfs.snapshot"
+		case "nfs":
+			category = "sharing.nfs"
+		}
+		response, err := QueryApi(api, category, qEntriesMap[qType], qEntryTypesMap[qType], properties, extras)
 		if err != nil {
 			return err
 		}

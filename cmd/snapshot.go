@@ -262,7 +262,7 @@ func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	response, err := QueryApi(api, "snapshot", args, idTypes, properties, extras)
+	response, err := QueryApi(api, "zfs.snapshot", args, idTypes, properties, extras)
 	if err != nil {
 		return err
 	}

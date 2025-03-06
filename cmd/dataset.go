@@ -276,7 +276,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 			shouldGetUserProps: false,
 			shouldRecurse:      false,
 		}
-		response, err := QueryApi(api, "dataset", specs, types, nil, extras)
+		response, err := QueryApi(api, "pool.dataset", specs, types, nil, extras)
 		if err != nil {
 			return err
 		}
@@ -375,7 +375,7 @@ func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	response, err := QueryApi(api, "dataset", args, idTypes, properties, extras)
+	response, err := QueryApi(api, "pool.dataset", args, idTypes, properties, extras)
 	if err != nil {
 		return err
 	}

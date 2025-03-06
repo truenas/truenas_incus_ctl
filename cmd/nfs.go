@@ -169,7 +169,7 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		shouldGetUserProps: false,
 		shouldRecurse:      false,
 	}
-	response, err := QueryApi(api, "nfs", specs.specs, specs.types, nil, extras)
+	response, err := QueryApi(api, "sharing.nfs", specs.specs, specs.types, nil, extras)
 	if err != nil {
 		return err
 	}
@@ -306,7 +306,7 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		shouldGetUserProps: false,
 		shouldRecurse:      false,
 	}
-	response, err := QueryApi(api, "nfs", specs.specs, specs.types, nil, extras)
+	response, err := QueryApi(api, "sharing.nfs", specs.specs, specs.types, nil, extras)
 	if err != nil {
 		return err
 	}
@@ -416,7 +416,7 @@ func listNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	response, err := QueryApi(api, "nfs", args, idTypes, properties, extras)
+	response, err := QueryApi(api, "sharing.nfs", args, idTypes, properties, extras)
 	if err != nil {
 		return err
 	}
