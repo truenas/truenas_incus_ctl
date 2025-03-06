@@ -34,9 +34,9 @@ func init() {
 	replStartCmd.Flags().StringP("exclude", "e", "", "")
 	replStartCmd.Flags().BoolP("recursive", "r", false, "")
 	replStartCmd.Flags().StringP("options", "o", "", "")
-	replStartCmd.Flags().StringP("direction", "d", "", ""+
+	replStartCmd.Flags().StringP("direction", "d", "push", ""+
 		AddFlagsEnum(&g_replStartEnums, "direction", []string{"push", "pull"}))
-	replStartCmd.Flags().StringP("retention-policy", "p", "", ""+
+	replStartCmd.Flags().StringP("retention-policy", "p", "none", ""+
 		AddFlagsEnum(&g_replStartEnums, "retention-policy", []string{"source", "custom", "none"}))
 	replStartCmd.Flags().StringP("naming-schema-main", "n", "", "")
 	replStartCmd.Flags().StringP("naming-schema-aux", "N", "", "")
@@ -97,7 +97,7 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 	regexStr := options.allFlags["name_regex"]
 
 	if mainSchemaStr == "" && auxSchemaStr == "" && regexStr == "" {
-		return errors.New("At least one of -n, -N and -R must be provided")
+		return errors.New("At least one of -n, -N and -R must be provided. To include all, pass -R \".*\".")
 	}
 
 	_, sources, err := getHostAndDatasetSpecs(args[0:len(args)-1])
