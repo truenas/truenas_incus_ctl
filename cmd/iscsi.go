@@ -31,7 +31,7 @@ var iscsiCreateCmd = &cobra.Command{
 var iscsiActivateCmd = &cobra.Command{
 	Use:     "activate",
 	Short:   "Activate description",
-	Aliases: []string{"set"},
+	Args:  cobra.MinimumNArgs(1),
 }
 
 var iscsiDeleteCmd = &cobra.Command{
@@ -114,15 +114,20 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 							if err != nil {
 								return err
 							}
+							if defaultInitiator == -1 {
+								initiatorCreates = append(initiatorCreates, targetName)
+							}
 						}
 						initiator = defaultInitiator
 					}
-					targetUpdates = append(targetUpdates, typeUpdateIscsiTargetParams{
-						id: targetId,
-						groupIndex: i,
-						portalId: portal,
-						initiatorId: initiator,
-					})
+					if portal != 0 || initiator != 0 {
+						targetUpdates = append(targetUpdates, typeUpdateIscsiTargetParams{
+							id: targetId,
+							groupIndex: i,
+							portalId: portal,
+							initiatorId: initiator,
+						})
+					}
 				}
 			}
 		}
@@ -139,12 +144,41 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		if err != nil {
 			return err
 		}
+		if defaultInitiator == -1 {
+			initiatorCreates = append(initiatorCreates, targetName)
+		}
 		targetCreates = append(targetCreates, typeUpdateIscsiTargetParams{
 			id: targetId,
 			groupIndex: i,
 			portalId: defaultPortal,
 			initiatorId: defaultInitiator,
 		})
+	}
+
+	if len(targetUpdates) == 0 && len(targetCreates) == 0 {
+		fmt.Println("iSCSI targets, portal and initiator groups are up to date for", args)
+		return nil
+	}
+
+	if len(initiatorCreates) > 0 {
+		paramsInitiator := make(map[string]interface{})
+		paramsInitiator["initiators"] = make([]interface{}, 0)
+		paramsInitiator["comment"] = initiatorCreates[0]
+
+		objRemapInitiator := map[string][]interface{}{"comment": core.ToAnyArray(initiatorCreates)}
+		out, err := MaybeBulkApiCall(
+			api,
+			"iscsi.initiator.create",
+			10,
+			[]interface{}{paramsInitiator},
+			objRemapInitiator,
+			false
+		)
+		for i, p := range targetUpdates {
+			if p.initiatorId == -1 {
+				p.initiatorId
+			}
+		}
 	}
 
 	fmt.Println(response.resultsMap)
