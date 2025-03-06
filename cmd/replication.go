@@ -2,16 +2,16 @@ package cmd
 
 import (
 	"errors"
-	"strings"
 	"fmt"
+	"strings"
 	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
 )
 
 var replCmd = &cobra.Command{
-	Use:   "replication",
-	Short: "Start replicating a dataset from one pool to another, locally or across any network",
+	Use:     "replication",
+	Short:   "Start replicating a dataset from one pool to another, locally or across any network",
 	Aliases: []string{"backup", "repl"},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
@@ -22,7 +22,7 @@ var replCmd = &cobra.Command{
 }
 
 var replStartCmd = &cobra.Command{
-	Use:  "start",
+	Use:  "start <src dataset>... <dst dataset>",
 	Args: cobra.MinimumNArgs(2),
 }
 
@@ -42,44 +42,44 @@ func init() {
 	replStartCmd.Flags().StringP("naming-schema-aux", "N", "", "")
 	replStartCmd.Flags().StringP("name-regex", "R", "", "")
 	/*
-	replStartCmd.Flags().String("transport", "", ""+
-		AddFlagsEnum(&g_replStartEnums, "transport", []string{"ssh","ssh+netcat","local"}))
-	replStartCmd.Flags().Int("ssh_credentials", 0, "")
-	"netcat_active_side",
-	"netcat_active_side_listen_address",
-	"netcat_active_side_port_min",
-	"netcat_active_side_port_max",
-	"netcat_passive_side_connect_address",
-	"sudo",
-	"properties",
-	"properties_exclude",
-	"properties_override",
-	"replicate",
-	"encryption",
-	"encryption_inherit",
-	"encryption_key",
-	"encryption_key_format",
-	"encryption_key_location",
-	"periodic_snapshot_tasks",
-	"naming_schema",
-	"also_include_naming_schema",
-	"name_regex",
-	"restrict_schedule",
-	"allow_from_scratch",
-	"readonly",
-	"hold_pending_snapshots",
-	"lifetime_value",
-	"lifetime_unit",
-	"lifetimes",
-	"compression",
-	"speed_limit",
-	"large_block",
-	"embed",
-	"compressed",
-	"retries",
-	"logging_level",
-	"exclude_mountpoint_property",
-	"only_from_scratch"
+		replStartCmd.Flags().String("transport", "", ""+
+			AddFlagsEnum(&g_replStartEnums, "transport", []string{"ssh","ssh+netcat","local"}))
+		replStartCmd.Flags().Int("ssh_credentials", 0, "")
+		"netcat_active_side",
+		"netcat_active_side_listen_address",
+		"netcat_active_side_port_min",
+		"netcat_active_side_port_max",
+		"netcat_passive_side_connect_address",
+		"sudo",
+		"properties",
+		"properties_exclude",
+		"properties_override",
+		"replicate",
+		"encryption",
+		"encryption_inherit",
+		"encryption_key",
+		"encryption_key_format",
+		"encryption_key_location",
+		"periodic_snapshot_tasks",
+		"naming_schema",
+		"also_include_naming_schema",
+		"name_regex",
+		"restrict_schedule",
+		"allow_from_scratch",
+		"readonly",
+		"hold_pending_snapshots",
+		"lifetime_value",
+		"lifetime_unit",
+		"lifetimes",
+		"compression",
+		"speed_limit",
+		"large_block",
+		"embed",
+		"compressed",
+		"retries",
+		"logging_level",
+		"exclude_mountpoint_property",
+		"only_from_scratch"
 	*/
 
 	replCmd.AddCommand(replStartCmd)
@@ -93,14 +93,14 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 	}
 
 	mainSchemaStr := options.allFlags["naming_schema_main"] // -> ,
-	auxSchemaStr := options.allFlags["naming_schema_aux"] // -> ,
+	auxSchemaStr := options.allFlags["naming_schema_aux"]   // -> ,
 	regexStr := options.allFlags["name_regex"]
 
 	if mainSchemaStr == "" && auxSchemaStr == "" && regexStr == "" {
 		return errors.New("At least one of -n, -N and -R must be provided")
 	}
 
-	_, sources, err := getHostAndDatasetSpecs(args[0:len(args)-1])
+	_, sources, err := getHostAndDatasetSpecs(args[0 : len(args)-1])
 	if err != nil {
 		return err
 	}
