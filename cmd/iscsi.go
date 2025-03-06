@@ -160,6 +160,13 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return nil
 	}
 
+	if defaultPortal == -1 {
+		defaultPortal, err = MakeIscsiPortal(api)
+		if err != nil {
+			return err
+		}
+	}
+
 	if len(initiatorCreates) > 0 {
 		paramsInitiator := make(map[string]interface{})
 		paramsInitiator["initiators"] = make([]interface{}, 0)
@@ -174,14 +181,50 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			objRemapInitiator,
 			false
 		)
+		var response map[string]interface{}
+		if err := json.Unmarshal(data, &response); err != nil {
+			results := core.GetResultsListFromApiResponse(response)
+		}
+		/*
+		idx := 0
 		for i, p := range targetUpdates {
 			if p.initiatorId == -1 {
-				p.initiatorId
+				p.initiatorId = idx
 			}
 		}
+		*/
 	}
 
-	fmt.Println(response.resultsMap)
+	if len(targetUpdates) > 0 {
+		out, err := MaybeBulkApiCall(
+			api,
+			"iscsi.target.update",
+			10,
+			[]interface{}{paramsInitiator},
+			objRemapInitiator,
+			false
+		)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(out))
+	}
+
+	if len(targetCreates) > 0 {
+		out, err := MaybeBulkApiCall(
+			api,
+			"iscsi.target.create",
+			10,
+			[]interface{}{paramsInitiator},
+			objRemapInitiator,
+			false
+		)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(out))
+	}
+
 	return nil
 }
 

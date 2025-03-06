@@ -94,6 +94,25 @@ func DeepCopy(input interface{}) interface{} {
 	return output
 }
 
+func GetResultsListFromApiResponse(response map[string]interface{}) []interface{} {
+	if response == nil {
+		return nil
+	}
+	var resultList []interface{}
+	if resultsObj, exists := response["result"]; exists {
+		if resultsArray, ok := resultsObj.([]interface{}); ok && len(results) > 0 {
+			resultList = resultsArray
+		}
+	}
+	if len(resultList) == 0 {
+		return nil
+	}
+
+	if resultList[0]["method"] == "core.bulk" {
+	
+	}
+}
+
 func ExtractJsonArrayOfMaps(obj map[string]interface{}, key string) ([]map[string]interface{}, string) {
 	if value, ok := obj[key]; ok {
 		if array, ok := value.([]interface{}); ok {
