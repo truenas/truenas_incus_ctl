@@ -128,12 +128,31 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
+	for _, targetName := range toCreateMap {
+		if defaultPortal == 0 {
+			defaultPortal, err = IscsiGetFirstPortal(api)
+			if err != nil {
+				return err
+			}
+		}
+		defaultInitiator, err = IscsiGetMatchingInitiatorGroup(api, targetName)
+		if err != nil {
+			return err
+		}
+		targetCreates = append(targetCreates, typeUpdateIscsiTargetParams{
+			id: targetId,
+			groupIndex: i,
+			portalId: defaultPortal,
+			initiatorId: defaultInitiator,
+		})
+	}
+
 	fmt.Println(response.resultsMap)
 	return nil
 }
 
 func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
-	if err := checkIscsiAdminToolExists(); err != nil {
+	if err := CheckIscsiAdminToolExists(); err != nil {
 		cmd.SilenceUsage = true
 		return err
 	}
@@ -144,34 +163,4 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	fmt.Println("deleteIscsi")
 	return nil
-}
-
-func MakeIscsiTargetNameFromVolumePath(vol string) string {
-	return strings.ReplaceAll(
-		strings.ReplaceAll(
-			strings.ReplaceAll(
-				strings.ReplaceAll(strings.ToLower(vol), ":", "-"),
-			".", "-"),
-		"_", "-"),
-	"/", ":")
-}
-
-func IscsiGetFirstPortal(api core.Session) (int, error) {
-	return 0, nil
-}
-
-func IscsiGetMatchingInitiatorGroup(api core.Session, targetName string) (int, error) {
-	return 0, nil
-}
-
-func checkIscsiAdminToolExists() error {
-	_, err := exec.LookPath("iscsiadm")
-	if err != nil {
-		fmt.Println("Could not find iscsiadm in $PATH.\nMake sure that the open-iscsi package is installed on your system.")
-	}
-	return err
-}
-
-func runIscsiAdminTool(args []string) error {
-	return exec.Command("iscsiadm", args...).Run()
 }
