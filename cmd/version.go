@@ -20,8 +20,9 @@ import (
 0.3.0 added bulk api calls, allowing for multiple datasets, snaps, shares to be edited in one go
 0.3.1 fixed job waiting
 0.3.2 added snapshot create --delete flag
+0.4.0 added replication
 */
-const VERSION = "0.3.2"
+const VERSION = "0.4.0"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",

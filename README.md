@@ -41,6 +41,8 @@ The default path is `~/.truenas_incus_ctl/config.json`. It can be overridden wit
 	- Print various datasets, snapshots and network shares
 - dataset
 	- Administer datasets/zvols and their associated shares
+- replication
+  - Perform replication tasks
 - snapshot
 	- Administer snapshots
 - share
@@ -53,6 +55,9 @@ The default path is `~/.truenas_incus_ctl/config.json`. It can be overridden wit
 ## Middleware Patches
 
 The following patches to middlewared are currently needed to support the Incus TrueNAS driver. After making the patches you will need to restart the middlewared service
+with `service middlewared restart`
+
+The middlewared source on a TrueNAS installation is located at `/usr/lib/python3/dist-packages/middlewared`
 
 Modify `zfs.dataset.rename` to support snapshots. The snapshot rename capability is required by Incus.
 
@@ -76,7 +81,7 @@ index 5dc1780fd8..76c57b554c 100644
              self.logger.error('Failed to rename dataset', exc_info=True)
 ```
 
-Increase `max_calls` to 100. Incus will exceed 20 calls in 60 seconds when creating a storage volume. This will be resolved with a connection-cache in future
+Depending on how many API calls are made in a 60 second period, it may be necessary to increase `max_calls` from 20 to 100. This will be resolved with a connection-cache in future
 
 ```diff
 diff --git a/src/middlewared/middlewared/utils/rate_limit/cache.py b/src/middlewared/middlewared/utils/rate_limit/cache.py
@@ -95,3 +100,5 @@ index b04ecc1ec1..40797b71a7 100644
 
 ```
 
+The rootfs read-only protection can be removed by running the `/usr/local/libexec/disable-rootfs-protection` command, which will also mark the current boot environement as
+unsuported.
