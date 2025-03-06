@@ -4,6 +4,13 @@ import (
 	"sync"
 )
 
+// The sync package doesn't have an interface for Cond, so we use our own
+type SqCondition interface {
+	Broadcast()
+	Signal()
+	Wait()
+}
+
 type QueueItem[T any] struct {
 	value T
 	next *QueueItem[T]
@@ -12,8 +19,8 @@ type QueueItem[T any] struct {
 type SimpleQueue[T any] struct {
 	head *QueueItem[T]
 	tail *QueueItem[T]
-	mtx *sync.Mutex
-	cv *sync.Cond
+	mtx sync.Locker
+	cv SqCondition
 }
 
 func MakeSimpleQueue[T any]() *SimpleQueue[T] {
