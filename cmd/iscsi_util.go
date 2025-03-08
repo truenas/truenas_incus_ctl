@@ -11,6 +11,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+type typeIscsiTargetParams struct {
+	id interface{}
+	groupIndex int
+	portalId int
+	initiatorId int
+}
+
 func MakeIscsiTargetNameFromVolumePath(vol string) string {
 	return strings.ReplaceAll(
 		strings.ReplaceAll(
@@ -27,6 +34,61 @@ func IscsiGetFirstPortal(api core.Session) (int, error) {
 
 func IscsiGetMatchingInitiatorGroup(api core.Session, targetName string) (int, error) {
 	return 0, nil
+}
+
+func IscsiGetTargetParams(
+	api core.Session,
+	targetName string,
+	groupIndex int,
+	initiatorCreates *[]string,
+	targetParams map[string]typeIscsiTargetParams,
+	defaultPortal *int,
+	defaultInitiator *int,
+	shouldLookupPortal bool,
+	shouldLookupInitiator bool,
+) error {
+	portal := 0
+	if shouldLookupPortal {
+		if *defaultPortal == 0 {
+			*defaultPortal, err = IscsiGetFirstPortal(api)
+			if err != nil {
+				return err
+			}
+		}
+		portal = *defaultPortal
+	}
+	initiator := 0
+	if shouldLookupInitiator {
+		if *defaultInitiator == 0 {
+			*defaultInitiator, err = IscsiGetMatchingInitiatorGroup(api, targetName)
+			if err != nil {
+				return err
+			}
+			if defaultInitiator == -1 {
+				*initiatorCreates = append(*initiatorCreates, targetName)
+			}
+		}
+		initiator = *defaultInitiator
+	}
+	if portal != 0 || initiator != 0 {
+		targetParams[targetName] = typeIscsiTargetParams{
+			id: targetId,
+			groupIndex: groupIndex,
+			portalId: portal,
+			initiatorId: initiator,
+		}
+	}
+	return nil
+}
+
+func IscsiCreateOrUpdateTargets() {
+	return MaybeBulkApiCall(
+		"iscsi.target." + verb,
+		10,
+		[]interface{}{paramsInitiator},
+		objRemapInitiator,
+		false,
+	)
 }
 
 func CheckIscsiAdminToolExists() error {

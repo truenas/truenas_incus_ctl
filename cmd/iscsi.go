@@ -53,13 +53,6 @@ func init() {
 	shareCmd.AddCommand(iscsiCmd)
 }
 
-type typeUpdateIscsiTargetParams struct {
-	id interface{}
-	groupIndex int
-	portalId int
-	initiatorId int
-}
-
 func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	toEnsure := make([]string, 0)
 	for _, vol := range args {
@@ -83,7 +76,8 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	defaultPortal := 0
-	targetUpdates := make([]typeUpdateIscsiTargetParams, 0)
+	targetUpdates := make(map[string]typeIscsiTargetParams)
+	targetCreates := make(map[string]typeIscsiTargetParams)
 
 	for targetId, target := range response.resultsMap {
 		targetName, _ := target["name"].(string)
@@ -93,78 +87,72 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		delete(toCreateMap, targetName)
 
 		defaultInitiator := 0
+		anyGroups := false
 		if groupsObj, exists := target["groups"]; exists {
 			if groups, ok := groupsObj.([]interface{}); ok && len(groups) > 0 {
+				anyGroups = true
 				for i := 0; i < len(groups); i++ {
 					elem, isElemMap := groups[i].(map[string]interface{})
-					portal := 0
-					if _, ok := elem["portal"]; !isElemMap || !ok {
-						if defaultPortal == 0 {
-							defaultPortal, err = IscsiGetFirstPortal(api)
-							if err != nil {
-								return err
-							}
-						}
-						portal = defaultPortal
-					}
-					initiator := 0
-					if _, ok := elem["initiator"]; !isElemMap || !ok {
-						if defaultInitiator == 0 {
-							defaultInitiator, err = IscsiGetMatchingInitiatorGroup(api, targetName)
-							if err != nil {
-								return err
-							}
-							if defaultInitiator == -1 {
-								initiatorCreates = append(initiatorCreates, targetName)
-							}
-						}
-						initiator = defaultInitiator
-					}
-					if portal != 0 || initiator != 0 {
-						targetUpdates = append(targetUpdates, typeUpdateIscsiTargetParams{
-							id: targetId,
-							groupIndex: i,
-							portalId: portal,
-							initiatorId: initiator,
-						})
+					_, portalExists := elem["portal"]; 
+					_, initiExists := elem["initiator"]; 
+					if err = IscsiDetermineTargetUpdates(
+						api,
+						targetName,
+						i,
+						&initiatorCreates,
+						targetUpdates,
+						&defaultPortal,
+						&defaultInitiator,
+						!isElemMap || !portalExists,
+						!isElemMap || !initiExists,
+					); err != nil {
+						return err
 					}
 				}
+			}
+		}
+		if !anyGroups {
+			if err = IscsiDetermineTargetUpdates(
+				api,
+				targetName,
+				-1,
+				&initiatorCreates,
+				targetUpdates,
+				&defaultPortal,
+				&defaultInitiator,
+				true,
+				true,
+			); err != nil {
+				return err
 			}
 		}
 	}
 
 	for _, targetName := range toCreateMap {
-		if defaultPortal == 0 {
-			defaultPortal, err = IscsiGetFirstPortal(api)
-			if err != nil {
-				return err
-			}
-		}
-		defaultInitiator, err = IscsiGetMatchingInitiatorGroup(api, targetName)
-		if err != nil {
+		if err = IscsiDetermineTargetUpdates(
+			api,
+			targetName,
+			-1,
+			&initiatorCreates,
+			targetCreates,
+			&defaultPortal,
+			&defaultInitiator,
+			true,
+			true,
+		); err != nil {
 			return err
 		}
-		if defaultInitiator == -1 {
-			initiatorCreates = append(initiatorCreates, targetName)
-		}
-		targetCreates = append(targetCreates, typeUpdateIscsiTargetParams{
-			id: targetId,
-			groupIndex: i,
-			portalId: defaultPortal,
-			initiatorId: defaultInitiator,
-		})
+	}
+
+	if defaultPortal == -1 {
+		return fmt.Errorf("No iSCSI portal has been created for this host. Use:\n" +
+			"%s share iscsi portal create --ip <IP address> --port <port number>\n" +
+			"To create one.\n", os.Args[0])
 	}
 
 	if len(targetUpdates) == 0 && len(targetCreates) == 0 {
 		fmt.Println("iSCSI targets, portal and initiator groups are up to date for", args)
 		return nil
-	}
-
-	if defaultPortal == -1 {
-		defaultPortal, err = MakeIscsiPortal(api)
-		if err != nil {
-			return err
-		}
 	}
 
 	if len(initiatorCreates) > 0 {
@@ -179,30 +167,57 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			10,
 			[]interface{}{paramsInitiator},
 			objRemapInitiator,
-			false
+			true
 		)
 		var response map[string]interface{}
 		if err := json.Unmarshal(data, &response); err != nil {
 			results := core.GetResultsListFromApiResponse(response)
 		}
-		/*
-		idx := 0
-		for i, p := range targetUpdates {
-			if p.initiatorId == -1 {
-				p.initiatorId = idx
+
+		var exists bool
+		icResults := make(map[string]int)
+		for _, r := range results {
+			id := 0
+			if idValue, exists := r["id"]; exists {
+				if idFloat, ok := idValue.(float64); ok {
+					id = int64(idFloat)
+				}
+			}
+			if id <= 0 {
+				return fmt.Errorf("Invalid ID in initiator group response: %d", id)
+			}
+			var name string
+			if nameObj, exists := r["comment"]; exists {
+				name, _ = nameObj.(string)
+			}
+			if name == "" {
+				return fmt.Errorf("Could not find name in initiator group from iscsi.initiator.create response")
+			}
+			icResults[name] = id
+		}
+		for name, _ := range targetUpdates {
+			if targetUpdates[name].initiatorId == -1 {
+				targetUpdates[name].initiatorId, exists = icResults[name]
+				if !exists {
+					return fmt.Errorf("Could not find target \"%s\" in initiator group from iscsi.initiator.create response", name)
+				}
 			}
 		}
-		*/
+		for name, _ := range targetCreates {
+			if targetCreates[name].initiatorId == -1 {
+				targetCreates[name].initiatorId, exists = icResults[name]
+				if !exists {
+					return fmt.Errorf("Could not find target \"%s\" in initiator group from iscsi.initiator.create response", name)
+				}
+			}
+		}
 	}
 
 	if len(targetUpdates) > 0 {
-		out, err := MaybeBulkApiCall(
+		out, err := IscsiCreateOrUpdateTargets(
 			api,
-			"iscsi.target.update",
-			10,
-			[]interface{}{paramsInitiator},
-			objRemapInitiator,
-			false
+			"update",
+			targetUpdates,
 		)
 		if err != nil {
 			return err
@@ -211,13 +226,10 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	if len(targetCreates) > 0 {
-		out, err := MaybeBulkApiCall(
+		out, err := IscsiCreateOrUpdateTargets(
 			api,
-			"iscsi.target.create",
-			10,
-			[]interface{}{paramsInitiator},
-			objRemapInitiator,
-			false
+			"create",
+			targetCreates,
 		)
 		if err != nil {
 			return err
