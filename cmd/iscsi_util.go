@@ -6,17 +6,10 @@ import (
 	"fmt"
 	//"strconv"
 	"strings"
-	"truenas/truenas_incus_ctl/core"
+	//"truenas/truenas_incus_ctl/core"
 
-	"github.com/spf13/cobra"
+	//"github.com/spf13/cobra"
 )
-
-type typeIscsiTargetParams struct {
-	id interface{}
-	groupIndex int
-	portalId int
-	initiatorId int
-}
 
 func MakeIscsiTargetNameFromVolumePath(vol string) string {
 	return strings.ReplaceAll(
@@ -28,57 +21,25 @@ func MakeIscsiTargetNameFromVolumePath(vol string) string {
 	"/", ":")
 }
 
-func IscsiGetFirstPortal(api core.Session) (int, error) {
-	return 0, nil
-}
-
-func IscsiGetMatchingInitiatorGroup(api core.Session, targetName string) (int, error) {
-	return 0, nil
-}
-
-func IscsiGetTargetParams(
-	api core.Session,
-	targetName string,
-	groupIndex int,
-	initiatorCreates *[]string,
-	targetParams map[string]typeIscsiTargetParams,
-	defaultPortal *int,
-	defaultInitiator *int,
-	shouldLookupPortal bool,
-	shouldLookupInitiator bool,
-) error {
-	portal := 0
-	if shouldLookupPortal {
-		if *defaultPortal == 0 {
-			*defaultPortal, err = IscsiGetFirstPortal(api)
-			if err != nil {
-				return err
-			}
-		}
-		portal = *defaultPortal
-	}
-	initiator := 0
-	if shouldLookupInitiator {
-		if *defaultInitiator == 0 {
-			*defaultInitiator, err = IscsiGetMatchingInitiatorGroup(api, targetName)
-			if err != nil {
-				return err
-			}
-			if defaultInitiator == -1 {
-				*initiatorCreates = append(*initiatorCreates, targetName)
-			}
-		}
-		initiator = *defaultInitiator
-	}
-	if portal != 0 || initiator != 0 {
-		targetParams[targetName] = typeIscsiTargetParams{
-			id: targetId,
-			groupIndex: groupIndex,
-			portalId: portal,
-			initiatorId: initiator,
+func AddIscsiInitiator(initiators map[string]int, resultRow map[string]interface{}) (string, error) {
+	id := 0
+	if idValue, exists := resultRow["id"]; exists {
+		if idFloat, ok := idValue.(float64); ok {
+			id = int(idFloat)
 		}
 	}
-	return nil
+	if id <= 0 {
+		return "", fmt.Errorf("Invalid ID in initiator group response: %d", id)
+	}
+	var name string
+	if nameObj, exists := resultRow["comment"]; exists {
+		name, _ = nameObj.(string)
+	}
+	if name == "" {
+		return "", fmt.Errorf("Could not find any name in initiator group %d", id)
+	}
+	initiators[name] = id
+	return name, nil
 }
 
 func IscsiCreateOrUpdateTargets() {

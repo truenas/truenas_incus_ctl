@@ -94,23 +94,66 @@ func DeepCopy(input interface{}) interface{} {
 	return output
 }
 
-func GetResultsListFromApiResponse(response map[string]interface{}) []interface{} {
+func GetResultsAndErrorsFromApiResponse(response map[string]interface{}) ([]interface{}, []interface{}) {
 	if response == nil {
-		return nil
+		return nil, nil
 	}
+
+	var errorList []interface{}
+	if errorObj, exists := response["error"]; exists {
+		if errValue, ok := errorObj.(map[string]interface{}); ok {
+			if len(errValue) > 0 {
+				errorList = []interface{} {errValue}
+			}
+		} else if errValue, ok := errorObj.([]interface{}); ok {
+			if len(errValue) > 0 {
+				errorList = errValue
+			}
+		}
+	}
+
 	var resultList []interface{}
 	if resultsObj, exists := response["result"]; exists {
-		if resultsArray, ok := resultsObj.([]interface{}); ok && len(results) > 0 {
+		if resultsMap, ok := resultsObj.(map[string]interface{}); ok {
+			resultList = []interface{} {resultsMap}
+		} else if resultsArray, ok := resultsObj.([]interface{}); ok && len(resultsArray) > 0 {
 			resultList = resultsArray
 		}
 	}
 	if len(resultList) == 0 {
-		return nil
+		return nil, errorList
 	}
 
-	if resultList[0]["method"] == "core.bulk" {
-	
+	isCoreBulk := false
+	if firstResult, ok := resultList[0].(map[string]interface{}); ok {
+		outerMethod, _ := firstResult["method"].(string)
+		isCoreBulk = outerMethod == "core.bulk"
 	}
+	if !isCoreBulk {
+		return resultList, errorList
+	}
+
+	outResults := make([]interface{}, 0)
+	outErrors := make([]interface{}, 0)
+	for _, r := range resultList {
+		if obj, ok := r.(map[string]interface{}); ok {
+			subResults, subErrors := GetResultsAndErrorsFromApiResponse(obj)
+			if len(subResults) > 0 {
+				outResults = append(outResults, subResults...)
+			}
+			if len(subErrors) > 0 {
+				outErrors = append(outErrors, subErrors...)
+			}
+		}
+	}
+
+	if len(outResults) == 0 {
+		outResults = nil
+	}
+	if len(outErrors) == 0 {
+		outErrors = nil
+	}
+	return outResults, outErrors
 }
 
 func ExtractJsonArrayOfMaps(obj map[string]interface{}, key string) ([]map[string]interface{}, string) {
@@ -156,6 +199,10 @@ func ExtractApiError(data json.RawMessage) string {
 		return ""
 	}
 
+	return ExtractApiErrorJson(responseMap)
+}
+
+func ExtractApiErrorJson(responseMap map[string]interface{}) string {
 	errorValue, exists := responseMap["error"]
 	if !exists {
 		return ""

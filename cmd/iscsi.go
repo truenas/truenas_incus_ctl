@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"os/exec"
-	//"errors"
+	//"os/exec"
 	"fmt"
 	//"strconv"
-	"strings"
+	//"strings"
+	"encoding/json"
 	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
@@ -53,6 +53,14 @@ func init() {
 	shareCmd.AddCommand(iscsiCmd)
 }
 
+type typeIscsiTargetParams struct {
+	verb string
+	id interface{}
+	groupIndex int
+	portalId int
+	initiatorId int
+}
+
 func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	toEnsure := make([]string, 0)
 	for _, vol := range args {
@@ -75,9 +83,9 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		toCreateMap[t] = true
 	}
 
-	defaultPortal := 0
-	targetUpdates := make(map[string]typeIscsiTargetParams)
-	targetCreates := make(map[string]typeIscsiTargetParams)
+	missingInitiators := make(map[string]bool)
+	targets := make(map[string]typeIscsiTargetParams)
+	shouldFindPortal := false
 
 	for targetId, target := range response.resultsMap {
 		targetName, _ := target["name"].(string)
@@ -86,155 +94,193 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 		delete(toCreateMap, targetName)
 
-		defaultInitiator := 0
 		anyGroups := false
 		if groupsObj, exists := target["groups"]; exists {
 			if groups, ok := groupsObj.([]interface{}); ok && len(groups) > 0 {
 				anyGroups = true
 				for i := 0; i < len(groups); i++ {
-					elem, isElemMap := groups[i].(map[string]interface{})
-					_, portalExists := elem["portal"]; 
-					_, initiExists := elem["initiator"]; 
-					if err = IscsiDetermineTargetUpdates(
-						api,
-						targetName,
-						i,
-						&initiatorCreates,
-						targetUpdates,
-						&defaultPortal,
-						&defaultInitiator,
-						!isElemMap || !portalExists,
-						!isElemMap || !initiExists,
-					); err != nil {
-						return err
+					portalExists := false
+					initiatorExists := false
+					if elem, isElemMap := groups[i].(map[string]interface{}); isElemMap {
+						_, portalExists = elem["portal"].(float64)
+						_, initiatorExists = elem["initiator"].(float64)
+					}
+
+					portal := -1
+					initiator := -1
+					if portalExists {
+						portal = 0
+					} else {
+						shouldFindPortal = true
+					}
+					if initiatorExists {
+						initiator = 0
+					} else {
+						missingInitiators[targetName] = true
+					}
+
+					targets[targetName] = typeIscsiTargetParams{
+						verb: "update",
+						id: targetId,
+						groupIndex: i,
+						portalId: portal,
+						initiatorId: initiator,
 					}
 				}
 			}
 		}
 		if !anyGroups {
-			if err = IscsiDetermineTargetUpdates(
-				api,
-				targetName,
-				-1,
-				&initiatorCreates,
-				targetUpdates,
-				&defaultPortal,
-				&defaultInitiator,
-				true,
-				true,
-			); err != nil {
-				return err
+			shouldFindPortal = true
+			missingInitiators[targetName] = true
+
+			targets[targetName] = typeIscsiTargetParams{
+				verb: "update",
+				id: targetId,
+				groupIndex: -1,
+				portalId: -1,
+				initiatorId: -1,
 			}
 		}
 	}
 
-	for _, targetName := range toCreateMap {
-		if err = IscsiDetermineTargetUpdates(
-			api,
-			targetName,
-			-1,
-			&initiatorCreates,
-			targetCreates,
-			&defaultPortal,
-			&defaultInitiator,
-			true,
-			true,
-		); err != nil {
-			return err
+	for targetName, _ := range toCreateMap {
+		shouldFindPortal = true
+		missingInitiators[targetName] = true
+
+		targets[targetName] = typeIscsiTargetParams{
+			verb: "create",
+			id: -1,
+			groupIndex: -1,
+			portalId: -1,
+			initiatorId: -1,
 		}
 	}
 
-	if defaultPortal == -1 {
-		return fmt.Errorf("No iSCSI portal has been created for this host. Use:\n" +
-			"%s share iscsi portal create --ip <IP address> --port <port number>\n" +
-			"To create one.\n", os.Args[0])
-	}
-
-	if len(targetUpdates) == 0 && len(targetCreates) == 0 {
+	if len(targets) == 0 {
 		fmt.Println("iSCSI targets, portal and initiator groups are up to date for", args)
 		return nil
 	}
 
-	if len(initiatorCreates) > 0 {
-		paramsInitiator := make(map[string]interface{})
-		paramsInitiator["initiators"] = make([]interface{}, 0)
-		paramsInitiator["comment"] = initiatorCreates[0]
-
-		objRemapInitiator := map[string][]interface{}{"comment": core.ToAnyArray(initiatorCreates)}
-		out, err := MaybeBulkApiCall(
-			api,
-			"iscsi.initiator.create",
-			10,
-			[]interface{}{paramsInitiator},
-			objRemapInitiator,
-			true
-		)
+	defaultPortal := -1
+	if shouldFindPortal {
+		portalParams := []interface{} {make([]interface{}, 0), make(map[string]interface{})}
+		out, err := core.ApiCall(api, "iscsi.portal.query", 10, portalParams)
+		if err != nil {
+			return err
+		}
 		var response map[string]interface{}
-		if err := json.Unmarshal(data, &response); err != nil {
-			results := core.GetResultsListFromApiResponse(response)
+		if err = json.Unmarshal(out, &response); err != nil {
+			return err
+		}
+		results, _ := response["result"].([]interface{})
+		for i := 0; i < len(results); i++ {
+			if obj, ok := results[i].(map[string]interface{}); ok {
+				if idObj, exists := obj["id"]; exists {
+					if id, ok := idObj.(float64); ok {
+						defaultPortal = int(id)
+						break
+					}
+				}
+			}
+		}
+		if defaultPortal == -1 {
+			return fmt.Errorf("No iSCSI portal was found for this host. Use:\n" +
+				"<truenas_incus_ctl> share iscsi portal create --ip <IP address> --port <port number>\n" +
+				"To create one.\n")
+		}
+	}
+
+	if len(missingInitiators) > 0 {
+		queryList := make([]string, 0)
+		for name, _ := range missingInitiators {
+			queryList = append(queryList, name)
+		}
+		responseQuery, err := QueryApi(
+			api,
+			"iscsi.initiator",
+			queryList,
+			core.StringRepeated("comment", len(queryList)),
+			nil,
+			extras,
+		)
+		if err != nil {
+			return err
 		}
 
-		var exists bool
-		icResults := make(map[string]int)
-		for _, r := range results {
-			id := 0
-			if idValue, exists := r["id"]; exists {
-				if idFloat, ok := idValue.(float64); ok {
-					id = int64(idFloat)
+		initiatorIds := make(map[string]int)
+		for _, r := range responseQuery.resultsMap {
+			name, err := AddIscsiInitiator(initiatorIds, r)
+			if err != nil {
+				return err
+			}
+			delete(missingInitiators, name)
+		}
+
+		initiatorsToCreate := make([]string, 0)
+		for name, _ := range missingInitiators {
+			initiatorsToCreate = append(initiatorsToCreate, name)
+		}
+
+		if len(initiatorsToCreate) > 0 {
+			paramsInitiator := map[string]interface{} {
+				"initiators": make([]interface{}, 0),
+				"comment": initiatorsToCreate[0],
+			}
+			objRemapInitiator := map[string][]interface{}{
+				"comment": core.ToAnyArray(initiatorsToCreate),
+			}
+			out, err := MaybeBulkApiCall(
+				api,
+				"iscsi.initiator.create",
+				10,
+				[]interface{}{paramsInitiator},
+				objRemapInitiator,
+				true,
+			)
+
+			var responseCreate map[string]interface{}
+			var results []interface{}
+			if err := json.Unmarshal(out, &responseCreate); err != nil {
+				return err
+			}
+
+			var errors []interface{}
+			results, errors = core.GetResultsAndErrorsFromApiResponse(responseCreate)
+			if len(errors) > 0 {
+				return fmt.Errorf("iscsi.initiator.create errors:\n%v", errors)
+			}
+			for _, r := range results {
+				if obj, ok := r.(map[string]interface{}); ok {
+					_, err = AddIscsiInitiator(initiatorIds, obj)
+					if err != nil {
+						return err
+					}
 				}
 			}
-			if id <= 0 {
-				return fmt.Errorf("Invalid ID in initiator group response: %d", id)
-			}
-			var name string
-			if nameObj, exists := r["comment"]; exists {
-				name, _ = nameObj.(string)
-			}
-			if name == "" {
-				return fmt.Errorf("Could not find name in initiator group from iscsi.initiator.create response")
-			}
-			icResults[name] = id
 		}
-		for name, _ := range targetUpdates {
-			if targetUpdates[name].initiatorId == -1 {
-				targetUpdates[name].initiatorId, exists = icResults[name]
-				if !exists {
-					return fmt.Errorf("Could not find target \"%s\" in initiator group from iscsi.initiator.create response", name)
-				}
-			}
-		}
-		for name, _ := range targetCreates {
-			if targetCreates[name].initiatorId == -1 {
-				targetCreates[name].initiatorId, exists = icResults[name]
-				if !exists {
-					return fmt.Errorf("Could not find target \"%s\" in initiator group from iscsi.initiator.create response", name)
+
+		for name, _ := range targets {
+			if targets[name].initiatorId == -1 {
+				if id, exists := initiatorIds[name]; exists {
+					// Go doesn't let you modfiy hashmap entries. Copy out, small change, copy in.
+					t := targets[name]
+					t.initiatorId = id
+					targets[name] = t
+				} else {
+					return fmt.Errorf("Could not find target \"%s\" in initiator groups", name)
 				}
 			}
 		}
 	}
 
-	if len(targetUpdates) > 0 {
-		out, err := IscsiCreateOrUpdateTargets(
-			api,
-			"update",
-			targetUpdates,
-		)
+	for _, verb := range []string{"create","update"} {
+		nWritten, out, err := IscsiCreateOrUpdateTargets(api, verb, targets)
 		if err != nil {
 			return err
 		}
-		fmt.Println(string(out))
-	}
-
-	if len(targetCreates) > 0 {
-		out, err := IscsiCreateOrUpdateTargets(
-			api,
-			"create",
-			targetCreates,
-		)
-		if err != nil {
-			return err
+		if nWritten > 0 {
+			fmt.Println(string(out))
 		}
-		fmt.Println(string(out))
 	}
 
 	return nil
