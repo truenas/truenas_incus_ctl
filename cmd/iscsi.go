@@ -1,9 +1,8 @@
 package cmd
 
 import (
-	//"os/exec"
 	"fmt"
-	//"strconv"
+	"strconv"
 	//"strings"
 	"encoding/json"
 	"truenas/truenas_incus_ctl/core"
@@ -56,12 +55,13 @@ func init() {
 type typeIscsiTargetParams struct {
 	verb string
 	id interface{}
-	groupIndex int
 	portalId int
 	initiatorId int
 }
 
 func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	cmd.SilenceUsage = true
+
 	toEnsure := make([]string, 0)
 	iscsiToVolumeMap := make(map[string]string)
 	for _, vol := range args {
@@ -124,7 +124,6 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 				targets[targetName] = typeIscsiTargetParams{
 					verb: "update",
 					id: targetId,
-					groupIndex: 0,
 					portalId: portal,
 					initiatorId: initiator,
 				}
@@ -137,7 +136,6 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			targets[targetName] = typeIscsiTargetParams{
 				verb: "update",
 				id: targetId,
-				groupIndex: -1,
 				portalId: -1,
 				initiatorId: -1,
 			}
@@ -151,7 +149,6 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		targets[targetName] = typeIscsiTargetParams{
 			verb: "create",
 			id: -1,
-			groupIndex: -1,
 			portalId: -1,
 			initiatorId: -1,
 		}
@@ -165,6 +162,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	defaultPortal := -1
 	if shouldFindPortal {
 		portalParams := []interface{} {make([]interface{}, 0), make(map[string]interface{})}
+		DebugJson(portalParams)
 		out, err := core.ApiCall(api, "iscsi.portal.query", 10, portalParams)
 		if err != nil {
 			return err
@@ -185,6 +183,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			}
 		}
 		if defaultPortal == -1 {
+			cmd.SilenceUsage = false
 			return fmt.Errorf("No iSCSI portal was found for this host. Use:\n" +
 				"<truenas_incus_ctl> share iscsi portal create --ip <IP address> --port <port number>\n" +
 				"To create one.\n")
@@ -278,22 +277,34 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	targetUpdates := make([]interface{}, 0)
 	for name, t := range targets {
 		group := make(map[string]interface{})
-		if t.portalId > 0 {
-			group["portal"] = t.portalId
+		isGroupEmpty := true
+		if t.portalId != 0 {
+			pid := t.portalId
+			if pid < 0 {
+				pid = defaultPortal
+			}
+			group["portal"] = pid
+			isGroupEmpty = false
 		}
 		if t.initiatorId > 0 {
 			group["initiator"] = t.initiatorId
+			isGroupEmpty = false
 		}
 
 		obj := make(map[string]interface{})
 		obj["name"] = name
 		obj["alias"] = iscsiToVolumeMap[name]
-		obj["groups"] = []map[string]interface{} {group}
-		// id interface{}
+
+		if !isGroupEmpty {
+			obj["groups"] = []map[string]interface{} {group}
+		}
 
 		if t.verb == "create" {
 			targetCreates = append(targetCreates, []interface{} {obj})
 		} else {
+			if id, errNotNumber := strconv.Atoi(fmt.Sprint(t.id)); errNotNumber == nil {
+				t.id = id
+			}
 			targetUpdates = append(targetUpdates, []interface{} {t.id, obj})
 		}
 	}
