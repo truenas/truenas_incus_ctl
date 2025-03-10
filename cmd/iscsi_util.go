@@ -42,16 +42,6 @@ func AddIscsiInitiator(initiators map[string]int, resultRow map[string]interface
 	return name, nil
 }
 
-func IscsiCreateOrUpdateTargets() {
-	return MaybeBulkApiCall(
-		"iscsi.target." + verb,
-		10,
-		[]interface{}{paramsInitiator},
-		objRemapInitiator,
-		false,
-	)
-}
-
 func CheckIscsiAdminToolExists() error {
 	_, err := exec.LookPath("iscsiadm")
 	if err != nil {

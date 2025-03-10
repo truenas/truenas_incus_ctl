@@ -553,3 +553,26 @@ func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, p
 
 	return api.WaitForJob(jobId)
 }
+
+func MaybeBulkApiCallArray(api core.Session, endpoint string, timeoutSeconds int64, paramsArray []interface{}, shouldWaitNow bool) (json.RawMessage, error) {
+	nCalls := len(paramsArray)
+	if nCalls == 0 {
+		return nil, errors.New("MaybeBulkApiCallArray: Nothing to do")
+	}
+	if nCalls == 1 {
+		DebugJson(paramsArray[0])
+		return core.ApiCall(api, endpoint, timeoutSeconds, paramsArray[0])
+	}
+
+	methodAndParams := make([]interface{}, 0)
+	methodAndParams = append(methodAndParams, endpoint)
+	methodAndParams = append(methodAndParams, paramsArray)
+
+	DebugJson(methodAndParams)
+	jobId, err := core.ApiCallAsync(api, "core.bulk", methodAndParams, shouldWaitNow)
+	if !shouldWaitNow || err != nil || jobId < 0 {
+		return nil, err
+	}
+
+	return api.WaitForJob(jobId)
+}

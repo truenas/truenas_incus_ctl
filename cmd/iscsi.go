@@ -63,8 +63,11 @@ type typeIscsiTargetParams struct {
 
 func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	toEnsure := make([]string, 0)
+	iscsiToVolumeMap := make(map[string]string)
 	for _, vol := range args {
-		toEnsure = append(toEnsure, "incus:" + MakeIscsiTargetNameFromVolumePath(vol))
+		iscsiName := "incus:" + MakeIscsiTargetNameFromVolumePath(vol)
+		iscsiToVolumeMap[iscsiName] = vol
+		toEnsure = append(toEnsure, iscsiName)
 	}
 
 	extras := typeQueryParams{
@@ -98,34 +101,32 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		if groupsObj, exists := target["groups"]; exists {
 			if groups, ok := groupsObj.([]interface{}); ok && len(groups) > 0 {
 				anyGroups = true
-				for i := 0; i < len(groups); i++ {
-					portalExists := false
-					initiatorExists := false
-					if elem, isElemMap := groups[i].(map[string]interface{}); isElemMap {
-						_, portalExists = elem["portal"].(float64)
-						_, initiatorExists = elem["initiator"].(float64)
-					}
+				portalExists := false
+				initiatorExists := false
+				if elem, isElemMap := groups[0].(map[string]interface{}); isElemMap {
+					_, portalExists = elem["portal"].(float64)
+					_, initiatorExists = elem["initiator"].(float64)
+				}
 
-					portal := -1
-					initiator := -1
-					if portalExists {
-						portal = 0
-					} else {
-						shouldFindPortal = true
-					}
-					if initiatorExists {
-						initiator = 0
-					} else {
-						missingInitiators[targetName] = true
-					}
+				portal := -1
+				initiator := -1
+				if portalExists {
+					portal = 0
+				} else {
+					shouldFindPortal = true
+				}
+				if initiatorExists {
+					initiator = 0
+				} else {
+					missingInitiators[targetName] = true
+				}
 
-					targets[targetName] = typeIscsiTargetParams{
-						verb: "update",
-						id: targetId,
-						groupIndex: i,
-						portalId: portal,
-						initiatorId: initiator,
-					}
+				targets[targetName] = typeIscsiTargetParams{
+					verb: "update",
+					id: targetId,
+					groupIndex: 0,
+					portalId: portal,
+					initiatorId: initiator,
 				}
 			}
 		}
@@ -273,14 +274,44 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	for _, verb := range []string{"create","update"} {
-		nWritten, out, err := IscsiCreateOrUpdateTargets(api, verb, targets)
+	targetCreates := make([]interface{}, 0)
+	targetUpdates := make([]interface{}, 0)
+	for name, t := range targets {
+		group := make(map[string]interface{})
+		if t.portalId > 0 {
+			group["portal"] = t.portalId
+		}
+		if t.initiatorId > 0 {
+			group["initiator"] = t.initiatorId
+		}
+
+		obj := make(map[string]interface{})
+		obj["name"] = name
+		obj["alias"] = iscsiToVolumeMap[name]
+		obj["groups"] = []map[string]interface{} {group}
+		// id interface{}
+
+		if t.verb == "create" {
+			targetCreates = append(targetCreates, []interface{} {obj})
+		} else {
+			targetUpdates = append(targetUpdates, []interface{} {t.id, obj})
+		}
+	}
+
+	if len(targetUpdates) > 0 {
+		out, err := MaybeBulkApiCallArray(api, "iscsi.target.update", 10, targetUpdates, false)
 		if err != nil {
 			return err
 		}
-		if nWritten > 0 {
-			fmt.Println(string(out))
+		fmt.Println("iscsi.target.update:", string(out))
+	}
+
+	if len(targetCreates) > 0 {
+		out, err := MaybeBulkApiCallArray(api, "iscsi.target.create", 10, targetCreates, false)
+		if err != nil {
+			return err
 		}
+		fmt.Println("iscsi.target.create:", string(out))
 	}
 
 	return nil
