@@ -93,7 +93,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	for targetId, target := range response.resultsMap {
 		targetName, _ := target["name"].(string)
 		if targetName == "" {
-			return fmt.Errorf("Name could not be found in iSCSI target with ID %d", targetId)
+			return fmt.Errorf("Name could not be found in iSCSI target with ID %v", targetId)
 		}
 		delete(toCreateMap, targetName)
 
