@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"truenas/truenas_incus_ctl/core"
 
@@ -49,7 +50,8 @@ func init() {
 	*/
 
 	replStartCmd.Flags().Int("ssh-credentials", 0, "")
-	replStartCmd.Flags().String("netcat-active-side", "", "") // "enum": ["LOCAL", "REMOTE"]
+	replStartCmd.Flags().String("netcat-active-side", "local", ""+
+		 AddFlagsEnum(&g_replStartEnums, "netcat-active-side", []string{"local","remote"}))
 	replStartCmd.Flags().String("netcat-active-side-listen-address", "", "")
 	replStartCmd.Flags().Int("netcat-active-side-port-min", 0, "")
 	replStartCmd.Flags().Int("netcat-active-side-port-max", 0, "")
@@ -62,30 +64,30 @@ func init() {
 	replStartCmd.Flags().Bool("encryption", false, "")
 	replStartCmd.Flags().Bool("encryption-inherit", false, "")
 	replStartCmd.Flags().String("encryption-key", "", "")
-	replStartCmd.Flags().String("encryption-key-format", "", "") // enum: [ "HEX", "PASSPHRASE" ]
+	replStartCmd.Flags().String("encryption-key-format", "passphrase", ""+
+		AddFlagsEnum(&g_replStartEnums, "encryption-key-format", []string{"hex","passphrase"}))
 	replStartCmd.Flags().String("encryption-key-location", "", "")
 	replStartCmd.Flags().String("periodic-snapshot-tasks", "", "") // int array
-	/*
-	"naming-schema",
-	"also-include-naming-schema",
-	"name-regex",
-	"restrict-schedule",
-	"allow-from-scratch",
-	"readonly",
-	"hold-pending-snapshots",
-	"lifetime-value",
-	"lifetime-unit",
-	"lifetimes",
-	"compression",
-	"speed-limit",
-	"large-block",
-	"embed",
-	"compressed",
-	"retries",
-	"logging-level",
-	"exclude-mountpoint-property",
-	"only-from-scratch"
-	*/
+	replStartCmd.Flags().String("restrict-schedule", "", "") // array of key=value, ala --options
+	replStartCmd.Flags().Bool("allow-from-scratch", false, "")
+	replStartCmd.Flags().String("readonly-policy", "set", ""+
+		AddFlagsEnum(&g_replStartEnums, "readonly-policy", []string{"set","require","ignore"})) // "readonly-policy" -> "readonly"
+	replStartCmd.Flags().Bool("hold-pending-snapshots", false, "")
+	replStartCmd.Flags().Int("lifetime-value", 0, "")
+	replStartCmd.Flags().String("lifetime-unit", "hour", ""+
+		AddFlagsEnum(&g_replStartEnums, "lifetime-unit", []string{"hour","day","week","month","year"}))
+	// TODO: "lifetimes" array
+	replStartCmd.Flags().String("compression", "lz4", ""+
+		AddFlagsEnum(&g_replStartEnums, "compression", []string{"lz4","pigz","plzip"}))
+	replStartCmd.Flags().Int64("speed-limit", 0, "") // is this bytes per second?
+	replStartCmd.Flags().Bool("large-block", true, "")
+	replStartCmd.Flags().Bool("embed", false, "")
+	replStartCmd.Flags().Bool("compressed", true, "")
+	replStartCmd.Flags().Int("retries", 5, "")
+	replStartCmd.Flags().String("logging-level", "warning", ""+
+		AddFlagsEnum(&g_replStartEnums, "logging-level", []string{"debug","info","warning","error"}))
+	replStartCmd.Flags().Bool("exclude-mountpoint-property", true, "")
+	replStartCmd.Flags().Bool("only-from-scratch", false, "")
 
 	replCmd.AddCommand(replStartCmd)
 	rootCmd.AddCommand(replCmd)
@@ -162,8 +164,55 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 		}
 	}
 
+	for key, valueStr := range options.usedFlags {
+		if _, exists := outMap[key]; exists {
+			continue
+		}
+		outKey := key
+		wroteValue := false
+		switch key {
+		case "aux_properties":
+			outKey = "properties"
+		case "readonly_policy":
+			outKey = "readonly"
+		case "properties_exclude":
+			outMap[outKey] = strings.Split(valueStr, ",")
+			wroteValue = true
+		case "properties_override":
+			fallthrough
+		case "restrict_schedule":
+			innerMap := make(map[string]interface{})
+			if err = WriteKvArrayToMap(innerMap, ConvertParamsStringToKvArray(valueStr), g_replStartEnums); err != nil {
+				return err
+			}
+			outMap[outKey] = innerMap
+			wroteValue = true
+		case "periodic_snapshot_tasks":
+			valueList := strings.Split(valueStr, ",")
+			idList := make([]float64, 0)
+			for _, v := range valueList {
+				vInt, errNotNumber := strconv.Atoi(strings.Trim(v, " \t\n"))
+				if errNotNumber != nil {
+					return fmt.Errorf("--periodic-snapshot-tasks requires a list of integers (not \"%s\")", valueStr)
+				}
+				idList = append(idList, float64(vInt))
+			}
+			outMap[outKey] = idList
+			wroteValue = true
+		}
+		if !wroteValue {
+			value, err := ParseStringAndValidate(key, valueStr, g_replStartEnums)
+			if err != nil {
+				return err
+			}
+			outMap[outKey] = value
+		}
+	}
+
 	params := []interface{}{outMap}
 	DebugJson(params)
+
+	cmd.SilenceUsage = true
 
 	jobId, err := core.ApiCallAsync(api, "replication.run_onetime", params, false)
 	if err != nil {
