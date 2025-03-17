@@ -85,7 +85,7 @@ func init() {
 	snapshotListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
 		AddFlagsEnum(&g_snapshotListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	snapshotListCmd.Flags().StringP("output", "o", "", "Output property list")
-	snapshotListCmd.Flags().BoolP("parseable", "p", false, "Show raw values instead of the already parsed values")
+	snapshotListCmd.Flags().BoolP("parsed", "p", false, "Show raw values instead of the already parsed values")
 	snapshotListCmd.Flags().Bool("all", false, "Output all properties")
 
 	snapshotRollbackCmd.Flags().BoolP("force", "f", false, "force unmount of any clones")
@@ -256,7 +256,7 @@ func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 
 	// `zfs list` will "recurse" if no names are specified.
 	extras := typeQueryParams{
-		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
+		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parsed")),
 		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),

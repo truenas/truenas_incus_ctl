@@ -41,45 +41,50 @@ func init() {
 	replStartCmd.Flags().StringP("naming-schema-main", "n", "", "")
 	replStartCmd.Flags().StringP("naming-schema-aux", "N", "", "")
 	replStartCmd.Flags().StringP("name-regex", "R", "", "")
+
+	// TODO: implement non-local replication
 	/*
 		replStartCmd.Flags().String("transport", "", ""+
 			AddFlagsEnum(&g_replStartEnums, "transport", []string{"ssh","ssh+netcat","local"}))
-		replStartCmd.Flags().Int("ssh_credentials", 0, "")
-		"netcat_active_side",
-		"netcat_active_side_listen_address",
-		"netcat_active_side_port_min",
-		"netcat_active_side_port_max",
-		"netcat_passive_side_connect_address",
-		"sudo",
-		"properties",
-		"properties_exclude",
-		"properties_override",
-		"replicate",
-		"encryption",
-		"encryption_inherit",
-		"encryption_key",
-		"encryption_key_format",
-		"encryption_key_location",
-		"periodic_snapshot_tasks",
-		"naming_schema",
-		"also_include_naming_schema",
-		"name_regex",
-		"restrict_schedule",
-		"allow_from_scratch",
-		"readonly",
-		"hold_pending_snapshots",
-		"lifetime_value",
-		"lifetime_unit",
-		"lifetimes",
-		"compression",
-		"speed_limit",
-		"large_block",
-		"embed",
-		"compressed",
-		"retries",
-		"logging_level",
-		"exclude_mountpoint_property",
-		"only_from_scratch"
+	*/
+
+	replStartCmd.Flags().Int("ssh-credentials", 0, "")
+	replStartCmd.Flags().String("netcat-active-side", "", "") // "enum": ["LOCAL", "REMOTE"]
+	replStartCmd.Flags().String("netcat-active-side-listen-address", "", "")
+	replStartCmd.Flags().Int("netcat-active-side-port-min", 0, "")
+	replStartCmd.Flags().Int("netcat-active-side-port-max", 0, "")
+	replStartCmd.Flags().String("netcat-passive-side-connect-address", "", "")
+	replStartCmd.Flags().Bool("sudo", false, "")
+	replStartCmd.Flags().Bool("aux-properties", true, "") // aux-properties -> properties
+	replStartCmd.Flags().String("properties-exclude", "", "") // array of strings
+	replStartCmd.Flags().String("properties-override", "", "") // array of key=value, ala --options
+	replStartCmd.Flags().Bool("replicate", false, "")
+	replStartCmd.Flags().Bool("encryption", false, "")
+	replStartCmd.Flags().Bool("encryption-inherit", false, "")
+	replStartCmd.Flags().String("encryption-key", "", "")
+	replStartCmd.Flags().String("encryption-key-format", "", "") // enum: [ "HEX", "PASSPHRASE" ]
+	replStartCmd.Flags().String("encryption-key-location", "", "")
+	replStartCmd.Flags().String("periodic-snapshot-tasks", "", "") // int array
+	/*
+	"naming-schema",
+	"also-include-naming-schema",
+	"name-regex",
+	"restrict-schedule",
+	"allow-from-scratch",
+	"readonly",
+	"hold-pending-snapshots",
+	"lifetime-value",
+	"lifetime-unit",
+	"lifetimes",
+	"compression",
+	"speed-limit",
+	"large-block",
+	"embed",
+	"compressed",
+	"retries",
+	"logging-level",
+	"exclude-mountpoint-property",
+	"only-from-scratch"
 	*/
 
 	replCmd.AddCommand(replStartCmd)
@@ -92,8 +97,8 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 		return err
 	}
 
-	mainSchemaStr := options.allFlags["naming_schema_main"] // -> ,
-	auxSchemaStr := options.allFlags["naming_schema_aux"]   // -> ,
+	mainSchemaStr := options.allFlags["naming_schema_main"]
+	auxSchemaStr := options.allFlags["naming_schema_aux"]
 	regexStr := options.allFlags["name_regex"]
 
 	if mainSchemaStr == "" && auxSchemaStr == "" && regexStr == "" {

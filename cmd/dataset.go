@@ -161,7 +161,7 @@ func init() {
 	datasetListCmd.Flags().String("format", "table", "Output table format "+
 		AddFlagsEnum(&g_datasetListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	datasetListCmd.Flags().StringP("output", "o", "", "Output property list")
-	datasetListCmd.Flags().BoolP("parseable", "p", false, "Show raw values instead of the already parsed values")
+	datasetListCmd.Flags().BoolP("parsed", "p", false, "Show raw values instead of the already parsed values")
 	datasetListCmd.Flags().BoolP("all", "a", false, "Output all properties")
 	datasetListCmd.Flags().StringP("source", "s", "default", "A comma-separated list of sources to display.\n"+
 		"Those properties coming from a source other than those in this list are ignored.\n"+
@@ -362,7 +362,7 @@ func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 
 	// `zfs list` will "recurse" if no names are specified.
 	extras := typeQueryParams{
-		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
+		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parsed")),
 		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: core.IsValueTrue(options.allFlags, "user_properties"),
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),

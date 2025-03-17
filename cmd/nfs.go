@@ -85,7 +85,7 @@ func init() {
 	nfsListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
 		AddFlagsEnum(&g_nfsListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	nfsListCmd.Flags().StringP("output", "o", "", "Output property list")
-	nfsListCmd.Flags().BoolP("parseable", "p", false, "Show raw values instead of the already parsed values")
+	nfsListCmd.Flags().BoolP("parsed", "p", false, "Show raw values instead of the already parsed values")
 	nfsListCmd.Flags().BoolP("all", "a", false, "Output all properties")
 
 	nfsCmd.AddCommand(nfsCreateCmd)
@@ -410,7 +410,7 @@ func listNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	extras := typeQueryParams{
-		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
+		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parsed")),
 		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),

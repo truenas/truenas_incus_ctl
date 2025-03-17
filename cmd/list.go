@@ -31,7 +31,7 @@ func init() {
 	listCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
 		AddFlagsEnum(&g_genericListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	listCmd.Flags().StringP("output", "o", "", "Output property list")
-	listCmd.Flags().BoolP("parseable", "p", false, "Show raw values instead of the already parsed values")
+	listCmd.Flags().BoolP("parsed", "p", false, "Show raw values instead of the already parsed values")
 	listCmd.Flags().BoolP("all", "a", false, "Output all properties")
 
 	rootCmd.AddCommand(listCmd)
@@ -194,7 +194,7 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	extras := typeQueryParams{
-		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parseable")),
+		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parsed")),
 		shouldSkipKeyBuild: true,
 		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
