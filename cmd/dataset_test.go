@@ -237,9 +237,9 @@ func TestDatasetListWithProperties(t *testing.T) {
 		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test\",\"name\":\"dozer/testing/test\","+
 			"\"properties\":{\"atime\":{\"rawvalue\":\"off\",\"value\":\"OFF\",\"parsed\":false},"+
 			"\"exec\":{\"rawvalue\":\"off\",\"value\":\"OFF\",\"parsed\":false}}}],\"id\":2}"},
-		"        name        | atime | exec \n" +
-		"--------------------+-------+------\n" +
-		" dozer/testing/test | off   | off  \n",
+		"        name        | atime | exec  \n" +
+		"--------------------+-------+-------\n" +
+		" dozer/testing/test | false | false \n",
 	))
 }
 

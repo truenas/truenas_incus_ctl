@@ -141,9 +141,11 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 
 	if mainSchemaStr != "" {
 		outMap["naming_schema"] = strings.Split(mainSchemaStr, ",")
+		delete(options.usedFlags, "naming_schema_main")
 	}
 	if auxSchemaStr != "" {
 		outMap["also_include_naming_schema"] = strings.Split(auxSchemaStr, ",")
+		delete(options.usedFlags, "naming_schema_aux")
 	}
 	if regexStr != "" {
 		outMap["name_regex"] = regexStr
@@ -162,6 +164,7 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 		if err != nil {
 			return err
 		}
+		delete(options.usedFlags, "options")
 	}
 
 	for key, valueStr := range options.usedFlags {
