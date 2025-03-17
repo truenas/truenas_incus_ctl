@@ -21,7 +21,7 @@ import (
 0.3.1 fixed job waiting
 0.3.2 added snapshot create --delete flag
 0.4.0 added replication
-0.4.1 enhancd replication, -p fixes
+0.4.1 dataset list -p fix
 */
 const VERSION = "0.4.1"
 
