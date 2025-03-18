@@ -22,8 +22,9 @@ import (
 0.3.2 added snapshot create --delete flag
 0.4.0 added replication
 0.4.1 dataset list -p fix
+0.4.2 added additional repplication options
 */
-const VERSION = "0.4.1"
+const VERSION = "0.4.2"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
