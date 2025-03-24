@@ -12,7 +12,7 @@ import (
 
 var replCmd = &cobra.Command{
 	Use:     "replication",
-	Short:   "Start replicating a dataset from one pool to another, locally or across any network",
+	Short:   "Replicate a dataset from one pool to another, locally or across any network",
 	Aliases: []string{"backup", "repl"},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
@@ -23,8 +23,12 @@ var replCmd = &cobra.Command{
 }
 
 var replStartCmd = &cobra.Command{
-	Use:  "start <src dataset>... <dst dataset>",
-	Args: cobra.MinimumNArgs(2),
+	Use:   "start <sources>... <destination> <-n|-N|-R> <name filter>",
+	Short: "Start replicating a dataset from one pool to another, locally or across any network",
+	Long:  "Start replicating a dataset from one pool to another, locally or across any network.\n"+
+		"A replication specifier can either be \"<host>:<dataset>\" or just \"<dataset>\" if local.\n"+
+		"Currently, only local to local replication is supported.",
+	Args:  cobra.MinimumNArgs(2),
 }
 
 var g_replStartEnums map[string][]string
