@@ -9,7 +9,7 @@ func TestGenericList(t *testing.T) {
 		t,
 		listCmd,
 		doList,
-		map[string]interface{}{"no-headers":true,"parseable":true,"output":"id,clones"},
+		map[string]interface{}{"no-headers":true,"parsable":true,"output":"id,clones"},
 		[]string{},
 		[]string{"[[],{\"extra\":{\"flat\":false,\"properties\":[\"id\",\"clones\",\"type\"],\"retrieve_children\":true,\"user_properties\":false}}]"},
 		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test4@readonly\",\"name\":\"dozer/testing/test4@readonly\","+
@@ -23,7 +23,7 @@ func TestGenericListTypes(t *testing.T) {
 		t,
 		listCmd,
 		doList,
-		map[string]interface{}{"types":"vol,snap","no-headers":true,"parseable":true,"output":"type,id,clones"},
+		map[string]interface{}{"types":"vol,snap","no-headers":true,"parsable":true,"output":"type,id,clones"},
 		[]string{},
 		[]string{ // expected
 			"[[],{\"extra\":{\"flat\":false,\"properties\":[\"type\",\"id\",\"clones\"],\"retrieve_children\":true,\"user_properties\":false}}]",
@@ -44,7 +44,7 @@ func TestGenericListParameters(t *testing.T) {
 		t,
 		listCmd,
 		doList,
-		map[string]interface{}{"recursive":true,"no-headers":true,"parseable":true,"output":"id,clones"},
+		map[string]interface{}{"recursive":true,"no-headers":true,"parsable":true,"output":"id,clones"},
 		[]string{"dozer/testing"},
 		[]string{ // expected
 			"[[[\"name\",\"in\",[\"dozer/testing\"]]],"+
@@ -69,7 +69,7 @@ func TestGenericListParametersRecursive(t *testing.T) {
 		t,
 		listCmd,
 		doList,
-		map[string]interface{}{"recursive":true,"no-headers":true,"parseable":true,"output":"id,clones"},
+		map[string]interface{}{"recursive":true,"no-headers":true,"parsable":true,"output":"id,clones"},
 		[]string{"dozer/testing"},
 		[]string{ // expected
 			"[[[\"name\",\"in\",[\"dozer/testing\"]]],"+
@@ -94,7 +94,7 @@ func TestGenericListTypesAndParameters(t *testing.T) {
 		t,
 		listCmd,
 		doList,
-		map[string]interface{}{"recursive":true,"no-headers":true,"parseable":true,"output":"id,clones"},
+		map[string]interface{}{"recursive":true,"no-headers":true,"parsable":true,"output":"id,clones"},
 		[]string{"dozer/testing"},
 		[]string{ // expected
 			"[[[\"name\",\"in\",[\"dozer/testing\"]]],"+
