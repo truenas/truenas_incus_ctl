@@ -187,7 +187,7 @@ func TestSnapshotListWithProperties(t *testing.T) {
 		t,
 		snapshotListCmd,
 		listSnapshot,
-		map[string]interface{}{"no-headers":true,"parseable":true,"output":"name,clones"},
+		map[string]interface{}{"no-headers":true,"parsable":true,"output":"name,clones"},
 		[]string{"dozer/testing/test4@readonly"},
 		[]string{"[[[\"name\",\"in\",[\"dozer/testing/test4@readonly\"]]],{\"extra\":{\"flat\":false,"+
 			"\"properties\":[\"name\",\"clones\"],\"retrieve_children\":false,\"user_properties\":false}}]"},
