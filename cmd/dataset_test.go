@@ -230,7 +230,7 @@ func TestDatasetListWithProperties(t *testing.T) {
 		t,
 		datasetListCmd,
 		listDataset,
-		map[string]interface{}{"parsed":true,"output":"name,atime,exec"},
+		map[string]interface{}{"parsable":true,"output":"name,atime,exec"},
 		[]string{"dozer/testing/test"},
 		[]string{"[[[\"name\",\"in\",[\"dozer/testing/test\"]]],{\"extra\":{\"flat\":false,"+
 			"\"properties\":[\"name\",\"atime\",\"exec\"],\"retrieve_children\":false,\"user_properties\":false}}]"},
