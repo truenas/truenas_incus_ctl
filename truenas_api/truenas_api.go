@@ -307,7 +307,7 @@ func (c *Client) listen() {
 // CallWithJob sends an RPC call that returns a job ID and tracks the long-running job.
 func (c *Client) CallWithJob(method string, params interface{}, callback func(progress float64, state string, desc string)) (*Job, error) {
 	// Call the API method
-	res, err := c.Call(method, 10, params)
+	res, err := c.Call(method, 60, params)
 	if err != nil {
 		return nil, err
 	}
