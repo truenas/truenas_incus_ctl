@@ -275,6 +275,8 @@ func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []strin
 			continue
 		}
 
+		DebugJson(value)
+
 		var elem interface{}
 		if valueMap, ok := value.(map[string]interface{}); ok {
 			for _, t := range valueOrder {
@@ -299,11 +301,11 @@ func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []strin
 	}
 }
 
-func BuildValueOrder(parseable bool) []string {
-	if parseable {
-		return []string{"value", "rawvalue", "parsed"}
+func BuildValueOrder(parsed bool) []string {
+	if parsed {
+		return []string{"parsed", "value", "rawvalue"}
 	}
-	return []string{"parsed", "value", "rawvalue"}
+	return []string{"value", "rawvalue", "parsed"}
 }
 
 func LowerCaseValuesFromEnums(results []map[string]interface{}, enums map[string][]string) {

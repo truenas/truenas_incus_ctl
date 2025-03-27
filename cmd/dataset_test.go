@@ -230,16 +230,16 @@ func TestDatasetListWithProperties(t *testing.T) {
 		t,
 		datasetListCmd,
 		listDataset,
-		map[string]interface{}{"parseable":true,"output":"name,atime,exec"},
+		map[string]interface{}{"parsable":true,"output":"name,atime,exec"},
 		[]string{"dozer/testing/test"},
 		[]string{"[[[\"name\",\"in\",[\"dozer/testing/test\"]]],{\"extra\":{\"flat\":false,"+
 			"\"properties\":[\"name\",\"atime\",\"exec\"],\"retrieve_children\":false,\"user_properties\":false}}]"},
 		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test\",\"name\":\"dozer/testing/test\","+
 			"\"properties\":{\"atime\":{\"rawvalue\":\"off\",\"value\":\"OFF\",\"parsed\":false},"+
 			"\"exec\":{\"rawvalue\":\"off\",\"value\":\"OFF\",\"parsed\":false}}}],\"id\":2}"},
-		"        name        | atime | exec \n" +
-		"--------------------+-------+------\n" +
-		" dozer/testing/test | off   | off  \n",
+		"        name        | atime | exec  \n" +
+		"--------------------+-------+-------\n" +
+		" dozer/testing/test | false | false \n",
 	))
 }
 
