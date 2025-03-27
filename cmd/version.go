@@ -23,8 +23,9 @@ import (
 0.4.0 added replication
 0.4.1 dataset list -p fix
 0.4.2 added additional repplication options
+0.4.3 Increased timeout for asynchronous API calls
 */
-const VERSION = "0.4.2"
+const VERSION = "0.4.3"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
