@@ -50,7 +50,7 @@ func RemoveGlobalFlags(flags map[string]string) {
 	delete(flags, "api_key")
 }
 
-func ValidateAndLogin() core.Session {
+func InitializeApiClient() core.Session {
 	var api core.Session
 	if g_useMock {
 		api = &core.MockSession{
@@ -71,11 +71,13 @@ func ValidateAndLogin() core.Session {
 		}
 	}
 
+	/*
 	err := api.Login()
 	if err != nil {
 		api.Close(err)
 		log.Fatal(err)
 	}
+	*/
 
 	return api
 }

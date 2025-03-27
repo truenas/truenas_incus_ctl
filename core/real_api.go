@@ -27,6 +27,10 @@ type RealSession struct {
 	jobsList []int64
 }
 
+func (s *RealSession) IsLoggedIn() bool {
+	return s.client != nil
+}
+
 func (s *RealSession) Login() error {
 	if s.client != nil {
 		// TODO: Clear resultsQueue before calling close here, since we want to log in again immediately after
