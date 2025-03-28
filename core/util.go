@@ -140,6 +140,8 @@ func GetIntegerFromJsonObjectOr(data map[string]interface{}, key string, ifNotFo
 				return valueI
 			}
 			return ifNotFound
+		} else if valueI, ok := value.(int64); ok {
+			return valueI
 		}
 	}
 	return ifNotFound
