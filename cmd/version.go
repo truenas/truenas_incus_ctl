@@ -24,8 +24,9 @@ import (
 0.4.1 dataset list -p fix
 0.4.2 added additional repplication options
 0.4.3 Increased timeout for asynchronous API calls
+0.4.4 Snapshot lists are now sorted by dataset then txg
 */
-const VERSION = "0.4.3"
+const VERSION = "0.4.4"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
