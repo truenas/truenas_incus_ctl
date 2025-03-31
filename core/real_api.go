@@ -66,6 +66,10 @@ func (s *RealSession) Login() error {
 	return nil
 }
 
+func (s *RealSession) GetHostUrl() string {
+	return s.HostUrl
+}
+
 func (s *RealSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
 	return s.client.Call(method, timeoutSeconds, params)
 }

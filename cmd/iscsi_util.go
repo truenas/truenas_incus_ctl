@@ -50,6 +50,15 @@ func CheckIscsiAdminToolExists() error {
 	return err
 }
 
+func MaybeLaunchIscsiDaemon() error {
+	// assuming a stable internet connection, iscsid as a command does not block.
+	// it instead starts the actual daemon before returning immediately, without any console output.
+	// returns 1 if the daemon could not be run or is already running, 0 otherwise.
+	// since there's not enough information to determine if the daemon is actually active after this call, we might as well return nil.
+	_ = exec.Command("iscsid").Run()
+	return nil
+}
+
 func RunIscsiAdminTool(args []string) error {
 	return exec.Command("iscsiadm", args...).Run()
 }

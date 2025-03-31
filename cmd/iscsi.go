@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"strconv"
 	//"strings"
 	"encoding/json"
@@ -44,6 +46,8 @@ func init() {
 	iscsiCreateCmd.RunE = WrapCommandFunc(createIscsi)
 	iscsiActivateCmd.RunE = WrapCommandFunc(activateIscsi)
 	iscsiDeleteCmd.RunE = WrapCommandFunc(deleteIscsi)
+
+	iscsiActivateCmd.Flags().IntP("port", "p", 3260, "iSCSI portal port")
 
 	iscsiCmd.AddCommand(iscsiCreateCmd)
 	iscsiCmd.AddCommand(iscsiActivateCmd)
@@ -329,11 +333,39 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 }
 
 func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	options, _ := GetCobraFlags(cmd, nil)
+
+	cmd.SilenceUsage = true
 	if err := CheckIscsiAdminToolExists(); err != nil {
-		cmd.SilenceUsage = true
 		return err
 	}
-	fmt.Println("activateIscsi")
+
+	hostUrl, err := url.Parse(api.GetHostUrl())
+	if err != nil {
+		return err
+	}
+
+	ipAddrs, err := net.LookupIP(hostUrl.Hostname())
+	if err != nil {
+		return err
+	}
+
+	portalAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
+
+	params := []string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"}
+
+	err = MaybeLaunchIscsiDaemon()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("activateIscsi:", params)
+	err = RunIscsiAdminTool(params)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("successfully ran iscsiadm")
 	return nil
 }
 
