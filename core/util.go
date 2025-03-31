@@ -44,6 +44,15 @@ func StringRepeated(str string, count int) []string {
 	return arr
 }
 
+func AppendIfMissing[T comparable](arr []T, value T) []T {
+	for _, elem := range arr {
+		if elem == value {
+			return arr
+		}
+	}
+	return append(arr, value)
+}
+
 func MakeErrorFromList(errorList []error) error {
 	if len(errorList) == 0 {
 		return nil
@@ -182,6 +191,22 @@ func IsValueTrue(dict map[string]string, key string) bool {
 		return valueStr == "true"
 	}
 	return false
+}
+
+func GetIntegerFromJsonObjectOr(data map[string]interface{}, key string, ifNotFound int64) int64 {
+	if value, exists := data[key]; exists {
+		if valueF, ok := value.(float64); ok {
+			return int64(valueF)
+		} else if valueStr, ok := value.(string); ok {
+			if valueI, errNotNumber := strconv.ParseInt(valueStr, 0, 64); errNotNumber == nil {
+				return valueI
+			}
+			return ifNotFound
+		} else if valueI, ok := value.(int64); ok {
+			return valueI
+		}
+	}
+	return ifNotFound
 }
 
 func ExtractApiError(data json.RawMessage) string {
