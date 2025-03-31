@@ -21,6 +21,7 @@ type UnitTestSession struct {
 }
 
 func (s *UnitTestSession) Login() error { return nil }
+func (s *UnitTestSession) IsLoggedIn() bool { return true }
 func (s *UnitTestSession) WaitForJob(jobId int64) (json.RawMessage, error) { return nil, nil }
 func (s *UnitTestSession) Close(internalError error) error { return nil }
 

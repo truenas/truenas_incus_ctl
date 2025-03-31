@@ -61,7 +61,7 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 
 	query := []interface{}{filter}
 	if endpointType != "nfs" {
-		query = append(query, makeQueryOptions(propsList, params))
+		query = append(query, makeQueryOptions(propsList, params, strings.Contains(endpoint, "snapshot")))
 	}
 
 	DebugJson(query)
@@ -164,7 +164,42 @@ func GetListFromQueryResponse(response *typeQueryResponse) []map[string]interfac
 	}
 
 	slices.Sort(response.intKeys)
-	slices.Sort(response.strKeys)
+
+	slices.SortStableFunc(response.strKeys, func(a, b string) int {
+		atPosA := strings.Index(a, "@")
+		if atPosA < 0 {
+			return strings.Compare(a, b)
+		}
+		atPosB := strings.Index(b, "@")
+		if atPosB < 0 {
+			return strings.Compare(a, b)
+		}
+		if atPosA != atPosB {
+			return strings.Compare(a, b)
+		}
+		nameCompare := strings.Compare(a[0:atPosA], b[0:atPosB])
+		if nameCompare != 0 {
+			return nameCompare
+		}
+		var txgA int64
+		if res, exists := response.resultsMap[a]; exists {
+			txgA = core.GetIntegerFromJsonObjectOr(res, "createtxg", 0)
+		}
+		if txgA == 0 {
+			return 0
+		}
+		var txgB int64
+		if res, exists := response.resultsMap[b]; exists {
+			txgB = core.GetIntegerFromJsonObjectOr(res, "createtxg", 0)
+		}
+		if txgB == 0 || txgA == txgB {
+			return 0
+		}
+		if txgA < txgB {
+			return -1
+		}
+		return 1
+	})
 
 	nKeys := len(response.intKeys) + len(response.strKeys)
 	resultsList := make([]map[string]interface{}, nKeys, nKeys)
@@ -251,7 +286,7 @@ func constructORChain(filterList [][]interface{}) []interface{} {
 	return top[0]
 }
 
-func makeQueryOptions(propsList []string, params typeQueryParams) map[string]interface{} {
+func makeQueryOptions(propsList []string, params typeQueryParams, isSnapshot bool) map[string]interface{} {
 	// second arg = query-options
 	options := make(map[string]interface{})
 	options["flat"] = false
@@ -262,6 +297,9 @@ func makeQueryOptions(propsList []string, params typeQueryParams) map[string]int
 	} else {
 		if propsList == nil {
 			propsList = make([]string, 0)
+		}
+		if isSnapshot {
+			propsList = core.AppendIfMissing(propsList, "createtxg")
 		}
 		options["properties"] = propsList
 	}

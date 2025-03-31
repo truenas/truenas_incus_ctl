@@ -181,16 +181,7 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 	if properties != nil {
 		outProps = make([]string, len(properties))
 		copy(outProps, properties)
-		hasType := false
-		for _, p := range properties {
-			if p == "type" {
-				hasType = true
-				break
-			}
-		}
-		if !hasType {
-			properties = append(properties, "type")
-		}
+		properties = core.AppendIfMissing(properties, "type")
 	}
 
 	extras := typeQueryParams{

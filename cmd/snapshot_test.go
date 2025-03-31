@@ -86,7 +86,7 @@ func TestSnapshotList(t *testing.T) {
 		listSnapshot,
 		map[string]interface{}{},
 		[]string{},
-		[]string{"[[],{\"extra\":{\"flat\":false,\"properties\":[],\"retrieve_children\":true,\"user_properties\":false}}]"}, // expected
+		[]string{"[[],{\"extra\":{\"flat\":false,\"properties\":[\"createtxg\"],\"retrieve_children\":true,\"user_properties\":false}}]"}, // expected
 		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test4@readonly\",\"name\":\"dozer/testing/test4@readonly\"},"+ //response
 			"{\"id\":\"dozer/testing/test5@readonly\",\"name\":\"dozer/testing/test5@readonly\"}],\"id\":2}"},
 		"             name             \n" + // table
@@ -104,7 +104,7 @@ func TestSnapshotListParameter(t *testing.T) {
 		map[string]interface{}{},
 		[]string{"dozer/testing/test4@readonly"},
 		[]string{"[[[\"name\",\"in\",[\"dozer/testing/test4@readonly\"]]],"+ // expected
-			"{\"extra\":{\"flat\":false,\"properties\":[],\"retrieve_children\":false,\"user_properties\":false}}]"},
+			"{\"extra\":{\"flat\":false,\"properties\":[\"createtxg\"],\"retrieve_children\":false,\"user_properties\":false}}]"},
 		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test4@readonly\",\"name\":\"dozer/testing/test4@readonly\"}],\"id\":2}"}, // response
 		"             name             \n" + // table
 		"------------------------------\n" +
@@ -120,7 +120,7 @@ func TestSnapshotListTwoParameters(t *testing.T) {
 		map[string]interface{}{},
 		[]string{"dozer/testing/test4@readonly","dozer/testing/test5@readonly"},
 		[]string{"[[[\"name\",\"in\",[\"dozer/testing/test4@readonly\",\"dozer/testing/test5@readonly\"]]],"+ // expected
-			"{\"extra\":{\"flat\":false,\"properties\":[],\"retrieve_children\":false,\"user_properties\":false}}]"},
+			"{\"extra\":{\"flat\":false,\"properties\":[\"createtxg\"],\"retrieve_children\":false,\"user_properties\":false}}]"},
 		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test4@readonly\",\"name\":\"dozer/testing/test4@readonly\"},"+ //response
 			"{\"id\":\"dozer/testing/test5@readonly\",\"name\":\"dozer/testing/test5@readonly\"}],\"id\":2}"},
 		"             name             \n" + // table
@@ -138,7 +138,7 @@ func TestSnapshotListDataset(t *testing.T) {
 		map[string]interface{}{},
 		[]string{"dozer/testing/test4"},
 		[]string{"[[[\"dataset\",\"in\",[\"dozer/testing/test4\"]]],{\"extra\":{\"flat\":false,"+ // expected
-			"\"properties\":[],\"retrieve_children\":false,\"user_properties\":false}}]"},
+			"\"properties\":[\"createtxg\"],\"retrieve_children\":false,\"user_properties\":false}}]"},
 		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test4@readonly\",\"name\":\"dozer/testing/test4@readonly\"}],\"id\":2}"}, // response
 		"             name             \n" + // table
 		"------------------------------\n" +
@@ -154,7 +154,7 @@ func TestSnapshotListSnapshot(t *testing.T) {
 		map[string]interface{}{},
 		[]string{"@readonly"},
 		[]string{"[[[\"snapshot_name\",\"in\",[\"readonly\"]]],{\"extra\":{\"flat\":false,"+ // expected
-			"\"properties\":[],\"retrieve_children\":false,\"user_properties\":false}}]"},
+			"\"properties\":[\"createtxg\"],\"retrieve_children\":false,\"user_properties\":false}}]"},
 		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test4@readonly\",\"name\":\"dozer/testing/test4@readonly\"},"+ //response
 			"{\"id\":\"dozer/testing/test5@readonly\",\"name\":\"dozer/testing/test5@readonly\"}],\"id\":2}"},
 		"             name             \n" + // table
@@ -172,12 +172,32 @@ func TestSnapshotListRecursive(t *testing.T) {
 		map[string]interface{}{"recursive":true},
 		[]string{"dozer/testing"},
 		[]string{"[[[\"OR\",[[\"dataset\",\"=\",\"dozer/testing\"],[\"dataset\",\"^\",\"dozer/testing/\"]]]],"+ // expected
-			"{\"extra\":{\"flat\":false,\"properties\":[],\"retrieve_children\":true,\"user_properties\":false}}]"},
+			"{\"extra\":{\"flat\":false,\"properties\":[\"createtxg\"],\"retrieve_children\":true,\"user_properties\":false}}]"},
 		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test4@readonly\",\"name\":\"dozer/testing/test4@readonly\"},"+ //response
 			"{\"id\":\"dozer/testing/test5@readonly\",\"name\":\"dozer/testing/test5@readonly\"}],\"id\":2}"},
 		"             name             \n" + // table
 		"------------------------------\n" +
 		" dozer/testing/test4@readonly \n" +
+		" dozer/testing/test5@readonly \n",
+	))
+}
+
+func TestSnapshotListOrder(t *testing.T) {
+	FailIf(t, DoTest(
+		t,
+		snapshotListCmd,
+		listSnapshot,
+		map[string]interface{}{},
+		[]string{},
+		[]string{"[[],{\"extra\":{\"flat\":false,"+ // expected
+			"\"properties\":[\"createtxg\"],\"retrieve_children\":true,\"user_properties\":false}}]"},
+		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test5@readonly\",\"name\":\"dozer/testing/test5@readonly\",\"createtxg\":1001},"+ //response
+			"{\"id\":\"dozer/testing/test4@snap1\",\"name\":\"dozer/testing/test4@snap1\",\"createtxg\":1003},"+
+			"{\"id\":\"dozer/testing/test4@snap2\",\"name\":\"dozer/testing/test4@snap2\",\"createtxg\":1002}],\"id\":2}"},
+		"             name             \n" + // table
+		"------------------------------\n" +
+		" dozer/testing/test4@snap2    \n" +
+		" dozer/testing/test4@snap1    \n" +
 		" dozer/testing/test5@readonly \n",
 	))
 }
@@ -190,7 +210,7 @@ func TestSnapshotListWithProperties(t *testing.T) {
 		map[string]interface{}{"no-headers":true,"parsable":true,"output":"name,clones"},
 		[]string{"dozer/testing/test4@readonly"},
 		[]string{"[[[\"name\",\"in\",[\"dozer/testing/test4@readonly\"]]],{\"extra\":{\"flat\":false,"+
-			"\"properties\":[\"name\",\"clones\"],\"retrieve_children\":false,\"user_properties\":false}}]"},
+			"\"properties\":[\"name\",\"clones\",\"createtxg\"],\"retrieve_children\":false,\"user_properties\":false}}]"},
 		[]string{"{\"jsonrpc\":\"2.0\",\"result\":[{\"id\":\"dozer/testing/test4@readonly\",\"name\":\"dozer/testing/test4@readonly\","+
 			"\"properties\":{\"clones\":{\"rawvalue\":\"dozer/testing/test\",\"value\":\"dozer/testing/test\",\"parsed\":\"dozer/testing/test\"}}}],\"id\":2}"},
 		"dozer/testing/test4@readonly\tdozer/testing/test\n",

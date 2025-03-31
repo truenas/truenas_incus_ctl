@@ -188,7 +188,7 @@ func AddFlagsEnum(enumMap *map[string][]string, flagName string, newEnum []strin
 
 func WrapCommandFunc(cmdFunc func(*cobra.Command,core.Session,[]string)error) func(*cobra.Command,[]string)error {
 	return func(cmd *cobra.Command, args []string) error {
-		api := ValidateAndLogin()
+		api := InitializeApiClient()
 		if api == nil {
 			return nil
 		}
