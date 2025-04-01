@@ -5,7 +5,7 @@ import (
 	"net"
 	"net/url"
 	"strconv"
-	//"strings"
+	"strings"
 	"encoding/json"
 	"truenas/truenas_incus_ctl/core"
 
@@ -359,13 +359,13 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	fmt.Println("activateIscsi:", params)
-	err = RunIscsiAdminTool(params)
+	DebugString("activateIscsi: " + strings.Join(params, " "))
+	out, err := RunIscsiAdminTool(params)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("successfully ran iscsiadm")
+	fmt.Print(out)
 	return nil
 }
 

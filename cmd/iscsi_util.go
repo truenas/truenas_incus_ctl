@@ -6,7 +6,7 @@ import (
 	"fmt"
 	//"strconv"
 	"strings"
-	//"truenas/truenas_incus_ctl/core"
+	"truenas/truenas_incus_ctl/core"
 
 	//"github.com/spf13/cobra"
 )
@@ -59,6 +59,6 @@ func MaybeLaunchIscsiDaemon() error {
 	return nil
 }
 
-func RunIscsiAdminTool(args []string) error {
-	return exec.Command("iscsiadm", args...).Run()
+func RunIscsiAdminTool(args []string) (string, error) {
+	return core.RunCommand("iscsiadm", args...)
 }

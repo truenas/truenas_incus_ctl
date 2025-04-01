@@ -1,10 +1,12 @@
 package core
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"slices"
@@ -299,6 +301,37 @@ func GetJobNumberFromObject(responseJson interface{}) (int, error) {
 	} else {
 		return -1, errors.New("response was not a json object")
 	}
+}
+
+func RunCommandRaw(prog string, args ...string) (string, string, error) {
+	var outBuf bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd := exec.Command(prog, args...)
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+	return outBuf.String(), errBuf.String(), err
+}
+
+func RunCommand(prog string, args ...string) (string, error) {
+	out, warn, err := RunCommandRaw(prog, args...)
+	var errMsg strings.Builder
+	isError := false
+	if warn != "" {
+		errMsg.WriteString(warn)
+		if warn[len(warn)-1] != '\n' {
+			errMsg.WriteString("\n")
+		}
+		isError = true
+	}
+	if err != nil {
+		errMsg.WriteString(err.Error())
+		isError = true
+	}
+	if isError {
+		return "", errors.New(errMsg.String())
+	}
+	return out, nil
 }
 
 func FlushString(str string) {
