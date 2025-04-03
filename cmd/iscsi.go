@@ -81,7 +81,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	toEnsure := make([]string, 0)
 	iscsiToVolumeMap := make(map[string]string)
 	for _, vol := range args {
-		iscsiName := "incus:" + MakeIscsiTargetNameFromVolumePath(vol)
+		iscsiName := MakeIscsiTargetNameFromVolumePath(vol)
 		iscsiToVolumeMap[iscsiName] = vol
 		toEnsure = append(toEnsure, iscsiName)
 	}
@@ -102,7 +102,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		toCreateMap[t] = true
 	}
 
-	missingInitiators := make(map[string]bool)
+	//missingInitiators := make(map[string]bool)
 	targets := make(map[string]typeIscsiTargetParams)
 	shouldFindPortal := false
 
@@ -175,11 +175,11 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return nil
 	}
 
+	emptyQueryParams := []interface{} {make([]interface{}, 0), make(map[string]interface{})}
+
 	defaultPortal := -1
 	if shouldFindPortal {
-		portalParams := []interface{} {make([]interface{}, 0), make(map[string]interface{})}
-		DebugJson(portalParams)
-		out, err := core.ApiCall(api, "iscsi.portal.query", 10, portalParams)
+		out, err := core.ApiCall(api, "iscsi.portal.query", 10, emptyQueryParams)
 		if err != nil {
 			return err
 		}
@@ -206,88 +206,11 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
+	/*
 	if len(missingInitiators) > 0 {
-		queryList := make([]string, 0)
-		for name, _ := range missingInitiators {
-			queryList = append(queryList, name)
-		}
-		responseQuery, err := QueryApi(
-			api,
-			"iscsi.initiator",
-			queryList,
-			core.StringRepeated("comment", len(queryList)),
-			nil,
-			extras,
-		)
-		if err != nil {
-			return err
-		}
-
-		initiatorIds := make(map[string]int)
-		for _, r := range responseQuery.resultsMap {
-			name, err := AddIscsiInitiator(initiatorIds, r)
-			if err != nil {
-				return err
-			}
-			delete(missingInitiators, name)
-		}
-
-		initiatorsToCreate := make([]string, 0)
-		for name, _ := range missingInitiators {
-			initiatorsToCreate = append(initiatorsToCreate, name)
-		}
-
-		if len(initiatorsToCreate) > 0 {
-			paramsInitiator := map[string]interface{} {
-				"initiators": make([]interface{}, 0),
-				"comment": initiatorsToCreate[0],
-			}
-			objRemapInitiator := map[string][]interface{}{
-				"comment": core.ToAnyArray(initiatorsToCreate),
-			}
-			out, err := MaybeBulkApiCall(
-				api,
-				"iscsi.initiator.create",
-				10,
-				[]interface{}{paramsInitiator},
-				objRemapInitiator,
-				true,
-			)
-
-			var responseCreate map[string]interface{}
-			var results []interface{}
-			if err := json.Unmarshal(out, &responseCreate); err != nil {
-				return err
-			}
-
-			var errors []interface{}
-			results, errors = core.GetResultsAndErrorsFromApiResponse(responseCreate)
-			if len(errors) > 0 {
-				return fmt.Errorf("iscsi.initiator.create errors:\n%v", errors)
-			}
-			for _, r := range results {
-				if obj, ok := r.(map[string]interface{}); ok {
-					_, err = AddIscsiInitiator(initiatorIds, obj)
-					if err != nil {
-						return err
-					}
-				}
-			}
-		}
-
-		for name, _ := range targets {
-			if targets[name].initiatorId == -1 {
-				if id, exists := initiatorIds[name]; exists {
-					// Go doesn't let you modfiy hashmap entries. Copy out, small change, copy in.
-					t := targets[name]
-					t.initiatorId = id
-					targets[name] = t
-				} else {
-					return fmt.Errorf("Could not find target \"%s\" in initiator groups", name)
-				}
-			}
-		}
+		//...
 	}
+	*/
 
 	targetCreates := make([]interface{}, 0)
 	targetUpdates := make([]interface{}, 0)
@@ -325,20 +248,116 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
+	jobIdUpdate := int64(-1)
+	jobIdCreate := int64(-1)
+	var rawResultsTargetUpdate json.RawMessage
+	var rawResultsTargetCreate json.RawMessage
+
 	if len(targetUpdates) > 0 {
-		out, err := MaybeBulkApiCallArray(api, "iscsi.target.update", 10, targetUpdates, false)
+		rawResultsTargetUpdate, jobIdUpdate, err = MaybeBulkApiCallArray(api, "iscsi.target.update", 10, targetUpdates, false)
 		if err != nil {
 			return err
 		}
-		DebugString("iscsi.target.update: " + string(out))
+	}
+	if len(targetCreates) > 0 {
+		rawResultsTargetCreate, jobIdCreate, err = MaybeBulkApiCallArray(api, "iscsi.target.create", 10, targetCreates, false)
+		if err != nil {
+			return err
+		}
 	}
 
-	if len(targetCreates) > 0 {
-		out, err := MaybeBulkApiCallArray(api, "iscsi.target.create", 10, targetCreates, false)
+	if jobIdUpdate >= 0 {
+		rawResultsTargetUpdate, err = api.WaitForJob(jobIdUpdate)
 		if err != nil {
 			return err
 		}
-		DebugString("iscsi.target.create: " + string(out))
+	}
+	if jobIdCreate >= 0 {
+		rawResultsTargetCreate, err = api.WaitForJob(jobIdCreate)
+		if err != nil {
+			return err
+		}
+	}
+
+	resultsTargetUpdate, errorsTargetUpdate := core.GetResultsAndErrorsFromApiResponse(rawResultsTargetUpdate)
+	resultsTargetCreate, errorsTargetCreate := core.GetResultsAndErrorsFromApiResponse(rawResultsTargetCreate)
+
+	extentList := make([]string, len(args))
+	for i, vol := range extentList {
+		extentList[i] = "zvol/" + vol
+	}
+
+	responseExtentQuery, err := QueryApi(
+		api,
+		"iscsi.extent",
+		extentList,
+		core.StringRepeated("disk", len(extentList)),
+		nil,
+		extras,
+	)
+	if err != nil {
+		return err
+	}
+
+	extentsByDisk := GetMapFromQueryResponseKeyedOn(responseExtentQuery, "disk")
+
+	extentsCreate := make([]string, 0)
+	extentsIqnCreate := make([]string, 0)
+	for _, vol := range args {
+		if extent, exists := extentsByDisk["zvol/" + vol]; !exists {
+			extentsCreate = append(extentsCreate, "zvol/" + vol)
+			extentsIqnCreate = append(extentsIqnCreate, MakeIscsiTargetNameFromVolumePath(vol))
+		}
+	}
+
+	if len(extentsCreate) > 0 {
+		params := []interface{} {
+			map[string]interface{} {
+				"name": extentsIqnCreate[0],
+				"disk": extentsCreate[0],
+				"path": extentsCreate[0],
+			}
+		}
+		objRemap := map[string][]interface{} {
+			"name": core.ToAnyArray(extentsIqnCreate),
+			"disk": core.ToAnyArray(extentsCreate),
+			"path": core.ToAnyArray(extentsCreate),
+		}
+		out, _, err := MaybeBulkApiCall(
+			api,
+			"iscsi.extent.create",
+			10,
+			params,
+			objRemap,
+			true,
+		)
+
+		resultsExtentCreate, errorsExtentCreate := core.GetResultsAndErrorsFromApiResponse(out)
+		for _, extent := range resultsExtentCreate {
+			extentsByDisk[extent["disk"]] = extent
+		}
+	}
+
+	responseTeQuery, err := QueryApi(api, "iscsi.targetextent", nil, nil, nil, extras)
+	if err != nil {
+		return err
+	}
+	teList := GetListFromQueryResponse(&responseTeQuery)
+
+	teCreateList := make([]string, 0)
+	for _, te := range teList {
+		targetId := te["target"]
+		for _, t := range resultsTargetUpdate {
+			
+		}
+		for _, t := range resultsTargetCreate {
+			
+		}
+
+		extentId := te["extent"]
+		for _, e := range extentsByDisk {
+			
+		}
 	}
 
 	return nil
@@ -356,7 +375,7 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	iscsiNames := make([]string, 0)
 	iscsiToVolumeMap := make(map[string]string)
 	for _, vol := range args {
-		iName := "incus:" + MakeIscsiTargetNameFromVolumePath(vol)
+		iName := MakeIscsiTargetNameFromVolumePath(vol)
 		iscsiToVolumeMap[iName] = vol
 		iscsiNames = append(iscsiNames, iName)
 	}
@@ -466,7 +485,7 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 	iscsiNames := make([]string, 0)
 	iscsiToVolumeMap := make(map[string]string)
 	for _, vol := range args {
-		iName := "incus:" + MakeIscsiTargetNameFromVolumePath(vol)
+		iName := MakeIscsiTargetNameFromVolumePath(vol)
 		iscsiToVolumeMap[iName] = vol
 		iscsiNames = append(iscsiNames, iName)
 	}

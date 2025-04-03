@@ -12,7 +12,7 @@ import (
 )
 
 func MakeIscsiTargetNameFromVolumePath(vol string) string {
-	return strings.ReplaceAll(
+	return "incus:" + strings.ReplaceAll(
 		strings.ReplaceAll(
 			strings.ReplaceAll(
 				strings.ReplaceAll(strings.ToLower(vol), ":", "-"),

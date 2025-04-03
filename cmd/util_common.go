@@ -204,6 +204,25 @@ func GetListFromQueryResponse(response *typeQueryResponse) []map[string]interfac
 	return resultsList
 }
 
+func GetMapFromQueryResponseKeyedOn(response *typeQueryResponse, key string) map[string]map[string]interface{} {
+	outMap := make(map[string]map[string]interface{})
+	anyAdded := false
+	for id, data := response.resultsMap {
+		if value, exists := data[key]; exists {
+			if valueStr, ok := value.(string); ok {
+				outMap[valueStr] = data
+			} else {
+				outMap[fmt.Sprint(value)] = data
+			}
+			anyAdded = true
+		}
+	}
+	if !anyAdded {
+		return nil
+	}
+	return outMap
+}
+
 func makeQueryFilter(entries, entryTypes []string, params typeQueryParams) ([]interface{}, error) {
 	for i, e := range entries {
 		if e == "" {
@@ -549,7 +568,7 @@ func GetTableFormat(properties map[string]string) (string, error) {
 	return properties["format"], nil
 }
 
-func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, params interface{}, remapList map[string][]interface{}, shouldWaitNow bool) (json.RawMessage, error) {
+func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, params interface{}, remapList map[string][]interface{}, shouldWaitNow bool) (json.RawMessage, int64, error) {
 	allParams := make([][]interface{}, 0)
 	for key, valueList := range remapList {
 		for i, value := range valueList {
@@ -588,20 +607,22 @@ func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, p
 	DebugJson(methodAndParams)
 	jobId, err := core.ApiCallAsync(api, "core.bulk", methodAndParams, shouldWaitNow)
 	if !shouldWaitNow || err != nil || jobId < 0 {
-		return nil, err
+		return nil, jobId, err
 	}
 
-	return api.WaitForJob(jobId)
+	out, err := api.WaitForJob(jobId)
+	return out, jobId, err
 }
 
-func MaybeBulkApiCallArray(api core.Session, endpoint string, timeoutSeconds int64, paramsArray []interface{}, shouldWaitNow bool) (json.RawMessage, error) {
+func MaybeBulkApiCallArray(api core.Session, endpoint string, timeoutSeconds int64, paramsArray []interface{}, shouldWaitNow bool) (json.RawMessage, int64, error) {
 	nCalls := len(paramsArray)
 	if nCalls == 0 {
-		return nil, errors.New("MaybeBulkApiCallArray: Nothing to do")
+		return nil, -1, errors.New("MaybeBulkApiCallArray: Nothing to do")
 	}
 	if nCalls == 1 {
 		DebugJson(paramsArray[0])
-		return core.ApiCall(api, endpoint, timeoutSeconds, paramsArray[0])
+		out, err := core.ApiCall(api, endpoint, timeoutSeconds, paramsArray[0])
+		return out, -1, err
 	}
 
 	methodAndParams := make([]interface{}, 0)
@@ -611,8 +632,9 @@ func MaybeBulkApiCallArray(api core.Session, endpoint string, timeoutSeconds int
 	DebugJson(methodAndParams)
 	jobId, err := core.ApiCallAsync(api, "core.bulk", methodAndParams, shouldWaitNow)
 	if !shouldWaitNow || err != nil || jobId < 0 {
-		return nil, err
+		return nil, jobId, err
 	}
 
-	return api.WaitForJob(jobId)
+	out, err := api.WaitForJob(jobId)
+	return out, jobId, err
 }
