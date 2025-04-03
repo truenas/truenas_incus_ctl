@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -56,8 +57,11 @@ func init() {
 
 	iscsiActivateCmd.Flags().IntP("port", "p", 3260, "iSCSI portal port")
 
+	iscsiDeactivateCmd.Flags().IntP("port", "p", 3260, "iSCSI portal port")
+
 	iscsiCmd.AddCommand(iscsiCreateCmd)
 	iscsiCmd.AddCommand(iscsiActivateCmd)
+	iscsiCmd.AddCommand(iscsiDeactivateCmd)
 	iscsiCmd.AddCommand(iscsiDeleteCmd)
 
 	shareCmd.AddCommand(iscsiCmd)
@@ -432,7 +436,8 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	for _, e := range diskEntries {
 		name := e.Name()
 		for _, t := range targets {
-			if strings.Contains(name, t.iqn + t.target) {
+			fmt.Println(name)
+			if strings.Contains(name, t.iqn + ":" + t.target) {
 				fmt.Println("/dev/disk/by-path/" + name)
 				break
 			}
@@ -443,7 +448,82 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 }
 
 func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
-	fmt.Println("deactivateIscsi")
+	options, _ := GetCobraFlags(cmd, nil)
+
+	iscsiNames := make([]string, 0)
+	iscsiToVolumeMap := make(map[string]string)
+	for _, vol := range args {
+		iName := "incus:" + MakeIscsiTargetNameFromVolumePath(vol)
+		iscsiToVolumeMap[iName] = vol
+		iscsiNames = append(iscsiNames, iName)
+	}
+
+	cmd.SilenceUsage = true
+
+	if err := CheckIscsiAdminToolExists(); err != nil {
+		return err
+	}
+
+	hostUrl, err := url.Parse(api.GetHostUrl())
+	if err != nil {
+		return err
+	}
+
+	ipAddrs, err := net.LookupIP(hostUrl.Hostname())
+	if err != nil {
+		return err
+	}
+
+	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
+
+	diskEntries, err := os.ReadDir("/dev/disk/by-path")
+	if err != nil {
+		return err
+	}
+	for _, e := range diskEntries {
+		name := e.Name()
+		if !strings.Contains(name, ipPortalAddr) {
+			continue
+		}
+		iqnFindPos := strings.Index(name, "-iscsi-iqn.")
+		if iqnFindPos == -1 {
+			continue
+		}
+		iqnStart := iqnFindPos + 7
+		iqnSepPos := strings.Index(name[iqnStart:], ":")
+		if iqnSepPos == -1 {
+			continue
+		}
+		iqn := name[iqnStart:iqnStart+iqnSepPos]
+
+		for _, iName := range iscsiNames {
+			if strings.Contains(name, iName) {
+				logoutParams := []string{
+					"--mode",
+					"node",
+					"--targetname",
+					iqn + ":" + iName,
+					"--portal",
+					ipPortalAddr,
+					"--logout",
+				}
+				DebugString(strings.Join(logoutParams, " "))
+				_, err := RunIscsiAdminTool(logoutParams)
+				if err != nil {
+					return err
+				}
+
+				// remove this entry from the map, so that it will contain all iSCSI volumes that we tried to log out but failed to
+				delete(iscsiToVolumeMap, iName)
+				break
+			}
+		}
+	}
+
+	for _, iName := range iscsiToVolumeMap {
+		fmt.Println("Error: " + iName + " was not found")
+	}
+
 	return nil
 }
 
