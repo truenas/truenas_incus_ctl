@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"time"
 	"strconv"
 	"strings"
 	"encoding/json"
@@ -429,6 +430,18 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
+	/*
+	RunIscsiAdminTool([]string{
+		"--mode",
+		"session",
+		"-r",
+		"1",
+		"-P3",
+	})
+	*/
+
+	time.Sleep(time.Duration(4) * time.Second)
+
 	diskEntries, err := os.ReadDir("/dev/disk/by-path")
 	if err != nil {
 		return err
@@ -436,7 +449,7 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	for _, e := range diskEntries {
 		name := e.Name()
 		for _, t := range targets {
-			fmt.Println(name)
+			//fmt.Println(name)
 			if strings.Contains(name, t.iqn + ":" + t.target) {
 				fmt.Println("/dev/disk/by-path/" + name)
 				break
