@@ -125,16 +125,16 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 				}
 
 				portal := -1
-				initiator := -1
+				initiator := 1 // -1
 				if portalExists {
 					portal = 0
 				} else {
 					shouldFindPortal = true
 				}
 				if initiatorExists {
-					initiator = 0
+					initiator = 1 // 0
 				} else {
-					missingInitiators[targetName] = true
+					//missingInitiators[targetName] = true
 				}
 
 				targets[targetName] = typeIscsiTargetParams{
@@ -147,26 +147,26 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 		if !anyGroups {
 			shouldFindPortal = true
-			missingInitiators[targetName] = true
+			//missingInitiators[targetName] = true
 
 			targets[targetName] = typeIscsiTargetParams{
 				verb: "update",
 				id: targetId,
 				portalId: -1,
-				initiatorId: -1,
+				initiatorId: 1, // -1
 			}
 		}
 	}
 
 	for targetName, _ := range toCreateMap {
 		shouldFindPortal = true
-		missingInitiators[targetName] = true
+		//missingInitiators[targetName] = true
 
 		targets[targetName] = typeIscsiTargetParams{
 			verb: "create",
 			id: -1,
 			portalId: -1,
-			initiatorId: -1,
+			initiatorId: 1, // -1
 		}
 	}
 
