@@ -1,8 +1,8 @@
 package cmd
 
 import (
+	"os"
 	"fmt"
-	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -35,6 +35,12 @@ var iscsiActivateCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 }
 
+var iscsiDeactivateCmd = &cobra.Command{
+	Use:     "deactivate",
+	Short:   "Activate description",
+	Args:  cobra.MinimumNArgs(1),
+}
+
 var iscsiDeleteCmd = &cobra.Command{
 	Use:     "delete",
 	Short:   "Delete description",
@@ -45,6 +51,7 @@ var iscsiDeleteCmd = &cobra.Command{
 func init() {
 	iscsiCreateCmd.RunE = WrapCommandFunc(createIscsi)
 	iscsiActivateCmd.RunE = WrapCommandFunc(activateIscsi)
+	iscsiDeactivateCmd.RunE = WrapCommandFunc(deactivateIscsi)
 	iscsiDeleteCmd.RunE = WrapCommandFunc(deleteIscsi)
 
 	iscsiActivateCmd.Flags().IntP("port", "p", 3260, "iSCSI portal port")
@@ -318,7 +325,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("iscsi.target.update:", string(out))
+		DebugString("iscsi.target.update: " + string(out))
 	}
 
 	if len(targetCreates) > 0 {
@@ -326,16 +333,31 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println("iscsi.target.create:", string(out))
+		DebugString("iscsi.target.create: " + string(out))
 	}
 
 	return nil
 }
 
+type typeIscsiLoginSpec struct {
+	remoteIp string
+	iqn string
+	target string
+}
+
 func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	options, _ := GetCobraFlags(cmd, nil)
 
+	iscsiNames := make([]string, 0)
+	iscsiToVolumeMap := make(map[string]string)
+	for _, vol := range args {
+		iName := "incus:" + MakeIscsiTargetNameFromVolumePath(vol)
+		iscsiToVolumeMap[iName] = vol
+		iscsiNames = append(iscsiNames, iName)
+	}
+
 	cmd.SilenceUsage = true
+
 	if err := CheckIscsiAdminToolExists(); err != nil {
 		return err
 	}
@@ -345,12 +367,7 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	ipAddrs, err := net.LookupIP(hostUrl.Hostname())
-	if err != nil {
-		return err
-	}
-
-	portalAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
+	portalAddr := hostUrl.Hostname() + ":" + options.allFlags["port"]
 
 	params := []string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"}
 
@@ -365,7 +382,68 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	fmt.Print(out)
+	targets := make([]typeIscsiLoginSpec, 0)
+	lines := strings.Split(out, "\n")
+	for _, l := range lines {
+		spacePos := strings.Index(l, " ")
+		if spacePos == -1 {
+			continue
+		}
+		commaPos := strings.Index(l, ",")
+		if commaPos == -1 || commaPos > spacePos {
+			commaPos = spacePos
+		}
+		iqnSepPos := strings.Index(l[commaPos:], ":")
+		if iqnSepPos == -1 {
+			continue
+		}
+
+		targetName := l[commaPos+iqnSepPos+1:]
+		if _, exists := iscsiToVolumeMap[targetName]; exists {
+			t := typeIscsiLoginSpec{}
+			t.remoteIp = l[0:commaPos]
+			t.iqn = l[spacePos+1:commaPos+iqnSepPos]
+			t.target = targetName
+			targets = append(targets, t)
+		}
+	}
+
+	for _, t := range targets {
+		loginParams := []string{
+			"--mode",
+			"node",
+			"--targetname",
+			t.iqn + ":" + t.target,
+			"--portal",
+			t.remoteIp,
+			"--login",
+		}
+		DebugString(strings.Join(loginParams, " "))
+		_, err := RunIscsiAdminTool(loginParams)
+		if err != nil {
+			return err
+		}
+	}
+
+	diskEntries, err := os.ReadDir("/dev/disk/by-path")
+	if err != nil {
+		return err
+	}
+	for _, e := range diskEntries {
+		name := e.Name()
+		for _, t := range targets {
+			if strings.Contains(name, t.iqn + t.target) {
+				fmt.Println("/dev/disk/by-path/" + name)
+				break
+			}
+		}
+	}
+
+	return nil
+}
+
+func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	fmt.Println("deactivateIscsi")
 	return nil
 }
 
