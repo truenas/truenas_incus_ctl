@@ -207,7 +207,7 @@ func GetListFromQueryResponse(response *typeQueryResponse) []map[string]interfac
 func GetMapFromQueryResponseKeyedOn(response *typeQueryResponse, key string) map[string]map[string]interface{} {
 	outMap := make(map[string]map[string]interface{})
 	anyAdded := false
-	for id, data := response.resultsMap {
+	for _, data := range response.resultsMap {
 		if value, exists := data[key]; exists {
 			if valueStr, ok := value.(string); ok {
 				outMap[valueStr] = data
@@ -594,10 +594,11 @@ func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, p
 
 	nParams := len(allParams)
 	if nParams == 0 {
-		return nil, errors.New("MaybeBulkApiCall: Nothing to do")
+		return nil, -1, errors.New("MaybeBulkApiCall: Nothing to do")
 	} else if nParams == 1 {
 		DebugJson(allParams[0])
-		return core.ApiCall(api, endpoint, timeoutSeconds, allParams[0])
+		out, err := core.ApiCall(api, endpoint, timeoutSeconds, allParams[0])
+		return out, -1, err
 	}
 
 	methodAndParams := make([]interface{}, 0)

@@ -105,6 +105,14 @@ func DeepCopy(input interface{}) interface{} {
 	return output
 }
 
+func GetResultsAndErrorsFromApiResponseRaw(response json.RawMessage) ([]interface{}, []interface{}) {
+	var unmarshalled map[string]interface{}
+	if err := json.Unmarshal(response, &unmarshalled); err != nil {
+		return nil, nil
+	}
+	return GetResultsAndErrorsFromApiResponse(unmarshalled)
+}
+
 func GetResultsAndErrorsFromApiResponse(response map[string]interface{}) ([]interface{}, []interface{}) {
 	if response == nil {
 		return nil, nil

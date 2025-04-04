@@ -279,8 +279,8 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	resultsTargetUpdate, errorsTargetUpdate := core.GetResultsAndErrorsFromApiResponse(rawResultsTargetUpdate)
-	resultsTargetCreate, errorsTargetCreate := core.GetResultsAndErrorsFromApiResponse(rawResultsTargetCreate)
+	resultsTargetUpdate, _ := core.GetResultsAndErrorsFromApiResponseRaw(rawResultsTargetUpdate)
+	resultsTargetCreate, _ := core.GetResultsAndErrorsFromApiResponseRaw(rawResultsTargetCreate)
 
 	extentList := make([]string, len(args))
 	for i, vol := range extentList {
@@ -299,12 +299,12 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	extentsByDisk := GetMapFromQueryResponseKeyedOn(responseExtentQuery, "disk")
+	extentsByDisk := GetMapFromQueryResponseKeyedOn(&responseExtentQuery, "disk")
 
 	extentsCreate := make([]string, 0)
 	extentsIqnCreate := make([]string, 0)
 	for _, vol := range args {
-		if extent, exists := extentsByDisk["zvol/" + vol]; !exists {
+		if _, exists := extentsByDisk["zvol/" + vol]; !exists {
 			extentsCreate = append(extentsCreate, "zvol/" + vol)
 			extentsIqnCreate = append(extentsIqnCreate, MakeIscsiTargetNameFromVolumePath(vol))
 		}
@@ -316,7 +316,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 				"name": extentsIqnCreate[0],
 				"disk": extentsCreate[0],
 				"path": extentsCreate[0],
-			}
+			},
 		}
 		objRemap := map[string][]interface{} {
 			"name": core.ToAnyArray(extentsIqnCreate),
@@ -331,10 +331,15 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			objRemap,
 			true,
 		)
+		if err != nil {
+			return err
+		}
 
-		resultsExtentCreate, errorsExtentCreate := core.GetResultsAndErrorsFromApiResponse(out)
+		resultsExtentCreate, _ := core.GetResultsAndErrorsFromApiResponseRaw(out)
 		for _, extent := range resultsExtentCreate {
-			extentsByDisk[extent["disk"]] = extent
+			if extentMap, ok := extent.(map[string]interface{}); ok {
+				extentsByDisk[fmt.Sprint(extentMap["disk"])] = extentMap
+			}
 		}
 	}
 
@@ -343,7 +348,12 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 	teList := GetListFromQueryResponse(&responseTeQuery)
+	teList = teList
 
+	resultsTargetUpdate = resultsTargetUpdate
+	resultsTargetCreate = resultsTargetCreate
+
+	/*
 	teCreateList := make([]string, 0)
 	for _, te := range teList {
 		targetId := te["target"]
@@ -359,6 +369,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			
 		}
 	}
+	*/
 
 	return nil
 }
