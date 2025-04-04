@@ -92,7 +92,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		shouldGetUserProps: false,
 		shouldRecurse:      false,
 	}
-	response, err := QueryApi(api, "iscsi.target", toEnsure, core.StringRepeated("name", len(toEnsure)), nil, extras)
+	responseTargetQuery, err := QueryApi(api, "iscsi.target", toEnsure, core.StringRepeated("name", len(toEnsure)), nil, extras)
 	if err != nil {
 		return err
 	}
@@ -106,7 +106,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	targets := make(map[string]typeIscsiTargetParams)
 	shouldFindPortal := false
 
-	for targetId, target := range response.resultsMap {
+	for targetId, target := range responseTargetQuery.resultsMap {
 		targetName, _ := target["name"].(string)
 		if targetName == "" {
 			return fmt.Errorf("Name could not be found in iSCSI target with ID %v", targetId)
@@ -279,8 +279,15 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	resultsTargetUpdate, _ := core.GetResultsAndErrorsFromApiResponseRaw(rawResultsTargetUpdate)
+	rawResultsTargetUpdate = rawResultsTargetUpdate
+
 	resultsTargetCreate, _ := core.GetResultsAndErrorsFromApiResponseRaw(rawResultsTargetCreate)
+	allTargets := GetListFromQueryResponse(&responseTargetQuery)
+	for _, t := range resultsTargetCreate {
+		if tMap, ok := t.(map[string]interface{}); ok {
+			allTargets = append(allTargets, tMap)
+		}
+	}
 
 	extentList := make([]string, len(args))
 	for i, vol := range extentList {
@@ -343,33 +350,37 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
+	teCreateMap := make(map[string]map[string]interface{})
+	for _, target := range allTargets {
+		vol, _ := target["alias"].(string)
+		if vol == "" {
+			continue
+		}
+		if extent, exists := extentsByDisk["zvol/" + vol]; exists {
+			key := fmt.Sprintf("%v-%v", target["id"], extent["id"])
+			teCreateMap[key] = map[string]interface{} {
+				"target": target["id"],
+				"lunid": 0,
+				"extent": extent["id"],
+			}
+		}
+	}
+
 	responseTeQuery, err := QueryApi(api, "iscsi.targetextent", nil, nil, nil, extras)
 	if err != nil {
 		return err
 	}
-	teList := GetListFromQueryResponse(&responseTeQuery)
-	teList = teList
-
-	resultsTargetUpdate = resultsTargetUpdate
-	resultsTargetCreate = resultsTargetCreate
-
-	/*
-	teCreateList := make([]string, 0)
-	for _, te := range teList {
-		targetId := te["target"]
-		for _, t := range resultsTargetUpdate {
-			
-		}
-		for _, t := range resultsTargetCreate {
-			
-		}
-
-		extentId := te["extent"]
-		for _, e := range extentsByDisk {
-			
-		}
+	for _, te := range responseTeQuery.resultsMap {
+		key := fmt.Sprintf("%v-%v", te["target"], te["extent"])
+		delete(teCreateMap, key)
 	}
-	*/
+
+	teCreateList := make([]interface{}, 0)
+	for _, te := range teCreateMap {
+		teCreateList = append(teCreateList, te)
+	}
+
+	MaybeBulkApiCallArray(api, "iscsi.targetextent.create", 10, teCreateList, false)
 
 	return nil
 }
