@@ -37,6 +37,12 @@ var iscsiActivateCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 }
 
+var iscsiLocateCmd = &cobra.Command{
+	Use:     "locate",
+	Short:   "Locate description",
+	Args:  cobra.MinimumNArgs(1),
+}
+
 var iscsiDeactivateCmd = &cobra.Command{
 	Use:     "deactivate",
 	Short:   "Activate description",
@@ -53,15 +59,17 @@ var iscsiDeleteCmd = &cobra.Command{
 func init() {
 	iscsiCreateCmd.RunE = WrapCommandFunc(createIscsi)
 	iscsiActivateCmd.RunE = WrapCommandFunc(activateIscsi)
+	iscsiLocateCmd.RunE = WrapCommandFunc(locateIscsi)
 	iscsiDeactivateCmd.RunE = WrapCommandFunc(deactivateIscsi)
 	iscsiDeleteCmd.RunE = WrapCommandFunc(deleteIscsi)
 
 	iscsiActivateCmd.Flags().IntP("port", "p", 3260, "iSCSI portal port")
-
+	iscsiLocateCmd.Flags().IntP("port", "p", 3260, "iSCSI portal port")
 	iscsiDeactivateCmd.Flags().IntP("port", "p", 3260, "iSCSI portal port")
 
 	iscsiCmd.AddCommand(iscsiCreateCmd)
 	iscsiCmd.AddCommand(iscsiActivateCmd)
+	iscsiCmd.AddCommand(iscsiLocateCmd)
 	iscsiCmd.AddCommand(iscsiDeactivateCmd)
 	iscsiCmd.AddCommand(iscsiDeleteCmd)
 
@@ -124,10 +132,10 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 					_, initiatorExists = elem["initiator"].(float64)
 				}
 
-				portal := -1
+				portal := 1 // -1
 				initiator := 1 // -1
 				if portalExists {
-					portal = 0
+					portal = 1 // 0
 				} else {
 					shouldFindPortal = true
 				}
@@ -152,7 +160,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			targets[targetName] = typeIscsiTargetParams{
 				verb: "update",
 				id: targetId,
-				portalId: -1,
+				portalId: 1, // -1
 				initiatorId: 1, // -1
 			}
 		}
@@ -165,7 +173,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		targets[targetName] = typeIscsiTargetParams{
 			verb: "create",
 			id: -1,
-			portalId: -1,
+			portalId: 1, // -1
 			initiatorId: 1, // -1
 		}
 	}
@@ -289,10 +297,19 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
+	DebugString("resultsTargetCreate")
+	DebugJson(resultsTargetCreate)
+
+	DebugString("allTargets")
+	DebugJson(allTargets)
+
 	extentList := make([]string, len(args))
-	for i, vol := range extentList {
+	for i, vol := range args {
 		extentList[i] = "zvol/" + vol
 	}
+
+	DebugString("extentList")
+	DebugString(strings.Join(extentList, " "))
 
 	responseExtentQuery, err := QueryApi(
 		api,
@@ -307,6 +324,8 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	extentsByDisk := GetMapFromQueryResponseKeyedOn(&responseExtentQuery, "disk")
+	DebugString("extentsByDisk")
+	DebugJson(extentsByDisk)
 
 	extentsCreate := make([]string, 0)
 	extentsIqnCreate := make([]string, 0)
@@ -316,6 +335,11 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			extentsIqnCreate = append(extentsIqnCreate, MakeIscsiTargetNameFromVolumePath(vol))
 		}
 	}
+
+	DebugString("extentsCreate")
+	DebugJson(extentsCreate)
+	DebugString("extentsIqnCreate")
+	DebugJson(extentsIqnCreate)
 
 	if len(extentsCreate) > 0 {
 		params := []interface{} {
@@ -358,6 +382,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 		if extent, exists := extentsByDisk["zvol/" + vol]; exists {
 			key := fmt.Sprintf("%v-%v", target["id"], extent["id"])
+			DebugString("key: " + key)
 			teCreateMap[key] = map[string]interface{} {
 				"target": target["id"],
 				"lunid": 0,
@@ -372,26 +397,31 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 	for _, te := range responseTeQuery.resultsMap {
 		key := fmt.Sprintf("%v-%v", te["target"], te["extent"])
+		DebugString("deleting key " + key)
 		delete(teCreateMap, key)
 	}
 
 	teCreateList := make([]interface{}, 0)
 	for _, te := range teCreateMap {
-		teCreateList = append(teCreateList, te)
+		teCreateList = append(teCreateList, []interface{}{te})
 	}
 
-	MaybeBulkApiCallArray(api, "iscsi.targetextent.create", 10, teCreateList, false)
+	DebugString("teCreateList")
+	DebugJson(teCreateList)
 
+	MaybeBulkApiCallArray(api, "iscsi.targetextent.create", 10, teCreateList, false)
 	return nil
 }
 
-type typeIscsiLoginSpec struct {
-	remoteIp string
-	iqn string
-	target string
+func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	return activateOrLocateIscsi(cmd, api, args, true)
 }
 
-func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	return activateOrLocateIscsi(cmd, api, args, false)
+}
+
+func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, shouldLogin bool) error {
 	options, _ := GetCobraFlags(cmd, nil)
 
 	iscsiNames := make([]string, 0)
@@ -422,7 +452,7 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	DebugString("activateIscsi: " + strings.Join(params, " "))
+	//DebugString("activateIscsi: " + strings.Join(params, " "))
 	out, err := RunIscsiAdminTool(params)
 	if err != nil {
 		return err
@@ -454,50 +484,38 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	for _, t := range targets {
-		loginParams := []string{
-			"--mode",
-			"node",
-			"--targetname",
-			t.iqn + ":" + t.target,
-			"--portal",
-			t.remoteIp,
-			"--login",
-		}
-		DebugString(strings.Join(loginParams, " "))
-		_, err := RunIscsiAdminTool(loginParams)
-		if err != nil {
-			return err
-		}
-	}
-
-	/*
-	RunIscsiAdminTool([]string{
-		"--mode",
-		"session",
-		"-r",
-		"1",
-		"-P3",
-	})
-	*/
-
-	time.Sleep(time.Duration(4) * time.Second)
-
-	diskEntries, err := os.ReadDir("/dev/disk/by-path")
-	if err != nil {
-		return err
-	}
-	for _, e := range diskEntries {
-		name := e.Name()
+	if shouldLogin {
 		for _, t := range targets {
-			//fmt.Println(name)
-			if strings.Contains(name, t.iqn + ":" + t.target) {
-				fmt.Println("/dev/disk/by-path/" + name)
-				break
+			loginParams := []string{
+				"--mode",
+				"node",
+				"--targetname",
+				t.iqn + ":" + t.target,
+				"--portal",
+				t.remoteIp,
+				"--login",
+			}
+			DebugString(strings.Join(loginParams, " "))
+			_, err := RunIscsiAdminTool(loginParams)
+			if err != nil {
+				return err
 			}
 		}
+
+		/*
+		RunIscsiAdminTool([]string{
+			"--mode",
+			"session",
+			"-r",
+			"1",
+			"-P3",
+		})
+		*/
+
+		time.Sleep(time.Duration(4) * time.Second)
 	}
 
+	fmt.Println(strings.Join(LocateIqnTargetsLocally(targets), "\n"))
 	return nil
 }
 

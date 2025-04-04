@@ -206,7 +206,6 @@ func GetListFromQueryResponse(response *typeQueryResponse) []map[string]interfac
 
 func GetMapFromQueryResponseKeyedOn(response *typeQueryResponse, key string) map[string]map[string]interface{} {
 	outMap := make(map[string]map[string]interface{})
-	anyAdded := false
 	for _, data := range response.resultsMap {
 		if value, exists := data[key]; exists {
 			if valueStr, ok := value.(string); ok {
@@ -214,11 +213,7 @@ func GetMapFromQueryResponseKeyedOn(response *typeQueryResponse, key string) map
 			} else {
 				outMap[fmt.Sprint(value)] = data
 			}
-			anyAdded = true
 		}
-	}
-	if !anyAdded {
-		return nil
 	}
 	return outMap
 }

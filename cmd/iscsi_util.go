@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"os"
 	"os/exec"
 	//"errors"
 	"fmt"
@@ -10,6 +11,12 @@ import (
 
 	//"github.com/spf13/cobra"
 )
+
+type typeIscsiLoginSpec struct {
+	remoteIp string
+	iqn string
+	target string
+}
 
 func MakeIscsiTargetNameFromVolumePath(vol string) string {
 	return "incus:" + strings.ReplaceAll(
@@ -40,6 +47,23 @@ func AddIscsiInitiator(initiators map[string]int, resultRow map[string]interface
 	}
 	initiators[name] = id
 	return name, nil
+}
+
+func LocateIqnTargetsLocally(targets []typeIscsiLoginSpec) []string {
+	paths := make([]string, 0)
+	diskEntries, err := os.ReadDir("/dev/disk/by-path")
+	if err != nil {
+		return paths
+	}
+	for _, e := range diskEntries {
+		name := e.Name()
+		for _, t := range targets {
+			if strings.Contains(name, t.iqn + ":" + t.target) {
+				paths = append(paths, "/dev/disk/by-path/" + name)
+			}
+		}
+	}
+	return paths
 }
 
 func CheckIscsiAdminToolExists() error {
