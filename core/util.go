@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"crypto/sha256"
 	"os"
 	"os/exec"
 	"strconv"
@@ -309,6 +310,26 @@ func GetJobNumberFromObject(responseJson interface{}) (int, error) {
 	} else {
 		return -1, errors.New("response was not a json object")
 	}
+}
+
+func MakeHashedUuid(input string) string {
+	return MakeHashedUuidRaw([]byte(input))
+}
+
+func MakeHashedUuidRaw(input []byte) string {
+	h := sha256.Sum256(input)
+	return fmt.Sprintf(
+		"%02x%02x%02x%02x-"+
+		"%02x%02x-"+
+		"%02x%02x-"+
+		"%02x%02x-"+
+		"%02x%02x%02x%02x%02x%02x",
+		h[0], h[1], h[2], h[3],
+		h[4], h[5],
+		h[6], h[7],
+		h[8], h[9],
+		h[10], h[11], h[12], h[13], h[14], h[15],
+	)
 }
 
 func RunCommandRaw(prog string, args ...string) (string, string, error) {

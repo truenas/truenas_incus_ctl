@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	//"errors"
 	"fmt"
+	"log"
 	//"strconv"
 	"strings"
 	"truenas/truenas_incus_ctl/core"
@@ -19,6 +20,18 @@ type typeIscsiLoginSpec struct {
 	target string
 }
 
+func GetIscsiTargetPrefixOrExit(options map[string]string) string {
+	prefix := options["target_prefix"]
+	if prefix == "" {
+		log.Fatal("Target prefix was not set")
+	}
+	const MAX_LENGTH = 27
+	if len(prefix) > MAX_LENGTH {
+		log.Fatal(fmt.Errorf("Target prefix exceeded maximum length of %d (was length %d)", MAX_LENGTH, len(prefix)))
+	}
+	return prefix
+}
+
 func MakeIscsiTargetNameFromVolumePath(prefix string, vol string) string {
 	return prefix + ":" + strings.ReplaceAll(
 		strings.ReplaceAll(
@@ -27,6 +40,13 @@ func MakeIscsiTargetNameFromVolumePath(prefix string, vol string) string {
 			".", "-"),
 		"_", "-"),
 	"/", ":")
+}
+
+func MakeIscsiTargetUuid(prefix, targetName string) string {
+	if targetName == "" {
+		return ""
+	}
+	return prefix + ":" + core.MakeHashedUuid(targetName)
 }
 
 func AddIscsiInitiator(initiators map[string]int, resultRow map[string]interface{}) (string, error) {

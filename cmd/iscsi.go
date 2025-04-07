@@ -54,14 +54,21 @@ var iscsiDeactivateCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 }
 
+var iscsiDeleteCmd = &cobra.Command{
+	Use:     "delete",
+	Short:   "Delete description",
+	Args:  cobra.MinimumNArgs(1),
+}
+
 func init() {
 	iscsiCreateCmd.RunE = WrapCommandFunc(createIscsi)
 	iscsiActivateCmd.RunE = WrapCommandFunc(activateIscsi)
 	iscsiListCmd.RunE = WrapCommandFunc(listIscsi)
 	iscsiLocateCmd.RunE = WrapCommandFunc(locateIscsi)
 	iscsiDeactivateCmd.RunE = WrapCommandFunc(deactivateIscsi)
+	iscsiDeleteCmd.RunE = WrapCommandFunc(deleteIscsi)
 
-	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiListCmd, iscsiLocateCmd, iscsiDeactivateCmd}
+	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiListCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "incus", "label to prefix the created target")
 		c.Flags().IntP("port", "p", 3260, "iSCSI portal port")
@@ -72,6 +79,7 @@ func init() {
 	iscsiCmd.AddCommand(iscsiListCmd)
 	iscsiCmd.AddCommand(iscsiLocateCmd)
 	iscsiCmd.AddCommand(iscsiDeactivateCmd)
+	iscsiCmd.AddCommand(iscsiDeleteCmd)
 
 	shareCmd.AddCommand(iscsiCmd)
 }
@@ -85,12 +93,13 @@ type typeIscsiTargetParams struct {
 
 func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	options, _ := GetCobraFlags(cmd, nil)
+	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 	cmd.SilenceUsage = true
 
 	toEnsure := make([]string, 0)
 	iscsiToVolumeMap := make(map[string]string)
 	for _, vol := range args {
-		iscsiName := MakeIscsiTargetNameFromVolumePath(options.allFlags["target_prefix"], vol)
+		iscsiName := MakeIscsiTargetNameFromVolumePath(prefixName, vol)
 		iscsiToVolumeMap[iscsiName] = vol
 		toEnsure = append(toEnsure, iscsiName)
 	}
@@ -101,13 +110,13 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		shouldGetUserProps: false,
 		shouldRecurse:      false,
 	}
-	responseTargetQuery, err := QueryApi(api, "iscsi.target", toEnsure, core.StringRepeated("name", len(toEnsure)), nil, extras)
+	responseTargetQuery, err := QueryApi(api, "iscsi.target", args, core.StringRepeated("alias", len(args)), nil, extras)
 	if err != nil {
 		return err
 	}
 
 	toCreateMap := make(map[string]bool)
-	for _, t := range toEnsure {
+	for _, t := range args {
 		toCreateMap[t] = true
 	}
 
@@ -116,7 +125,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	shouldFindPortal := false
 
 	for targetId, target := range responseTargetQuery.resultsMap {
-		targetName, _ := target["name"].(string)
+		targetName, _ := target["alias"].(string)
 		if targetName == "" {
 			return fmt.Errorf("Name could not be found in iSCSI target with ID %v", targetId)
 		}
@@ -240,7 +249,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 
 		obj := make(map[string]interface{})
-		obj["name"] = name
+		obj["name"] = MakeIscsiTargetUuid(prefixName, name)
 		obj["alias"] = iscsiToVolumeMap[name]
 
 		if !isGroupEmpty {
@@ -322,8 +331,8 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	for _, vol := range args {
 		if _, exists := extentsByDisk["zvol/" + vol]; !exists {
 			extentsCreate = append(extentsCreate, "zvol/" + vol)
-			iName := MakeIscsiTargetNameFromVolumePath(options.allFlags["target_prefix"], vol)
-			extentsIqnCreate = append(extentsIqnCreate, iName)
+			iName := MakeIscsiTargetNameFromVolumePath(prefixName, vol)
+			extentsIqnCreate = append(extentsIqnCreate, MakeIscsiTargetUuid(prefixName, iName))
 		}
 	}
 
@@ -431,11 +440,12 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, isActivate bool) error {
 	options, _ := GetCobraFlags(cmd, nil)
+	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 
 	iscsiNames := make([]string, 0)
 	iscsiToVolumeMap := make(map[string]string)
 	for _, vol := range args {
-		iName := MakeIscsiTargetNameFromVolumePath(options.allFlags["target_prefix"], vol)
+		iName := MakeIscsiTargetNameFromVolumePath(prefixName, vol)
 		iscsiToVolumeMap[iName] = vol
 		iscsiNames = append(iscsiNames, iName)
 	}
@@ -508,11 +518,12 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 
 func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	options, _ := GetCobraFlags(cmd, nil)
+	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 
 	iscsiNames := make([]string, 0)
 	iscsiToVolumeMap := make(map[string]string)
 	for _, vol := range args {
-		iName := MakeIscsiTargetNameFromVolumePath(options.allFlags["target_prefix"], vol)
+		iName := MakeIscsiTargetNameFromVolumePath(prefixName, vol)
 		iscsiToVolumeMap[iName] = vol
 		iscsiNames = append(iscsiNames, iName)
 	}
@@ -583,5 +594,15 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 		fmt.Println("Error: " + iName + " was not found")
 	}
 
+	return nil
+}
+
+// This command is needed to delete the iscsi extent/target without deleting the underlying dataset.
+// However, deleting a dataset will delete the extent and dataset as well.
+func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	// look for matching extents, get ids
+	// look for matching targets, get ids
+	// delete matching extents and targets
+	// delete all targetextent mappings that have a matching extent OR a matching target
 	return nil
 }
