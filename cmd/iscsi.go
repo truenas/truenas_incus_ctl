@@ -1,16 +1,17 @@
 package cmd
 
 import (
-	"os"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
-	"time"
+	"os"
 	"strconv"
 	"strings"
-	"encoding/json"
+	"time"
 	"truenas/truenas_incus_ctl/core"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
@@ -32,20 +33,20 @@ var iscsiCreateCmd = &cobra.Command{
 }
 
 var iscsiActivateCmd = &cobra.Command{
-	Use:     "activate",
-	Short:   "Activate description",
+	Use:   "activate",
+	Short: "Activate description",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var iscsiLocateCmd = &cobra.Command{
-	Use:     "locate",
-	Short:   "Locate description",
+	Use:   "locate",
+	Short: "Locate description",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var iscsiDeactivateCmd = &cobra.Command{
-	Use:     "deactivate",
-	Short:   "Deactivate description",
+	Use:   "deactivate",
+	Short: "Deactivate description",
 	Args:  cobra.MinimumNArgs(1),
 }
 
@@ -63,7 +64,7 @@ func init() {
 	iscsiDeactivateCmd.RunE = WrapCommandFunc(deactivateIscsi)
 	iscsiDeleteCmd.RunE = WrapCommandFunc(deleteIscsi)
 
-	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
+	_iscsiCmds := []*cobra.Command{iscsiCreateCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "incus", "label to prefix the created target")
 		c.Flags().IntP("port", "p", 3260, "iSCSI portal port")
@@ -79,9 +80,9 @@ func init() {
 }
 
 type typeIscsiTargetParams struct {
-	verb string
-	id interface{}
-	portalId int
+	verb        string
+	id          interface{}
+	portalId    int
 	initiatorId int
 }
 
@@ -135,7 +136,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 					_, initiatorExists = elem["initiator"].(float64)
 				}
 
-				portal := 1 // -1
+				portal := 1    // -1
 				initiator := 1 // -1
 				if portalExists {
 					portal = 1 // 0
@@ -149,9 +150,9 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 				}
 
 				targets[targetName] = typeIscsiTargetParams{
-					verb: "update",
-					id: targetId,
-					portalId: portal,
+					verb:        "update",
+					id:          targetId,
+					portalId:    portal,
 					initiatorId: initiator,
 				}
 			}
@@ -161,9 +162,9 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			//missingInitiators[targetName] = true
 
 			targets[targetName] = typeIscsiTargetParams{
-				verb: "update",
-				id: targetId,
-				portalId: 1, // -1
+				verb:        "update",
+				id:          targetId,
+				portalId:    1, // -1
 				initiatorId: 1, // -1
 			}
 		}
@@ -174,9 +175,9 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		//missingInitiators[targetName] = true
 
 		targets[targetName] = typeIscsiTargetParams{
-			verb: "create",
-			id: -1,
-			portalId: 1, // -1
+			verb:        "create",
+			id:          -1,
+			portalId:    1, // -1
 			initiatorId: 1, // -1
 		}
 	}
@@ -186,7 +187,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return nil
 	}
 
-	emptyQueryParams := []interface{} {make([]interface{}, 0), make(map[string]interface{})}
+	emptyQueryParams := []interface{}{make([]interface{}, 0), make(map[string]interface{})}
 
 	defaultPortal := -1
 	if shouldFindPortal {
@@ -218,9 +219,9 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	/*
-	if len(missingInitiators) > 0 {
-		//...
-	}
+		if len(missingInitiators) > 0 {
+			//...
+		}
 	*/
 
 	targetCreates := make([]interface{}, 0)
@@ -246,16 +247,16 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		obj["alias"] = iscsiToVolumeMap[name]
 
 		if !isGroupEmpty {
-			obj["groups"] = []map[string]interface{} {group}
+			obj["groups"] = []map[string]interface{}{group}
 		}
 
 		if t.verb == "create" {
-			targetCreates = append(targetCreates, []interface{} {obj})
+			targetCreates = append(targetCreates, []interface{}{obj})
 		} else {
 			if id, errNotNumber := strconv.Atoi(fmt.Sprint(t.id)); errNotNumber == nil {
 				t.id = id
 			}
-			targetUpdates = append(targetUpdates, []interface{} {t.id, obj})
+			targetUpdates = append(targetUpdates, []interface{}{t.id, obj})
 		}
 	}
 
@@ -322,22 +323,23 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	extentsCreate := make([]string, 0)
 	extentsIqnCreate := make([]string, 0)
 	for _, vol := range args {
-		if _, exists := extentsByDisk["zvol/" + vol]; !exists {
-			extentsCreate = append(extentsCreate, "zvol/" + vol)
-			iName := MakeIscsiTargetNameFromVolumePath(options.allFlags["target_prefix"], vol)
+		if _, exists := extentsByDisk["zvol/"+vol]; !exists {
+			extentsCreate = append(extentsCreate, "zvol/"+vol)
+			//iName := MakeIscsiTargetNameFromVolumePath(options.allFlags["target_prefix"], vol)
+			iName := fmt.Sprintf("%s:%s", options.allFlags["target_prefix"], uuid.New().String())
 			extentsIqnCreate = append(extentsIqnCreate, iName)
 		}
 	}
 
 	if len(extentsCreate) > 0 {
-		params := []interface{} {
-			map[string]interface{} {
+		params := []interface{}{
+			map[string]interface{}{
 				"name": extentsIqnCreate[0],
 				"disk": extentsCreate[0],
 				"path": extentsCreate[0],
 			},
 		}
-		objRemap := map[string][]interface{} {
+		objRemap := map[string][]interface{}{
 			"name": core.ToAnyArray(extentsIqnCreate),
 			"disk": core.ToAnyArray(extentsCreate),
 			"path": core.ToAnyArray(extentsCreate),
@@ -368,11 +370,11 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		if vol == "" {
 			continue
 		}
-		if extent, exists := extentsByDisk["zvol/" + vol]; exists {
+		if extent, exists := extentsByDisk["zvol/"+vol]; exists {
 			key := fmt.Sprintf("%v-%v", target["id"], extent["id"])
-			teCreateMap[key] = map[string]interface{} {
+			teCreateMap[key] = map[string]interface{}{
 				"target": target["id"],
-				"lunid": 0,
+				"lunid":  0,
 				"extent": extent["id"],
 			}
 		}
@@ -468,13 +470,13 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 		}
 
 		/*
-		RunIscsiAdminTool([]string{
-			"--mode",
-			"session",
-			"-r",
-			"1",
-			"-P3",
-		})
+			RunIscsiAdminTool([]string{
+				"--mode",
+				"session",
+				"-r",
+				"1",
+				"-P3",
+			})
 		*/
 
 		time.Sleep(time.Duration(4) * time.Second)
@@ -531,10 +533,10 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 		if iqnSepPos == -1 {
 			continue
 		}
-		iqn := name[iqnStart:iqnStart+iqnSepPos]
+		iqn := name[iqnStart : iqnStart+iqnSepPos]
 
 		for _, iName := range iscsiNames {
-			if strings.HasSuffix(name, iName + "-lun-0") {
+			if strings.HasSuffix(name, iName+"-lun-0") {
 				logoutParams := []string{
 					"--mode",
 					"node",

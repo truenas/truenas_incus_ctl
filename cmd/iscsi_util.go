@@ -3,19 +3,19 @@ package cmd
 import (
 	"os"
 	"os/exec"
+
 	//"errors"
 	"fmt"
 	//"strconv"
 	"strings"
 	"truenas/truenas_incus_ctl/core"
-
 	//"github.com/spf13/cobra"
 )
 
 type typeIscsiLoginSpec struct {
 	remoteIp string
-	iqn string
-	target string
+	iqn      string
+	target   string
 }
 
 func MakeIscsiTargetNameFromVolumePath(prefix string, vol string) string {
@@ -23,9 +23,9 @@ func MakeIscsiTargetNameFromVolumePath(prefix string, vol string) string {
 		strings.ReplaceAll(
 			strings.ReplaceAll(
 				strings.ReplaceAll(strings.ToLower(vol), ":", "-"),
-			".", "-"),
-		"_", "-"),
-	"/", ":")
+				".", "-"),
+			"_", "-"),
+		"/", ":")
 }
 
 func AddIscsiInitiator(initiators map[string]int, resultRow map[string]interface{}) (string, error) {
@@ -58,8 +58,8 @@ func LocateIqnTargetsLocally(targets []typeIscsiLoginSpec) []string {
 	for _, e := range diskEntries {
 		name := e.Name()
 		for _, t := range targets {
-			if strings.HasSuffix(name, t.iqn + ":" + t.target + "-lun-0") {
-				paths = append(paths, "/dev/disk/by-path/" + name)
+			if strings.HasSuffix(name, t.iqn+":"+t.target+"-lun-0") {
+				paths = append(paths, "/dev/disk/by-path/"+name)
 			}
 		}
 	}
@@ -92,7 +92,7 @@ func GetIscsiTargetsFromDiscovery(iscsiToVolumeMap map[string]string, portalAddr
 		if _, exists := iscsiToVolumeMap[targetName]; exists {
 			t := typeIscsiLoginSpec{}
 			t.remoteIp = l[0:commaPos]
-			t.iqn = l[spacePos+1:commaPos+iqnSepPos]
+			t.iqn = l[spacePos+1 : commaPos+iqnSepPos]
 			t.target = targetName
 			targets = append(targets, t)
 		}
@@ -118,7 +118,7 @@ func GetIscsiTargetsFromSession(iscsiToVolumeMap map[string]string) ([]typeIscsi
 		if lastSpacePos == firstSpacePos {
 			lastSpacePos = len(l)
 		}
-		fullName := l[firstSpacePos+1:lastSpacePos]
+		fullName := l[firstSpacePos+1 : lastSpacePos]
 		firstColon := strings.Index(fullName, ":")
 		if firstColon == -1 {
 			continue
@@ -126,10 +126,10 @@ func GetIscsiTargetsFromSession(iscsiToVolumeMap map[string]string) ([]typeIscsi
 		targetName := fullName[firstColon+1:]
 		if _, exists := iscsiToVolumeMap[targetName]; exists {
 			iqnName := fullName[0:firstColon]
-			targets = append(targets, typeIscsiLoginSpec {
+			targets = append(targets, typeIscsiLoginSpec{
 				remoteIp: "",
-				iqn: iqnName,
-				target: targetName,
+				iqn:      iqnName,
+				target:   targetName,
 			})
 		}
 	}
