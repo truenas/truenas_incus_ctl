@@ -135,7 +135,7 @@ func init() {
 		cmd.Flags().Int64("special-small-block-size", 0, "")
 		cmd.Flags().Int("copies", 0, "")
 		cmd.Flags().BoolP("create-parents", "p", false, "Creates all the non-existing parent datasets")
-		cmd.Flags().String("user-props", "", "Sets the specified properties")
+		cmd.Flags().StringP("user-props", "u", "", "Sets the specified properties")
 		cmd.Flags().StringP("option", "o", "", "Specify property=value,...")
 		cmd.Flags().Int64P("volume", "V", 0, "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size.")
 		cmd.Flags().StringP("volblocksize", "b", "512", "Volume block size "+

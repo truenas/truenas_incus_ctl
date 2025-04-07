@@ -45,7 +45,7 @@ var iscsiLocateCmd = &cobra.Command{
 
 var iscsiDeactivateCmd = &cobra.Command{
 	Use:     "deactivate",
-	Short:   "Activate description",
+	Short:   "Deactivate description",
 	Args:  cobra.MinimumNArgs(1),
 }
 
