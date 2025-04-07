@@ -63,9 +63,11 @@ func init() {
 	iscsiDeactivateCmd.RunE = WrapCommandFunc(deactivateIscsi)
 	iscsiDeleteCmd.RunE = WrapCommandFunc(deleteIscsi)
 
-	iscsiActivateCmd.Flags().IntP("port", "p", 3260, "iSCSI portal port")
-	iscsiLocateCmd.Flags().IntP("port", "p", 3260, "iSCSI portal port")
-	iscsiDeactivateCmd.Flags().IntP("port", "p", 3260, "iSCSI portal port")
+	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
+	for _, c := range _iscsiCmds {
+		c.Flags().StringP("target-prefix", "t", "incus", "label to prefix the created target")
+		c.Flags().IntP("port", "p", 3260, "iSCSI portal port")
+	}
 
 	iscsiCmd.AddCommand(iscsiCreateCmd)
 	iscsiCmd.AddCommand(iscsiActivateCmd)
@@ -84,12 +86,13 @@ type typeIscsiTargetParams struct {
 }
 
 func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	options, _ := GetCobraFlags(cmd, nil)
 	cmd.SilenceUsage = true
 
 	toEnsure := make([]string, 0)
 	iscsiToVolumeMap := make(map[string]string)
 	for _, vol := range args {
-		iscsiName := MakeIscsiTargetNameFromVolumePath(vol)
+		iscsiName := MakeIscsiTargetNameFromVolumePath(options.allFlags["target_prefix"], vol)
 		iscsiToVolumeMap[iscsiName] = vol
 		toEnsure = append(toEnsure, iscsiName)
 	}
@@ -297,19 +300,10 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	DebugString("resultsTargetCreate")
-	DebugJson(resultsTargetCreate)
-
-	DebugString("allTargets")
-	DebugJson(allTargets)
-
 	extentList := make([]string, len(args))
 	for i, vol := range args {
 		extentList[i] = "zvol/" + vol
 	}
-
-	DebugString("extentList")
-	DebugString(strings.Join(extentList, " "))
 
 	responseExtentQuery, err := QueryApi(
 		api,
@@ -324,22 +318,16 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	extentsByDisk := GetMapFromQueryResponseKeyedOn(&responseExtentQuery, "disk")
-	DebugString("extentsByDisk")
-	DebugJson(extentsByDisk)
 
 	extentsCreate := make([]string, 0)
 	extentsIqnCreate := make([]string, 0)
 	for _, vol := range args {
 		if _, exists := extentsByDisk["zvol/" + vol]; !exists {
 			extentsCreate = append(extentsCreate, "zvol/" + vol)
-			extentsIqnCreate = append(extentsIqnCreate, MakeIscsiTargetNameFromVolumePath(vol))
+			iName := MakeIscsiTargetNameFromVolumePath(options.allFlags["target_prefix"], vol)
+			extentsIqnCreate = append(extentsIqnCreate, iName)
 		}
 	}
-
-	DebugString("extentsCreate")
-	DebugJson(extentsCreate)
-	DebugString("extentsIqnCreate")
-	DebugJson(extentsIqnCreate)
 
 	if len(extentsCreate) > 0 {
 		params := []interface{} {
@@ -382,7 +370,6 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 		if extent, exists := extentsByDisk["zvol/" + vol]; exists {
 			key := fmt.Sprintf("%v-%v", target["id"], extent["id"])
-			DebugString("key: " + key)
 			teCreateMap[key] = map[string]interface{} {
 				"target": target["id"],
 				"lunid": 0,
@@ -397,7 +384,6 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 	for _, te := range responseTeQuery.resultsMap {
 		key := fmt.Sprintf("%v-%v", te["target"], te["extent"])
-		DebugString("deleting key " + key)
 		delete(teCreateMap, key)
 	}
 
@@ -405,9 +391,6 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	for _, te := range teCreateMap {
 		teCreateList = append(teCreateList, []interface{}{te})
 	}
-
-	DebugString("teCreateList")
-	DebugJson(teCreateList)
 
 	MaybeBulkApiCallArray(api, "iscsi.targetextent.create", 10, teCreateList, false)
 	return nil
@@ -427,7 +410,7 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 	iscsiNames := make([]string, 0)
 	iscsiToVolumeMap := make(map[string]string)
 	for _, vol := range args {
-		iName := MakeIscsiTargetNameFromVolumePath(vol)
+		iName := MakeIscsiTargetNameFromVolumePath(options.allFlags["target_prefix"], vol)
 		iscsiToVolumeMap[iName] = vol
 		iscsiNames = append(iscsiNames, iName)
 	}
@@ -444,7 +427,10 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 		return err
 	}
 
+	// TODO: if locate --activate, get the list of not yet activated shares and activate those, before printing all share paths
+	//isLocateActivate := !isActivate && core.IsValueTrue(options.allFlags, "activate")
 	var targets []typeIscsiLoginSpec
+	//var allTargets []typeIscsiLoginSpec
 
 	if !isActivate {
 		targets, _ = GetIscsiTargetsFromSession(iscsiToVolumeMap)
@@ -463,7 +449,7 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 		}
 	}
 
-	if isActivate {
+	if isActivate && len(targets) > 0 {
 		for _, t := range targets {
 			loginParams := []string{
 				"--mode",
@@ -504,7 +490,7 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 	iscsiNames := make([]string, 0)
 	iscsiToVolumeMap := make(map[string]string)
 	for _, vol := range args {
-		iName := MakeIscsiTargetNameFromVolumePath(vol)
+		iName := MakeIscsiTargetNameFromVolumePath(options.allFlags["target_prefix"], vol)
 		iscsiToVolumeMap[iName] = vol
 		iscsiNames = append(iscsiNames, iName)
 	}
@@ -548,7 +534,7 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 		iqn := name[iqnStart:iqnStart+iqnSepPos]
 
 		for _, iName := range iscsiNames {
-			if strings.Contains(name, iName) {
+			if strings.HasSuffix(name, iName + "-lun-0") {
 				logoutParams := []string{
 					"--mode",
 					"node",
@@ -580,5 +566,10 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 
 func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	fmt.Println("deleteIscsi")
+
+	// look for matching extents, get ids
+	// look for matching targets, get ids
+	// delete matching extents and targets
+	// delete all targetextent mappings that have a matching extent OR a matching target
 	return nil
 }

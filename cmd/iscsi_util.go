@@ -18,8 +18,8 @@ type typeIscsiLoginSpec struct {
 	target string
 }
 
-func MakeIscsiTargetNameFromVolumePath(vol string) string {
-	return "incus:" + strings.ReplaceAll(
+func MakeIscsiTargetNameFromVolumePath(prefix string, vol string) string {
+	return prefix + ":" + strings.ReplaceAll(
 		strings.ReplaceAll(
 			strings.ReplaceAll(
 				strings.ReplaceAll(strings.ToLower(vol), ":", "-"),
@@ -58,7 +58,7 @@ func LocateIqnTargetsLocally(targets []typeIscsiLoginSpec) []string {
 	for _, e := range diskEntries {
 		name := e.Name()
 		for _, t := range targets {
-			if strings.Contains(name, t.iqn + ":" + t.target) {
+			if strings.HasSuffix(name, t.iqn + ":" + t.target + "-lun-0") {
 				paths = append(paths, "/dev/disk/by-path/" + name)
 			}
 		}
