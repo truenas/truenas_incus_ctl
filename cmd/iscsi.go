@@ -421,7 +421,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	return activateOrLocateIscsi(cmd, api, args, false)
 }
 
-func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, shouldLogin bool) error {
+func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, isActivate bool) error {
 	options, _ := GetCobraFlags(cmd, nil)
 
 	iscsiNames := make([]string, 0)
@@ -434,18 +434,24 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 
 	cmd.SilenceUsage = true
 
-	if err := CheckIscsiAdminToolExists(); err != nil {
+	var err error
+	if err = CheckIscsiAdminToolExists(); err != nil {
 		return err
 	}
 
-	hostUrl, err := url.Parse(api.GetHostUrl())
-	if err != nil {
-		return err
+	var params []string
+	if isActivate {
+		hostUrl, err := url.Parse(api.GetHostUrl())
+		if err != nil {
+			return err
+		}
+
+		portalAddr := hostUrl.Hostname() + ":" + options.allFlags["port"]
+
+		params = []string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"}
+	} else {
+		params = []string{"--mode", "session"}
 	}
-
-	portalAddr := hostUrl.Hostname() + ":" + options.allFlags["port"]
-
-	params := []string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"}
 
 	err = MaybeLaunchIscsiDaemon()
 	if err != nil {
@@ -484,7 +490,7 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 		}
 	}
 
-	if shouldLogin {
+	if isActivate {
 		for _, t := range targets {
 			loginParams := []string{
 				"--mode",

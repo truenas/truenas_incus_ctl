@@ -74,6 +74,8 @@ func CheckIscsiAdminToolExists() error {
 	return err
 }
 
+// TODO: Wait for daemon to ACTUALLY finish launching.
+// running an iscsiadm command immediately after launching the daemon results in an error for some reason.
 func MaybeLaunchIscsiDaemon() error {
 	// assuming a stable internet connection, iscsid as a command does not block.
 	// it instead starts the actual daemon before returning immediately, without any console output.
