@@ -38,6 +38,11 @@ var iscsiActivateCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 }
 
+var iscsiListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List description",
+}
+
 var iscsiLocateCmd = &cobra.Command{
 	Use:   "locate",
 	Short: "Locate description",
@@ -50,21 +55,14 @@ var iscsiDeactivateCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 }
 
-var iscsiDeleteCmd = &cobra.Command{
-	Use:     "delete",
-	Short:   "Delete description",
-	Args:    cobra.MinimumNArgs(1),
-	Aliases: []string{"rm"},
-}
-
 func init() {
 	iscsiCreateCmd.RunE = WrapCommandFunc(createIscsi)
 	iscsiActivateCmd.RunE = WrapCommandFunc(activateIscsi)
+	iscsiListCmd.RunE = WrapCommandFunc(listIscsi)
 	iscsiLocateCmd.RunE = WrapCommandFunc(locateIscsi)
 	iscsiDeactivateCmd.RunE = WrapCommandFunc(deactivateIscsi)
-	iscsiDeleteCmd.RunE = WrapCommandFunc(deleteIscsi)
 
-	_iscsiCmds := []*cobra.Command{iscsiCreateCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
+	_iscsiCmds := []*cobra.Command{iscsiCreateCmd, iscsiActivateCmd, iscsiListCmd, iscsiLocateCmd, iscsiDeactivateCmd}
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "incus", "label to prefix the created target")
 		c.Flags().IntP("port", "p", 3260, "iSCSI portal port")
@@ -72,9 +70,9 @@ func init() {
 
 	iscsiCmd.AddCommand(iscsiCreateCmd)
 	iscsiCmd.AddCommand(iscsiActivateCmd)
+	iscsiCmd.AddCommand(iscsiListCmd)
 	iscsiCmd.AddCommand(iscsiLocateCmd)
 	iscsiCmd.AddCommand(iscsiDeactivateCmd)
-	iscsiCmd.AddCommand(iscsiDeleteCmd)
 
 	shareCmd.AddCommand(iscsiCmd)
 }
@@ -398,6 +396,33 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
+func listIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	diskEntries, err := os.ReadDir("/dev/disk/by-path")
+	if err != nil {
+		return err
+	}
+	for _, e := range diskEntries {
+		name := e.Name()
+		/*
+			if !strings.Contains(name, ipPortalAddr) {
+				continue
+			}
+		*/
+		iqnFindPos := strings.Index(name, "-iscsi-iqn.")
+		if iqnFindPos == -1 {
+			continue
+		}
+		iqnStart := iqnFindPos + 7
+		iqnSepPos := strings.Index(name[iqnStart:], ":")
+		if iqnSepPos == -1 {
+			continue
+		}
+		fmt.Println("/dev/disk/by-path/" + name)
+	}
+
+	return nil
+}
+
 func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	return activateOrLocateIscsi(cmd, api, args, true)
 }
@@ -429,10 +454,7 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 		return err
 	}
 
-	// TODO: if locate --activate, get the list of not yet activated shares and activate those, before printing all share paths
-	//isLocateActivate := !isActivate && core.IsValueTrue(options.allFlags, "activate")
 	var targets []typeIscsiLoginSpec
-	//var allTargets []typeIscsiLoginSpec
 
 	if !isActivate {
 		targets, _ = GetIscsiTargetsFromSession(iscsiToVolumeMap)
@@ -563,15 +585,5 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 		fmt.Println("Error: " + iName + " was not found")
 	}
 
-	return nil
-}
-
-func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
-	fmt.Println("deleteIscsi")
-
-	// look for matching extents, get ids
-	// look for matching targets, get ids
-	// delete matching extents and targets
-	// delete all targetextent mappings that have a matching extent OR a matching target
 	return nil
 }
