@@ -439,54 +439,27 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 		return err
 	}
 
-	var params []string
-	if isActivate {
+	err = MaybeLaunchIscsiDaemon()
+	if err != nil {
+		return err
+	}
+
+	var targets []typeIscsiLoginSpec
+
+	if !isActivate {
+		targets, _ = GetIscsiTargetsFromSession(iscsiToVolumeMap)
+	}
+
+	if len(targets) == 0 {
 		hostUrl, err := url.Parse(api.GetHostUrl())
 		if err != nil {
 			return err
 		}
 
 		portalAddr := hostUrl.Hostname() + ":" + options.allFlags["port"]
-
-		params = []string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"}
-	} else {
-		params = []string{"--mode", "session"}
-	}
-
-	err = MaybeLaunchIscsiDaemon()
-	if err != nil {
-		return err
-	}
-
-	//DebugString("activateIscsi: " + strings.Join(params, " "))
-	out, err := RunIscsiAdminTool(params)
-	if err != nil {
-		return err
-	}
-
-	targets := make([]typeIscsiLoginSpec, 0)
-	lines := strings.Split(out, "\n")
-	for _, l := range lines {
-		spacePos := strings.Index(l, " ")
-		if spacePos == -1 {
-			continue
-		}
-		commaPos := strings.Index(l, ",")
-		if commaPos == -1 || commaPos > spacePos {
-			commaPos = spacePos
-		}
-		iqnSepPos := strings.Index(l[commaPos:], ":")
-		if iqnSepPos == -1 {
-			continue
-		}
-
-		targetName := l[commaPos+iqnSepPos+1:]
-		if _, exists := iscsiToVolumeMap[targetName]; exists {
-			t := typeIscsiLoginSpec{}
-			t.remoteIp = l[0:commaPos]
-			t.iqn = l[spacePos+1:commaPos+iqnSepPos]
-			t.target = targetName
-			targets = append(targets, t)
+		targets, err = GetIscsiTargetsFromDiscovery(iscsiToVolumeMap, portalAddr)
+		if err != nil {
+			return err
 		}
 	}
 

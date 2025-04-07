@@ -66,6 +66,77 @@ func LocateIqnTargetsLocally(targets []typeIscsiLoginSpec) []string {
 	return paths
 }
 
+func GetIscsiTargetsFromDiscovery(iscsiToVolumeMap map[string]string, portalAddr string) ([]typeIscsiLoginSpec, error) {
+	out, err := RunIscsiAdminTool([]string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"})
+	if err != nil {
+		return nil, err
+	}
+
+	targets := make([]typeIscsiLoginSpec, 0)
+	lines := strings.Split(out, "\n")
+	for _, l := range lines {
+		spacePos := strings.Index(l, " ")
+		if spacePos == -1 {
+			continue
+		}
+		commaPos := strings.Index(l, ",")
+		if commaPos == -1 || commaPos > spacePos {
+			commaPos = spacePos
+		}
+		iqnSepPos := strings.Index(l[commaPos:], ":")
+		if iqnSepPos == -1 {
+			continue
+		}
+
+		targetName := l[commaPos+iqnSepPos+1:]
+		if _, exists := iscsiToVolumeMap[targetName]; exists {
+			t := typeIscsiLoginSpec{}
+			t.remoteIp = l[0:commaPos]
+			t.iqn = l[spacePos+1:commaPos+iqnSepPos]
+			t.target = targetName
+			targets = append(targets, t)
+		}
+	}
+
+	return targets, nil
+}
+
+func GetIscsiTargetsFromSession(iscsiToVolumeMap map[string]string) ([]typeIscsiLoginSpec, error) {
+	out, err := RunIscsiAdminTool([]string{"--mode", "session"})
+	if err != nil {
+		return nil, err
+	}
+
+	targets := make([]typeIscsiLoginSpec, 0)
+	lines := strings.Split(out, "\n")
+	for _, l := range lines {
+		firstSpacePos := strings.Index(l, " ")
+		if firstSpacePos == -1 {
+			continue
+		}
+		lastSpacePos := strings.LastIndex(l, " ")
+		if lastSpacePos == firstSpacePos {
+			lastSpacePos = len(l)
+		}
+		fullName := l[firstSpacePos+1:lastSpacePos]
+		firstColon := strings.Index(fullName, ":")
+		if firstColon == -1 {
+			continue
+		}
+		targetName := fullName[firstColon+1:]
+		if _, exists := iscsiToVolumeMap[targetName]; exists {
+			iqnName := fullName[0:firstColon]
+			targets = append(targets, typeIscsiLoginSpec {
+				remoteIp: "",
+				iqn: iqnName,
+				target: targetName,
+			})
+		}
+	}
+
+	return targets, nil
+}
+
 func CheckIscsiAdminToolExists() error {
 	_, err := exec.LookPath("iscsiadm")
 	if err != nil {
