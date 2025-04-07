@@ -20,6 +20,13 @@ type typeIscsiLoginSpec struct {
 	target   string
 }
 
+type typeApiCallRecord struct {
+	endpoint string
+	params []interface{}
+	resultList []interface{}
+	errorList []interface{}
+}
+
 func GetIscsiTargetPrefixOrExit(options map[string]string) string {
 	prefix := options["target_prefix"]
 	if prefix == "" {
@@ -83,7 +90,7 @@ func LocateIqnTargetsLocally(targets []typeIscsiLoginSpec) []string {
 				path := "/dev/disk/by-path/" + name
 				var line string
 				if t.status != "" {
-					line = t.status + "_" + path
+					line = t.status + ": " + path
 				} else {
 					line = path
 				}

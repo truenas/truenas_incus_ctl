@@ -204,6 +204,23 @@ func IsValueTrue(dict map[string]string, key string) bool {
 	return false
 }
 
+func GetIdFromObject(obj interface{}) interface{} {
+	if obj == nil {
+		return nil
+	} else if objF, ok := obj.(float64); ok {
+		return objF
+	} else if objI64, ok := obj.(int64); ok {
+		return objI64
+	} else if objI, ok := obj.(int); ok {
+		return objI
+	} else if objMap, ok := obj.(map[string]interface{}); ok {
+		return objMap["id"]
+	} else if objArr, ok := obj.([]interface{}); ok {
+		return GetIdFromObject(objArr[0])
+	}
+	return nil
+}
+
 func GetIntegerFromJsonObjectOr(data map[string]interface{}, key string, ifNotFound int64) int64 {
 	if value, exists := data[key]; exists {
 		if valueF, ok := value.(float64); ok {

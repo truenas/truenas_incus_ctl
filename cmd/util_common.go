@@ -327,7 +327,7 @@ func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []strin
 			continue
 		}
 
-		DebugJson(value)
+		//DebugJson(value)
 
 		var elem interface{}
 		if valueMap, ok := value.(map[string]interface{}); ok {

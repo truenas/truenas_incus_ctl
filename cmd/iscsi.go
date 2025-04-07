@@ -96,6 +96,9 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 	cmd.SilenceUsage = true
 
+	changes := make([]typeApiCallRecord, 0)
+	defer undoIscsiCreateList(api, &changes)
+
 	toEnsure := make([]string, 0)
 	iscsiToVolumeMap := make(map[string]string)
 	for _, vol := range args {
@@ -269,7 +272,8 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	jobIdUpdate := int64(-1)
 	jobIdCreate := int64(-1)
 	var rawResultsTargetUpdate json.RawMessage
-	var rawResultsTargetCreate json.RawMessage
+	var resultsTargetCreate []interface{}
+	var errorsTargetCreate []interface{}
 
 	if len(targetUpdates) > 0 {
 		rawResultsTargetUpdate, jobIdUpdate, err = MaybeBulkApiCallArray(api, "iscsi.target.update", 10, targetUpdates, false)
@@ -278,10 +282,17 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 	if len(targetCreates) > 0 {
-		rawResultsTargetCreate, jobIdCreate, err = MaybeBulkApiCallArray(api, "iscsi.target.create", 10, targetCreates, false)
+		rawResultsTargetCreate, _, err := MaybeBulkApiCallArray(api, "iscsi.target.create", 10, targetCreates, true)
 		if err != nil {
 			return err
 		}
+		resultsTargetCreate, errorsTargetCreate = core.GetResultsAndErrorsFromApiResponseRaw(rawResultsTargetCreate)
+		changes = append(changes, typeApiCallRecord {
+			endpoint: "iscsi.target.create",
+			params: targetCreates,
+			resultList: resultsTargetCreate,
+			errorList: errorsTargetCreate,
+		})
 	}
 
 	if jobIdUpdate >= 0 {
@@ -290,16 +301,18 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			return err
 		}
 	}
+	/*
 	if jobIdCreate >= 0 {
 		rawResultsTargetCreate, err = api.WaitForJob(jobIdCreate)
 		if err != nil {
 			return err
 		}
 	}
+	*/
 
+	jobIdCreate = jobIdCreate
 	rawResultsTargetUpdate = rawResultsTargetUpdate
 
-	resultsTargetCreate, _ := core.GetResultsAndErrorsFromApiResponseRaw(rawResultsTargetCreate)
 	allTargets := GetListFromQueryResponse(&responseTargetQuery)
 	for _, t := range resultsTargetCreate {
 		if tMap, ok := t.(map[string]interface{}); ok {
@@ -337,31 +350,35 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	if len(extentsCreate) > 0 {
-		params := []interface{}{
-			map[string]interface{}{
-				"name": extentsIqnCreate[0],
-				"disk": extentsCreate[0],
-				"path": extentsCreate[0],
-			},
+		paramsCreate := make([]interface{}, len(extentsCreate))
+		for i, _ := range extentsCreate {
+			paramsCreate = append(paramsCreate, []interface{} {
+				map[string]interface{} {
+					"name": extentsIqnCreate[i],
+					"disk": extentsCreate[i],
+					"path": extentsCreate[i],
+				},
+			})
 		}
-		objRemap := map[string][]interface{}{
-			"name": core.ToAnyArray(extentsIqnCreate),
-			"disk": core.ToAnyArray(extentsCreate),
-			"path": core.ToAnyArray(extentsCreate),
-		}
-		out, _, err := MaybeBulkApiCall(
+		out, _, err := MaybeBulkApiCallArray(
 			api,
 			"iscsi.extent.create",
 			10,
-			params,
-			objRemap,
+			paramsCreate,
 			true,
 		)
 		if err != nil {
 			return err
 		}
 
-		resultsExtentCreate, _ := core.GetResultsAndErrorsFromApiResponseRaw(out)
+		resultsExtentCreate, errorsExtentCreate := core.GetResultsAndErrorsFromApiResponseRaw(out)
+		changes = append(changes, typeApiCallRecord {
+			endpoint: "iscsi.extent.create",
+			params: paramsCreate,
+			resultList: resultsExtentCreate,
+			errorList: errorsExtentCreate,
+		})
+
 		for _, extent := range resultsExtentCreate {
 			if extentMap, ok := extent.(map[string]interface{}); ok {
 				extentsByDisk[fmt.Sprint(extentMap["disk"])] = extentMap
@@ -399,8 +416,31 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		teCreateList = append(teCreateList, []interface{}{te})
 	}
 
-	MaybeBulkApiCallArray(api, "iscsi.targetextent.create", 10, teCreateList, false)
+	_, _, err = MaybeBulkApiCallArray(api, "iscsi.targetextent.create", 10, teCreateList, true)
+	if err != nil {
+		return err
+	}
+
+	changes = make([]typeApiCallRecord, 0)
 	return nil
+}
+
+func undoIscsiCreateList(api core.Session, changes *[]typeApiCallRecord) {
+	for _, call := range *changes {
+		if strings.HasSuffix(call.endpoint, ".create") {
+			idList := make([]interface{}, 0)
+			for _, r := range call.resultList {
+				idList = append(idList, core.GetIdFromObject(r))
+			}
+			MaybeBulkApiCallArray(
+				api,
+				call.endpoint[:len(call.endpoint)-7] + ".delete",
+				10,
+				idList,
+				false,
+			)
+		}
+	}
 }
 
 func listIscsi(cmd *cobra.Command, api core.Session, args []string) error {
@@ -495,7 +535,9 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 			DebugString(strings.Join(loginParams, " "))
 			_, err := RunIscsiAdminTool(loginParams)
 			if err != nil {
-				return err
+				t.status = "FAILED"
+			} else {
+				t.status = "activated"
 			}
 		}
 
@@ -567,12 +609,13 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 		iqn := name[iqnStart : iqnStart+iqnSepPos]
 
 		for _, iName := range iscsiNames {
-			if strings.HasSuffix(name, iName+"-lun-0") {
+			fullName := iqn + ":" + iName
+			if strings.HasSuffix(name, fullName+"-lun-0") {
 				logoutParams := []string{
 					"--mode",
 					"node",
 					"--targetname",
-					iqn + ":" + iName,
+					fullName,
 					"--portal",
 					ipPortalAddr,
 					"--logout",
@@ -580,7 +623,9 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 				DebugString(strings.Join(logoutParams, " "))
 				_, err := RunIscsiAdminTool(logoutParams)
 				if err != nil {
-					return err
+					fmt.Println("FAILED: " + fullName)
+				} else {
+					fmt.Println("deactivated: " + fullName)
 				}
 
 				// remove this entry from the map, so that it will contain all iSCSI volumes that we tried to log out but failed to
@@ -591,7 +636,7 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 	}
 
 	for _, iName := range iscsiToVolumeMap {
-		fmt.Println("Error: " + iName + " was not found")
+		fmt.Println("Not found: " + iName)
 	}
 
 	return nil
