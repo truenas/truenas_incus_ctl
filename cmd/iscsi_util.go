@@ -13,6 +13,7 @@ import (
 )
 
 type typeIscsiLoginSpec struct {
+	status string
 	remoteIp string
 	iqn string
 	target string
@@ -50,20 +51,27 @@ func AddIscsiInitiator(initiators map[string]int, resultRow map[string]interface
 }
 
 func LocateIqnTargetsLocally(targets []typeIscsiLoginSpec) []string {
-	paths := make([]string, 0)
+	output := make([]string, 0)
 	diskEntries, err := os.ReadDir("/dev/disk/by-path")
 	if err != nil {
-		return paths
+		return output
 	}
 	for _, e := range diskEntries {
 		name := e.Name()
 		for _, t := range targets {
 			if strings.HasSuffix(name, t.iqn + ":" + t.target + "-lun-0") {
-				paths = append(paths, "/dev/disk/by-path/" + name)
+				path := "/dev/disk/by-path/" + name
+				var line string
+				if t.status != "" {
+					line = t.status + "_" + path
+				} else {
+					line = path
+				}
+				output = append(output, line)
 			}
 		}
 	}
-	return paths
+	return output
 }
 
 func GetIscsiTargetsFromDiscovery(iscsiToVolumeMap map[string]string, portalAddr string) ([]typeIscsiLoginSpec, error) {
