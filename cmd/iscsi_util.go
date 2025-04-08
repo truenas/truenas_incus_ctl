@@ -49,11 +49,11 @@ func MakeIscsiTargetNameFromVolumePath(prefix string, vol string) string {
 		"/", ":")
 }
 
-func MakeIscsiTargetUuid(prefix, targetName string) string {
+func MakeIscsiTargetUuid(prefix, targetName string, timestamp int64) string {
 	if targetName == "" {
 		return ""
 	}
-	return prefix + ":" + core.MakeHashedUuid(targetName)
+	return prefix + ":" + core.MakeHashedUuid(targetName + fmt.Sprint(timestamp))
 }
 
 func AddIscsiInitiator(initiators map[string]int, resultRow map[string]interface{}) (string, error) {

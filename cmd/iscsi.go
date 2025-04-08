@@ -103,6 +103,9 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	iscsiToVolumeMap := make(map[string]string)
 	for _, vol := range args {
 		iscsiName := MakeIscsiTargetNameFromVolumePath(prefixName, vol)
+		if _, exists := iscsiToVolumeMap[iscsiName]; exists {
+			return fmt.Errorf("There are duplicates in the provided list of datasets")
+		}
 		iscsiToVolumeMap[iscsiName] = vol
 		toEnsure = append(toEnsure, iscsiName)
 	}
@@ -235,7 +238,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	targetCreates := make([]interface{}, 0)
 	targetUpdates := make([]interface{}, 0)
-	for name, t := range targets {
+	for volName, t := range targets {
 		group := make(map[string]interface{})
 		isGroupEmpty := true
 		if t.portalId != 0 {
@@ -252,8 +255,8 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 
 		obj := make(map[string]interface{})
-		obj["name"] = MakeIscsiTargetUuid(prefixName, name)
-		obj["alias"] = iscsiToVolumeMap[name]
+		obj["name"] = MakeIscsiTargetUuid(prefixName, volName, time.Now().UnixMilli())
+		obj["alias"] = volName
 
 		if !isGroupEmpty {
 			obj["groups"] = []map[string]interface{}{group}
@@ -342,23 +345,24 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	extentsCreate := make([]string, 0)
 	extentsIqnCreate := make([]string, 0)
 	for _, vol := range args {
+		nowMillis := time.Now().UnixMilli()
 		if _, exists := extentsByDisk["zvol/" + vol]; !exists {
 			extentsCreate = append(extentsCreate, "zvol/" + vol)
 			iName := MakeIscsiTargetNameFromVolumePath(prefixName, vol)
-			extentsIqnCreate = append(extentsIqnCreate, MakeIscsiTargetUuid(prefixName, iName))
+			extentsIqnCreate = append(extentsIqnCreate, MakeIscsiTargetUuid(prefixName, iName, nowMillis))
 		}
 	}
 
 	if len(extentsCreate) > 0 {
 		paramsCreate := make([]interface{}, len(extentsCreate))
 		for i, _ := range extentsCreate {
-			paramsCreate = append(paramsCreate, []interface{} {
+			paramsCreate[i] = []interface{} {
 				map[string]interface{} {
 					"name": extentsIqnCreate[i],
 					"disk": extentsCreate[i],
 					"path": extentsCreate[i],
 				},
-			})
+			}
 		}
 		out, _, err := MaybeBulkApiCallArray(
 			api,
@@ -426,7 +430,9 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 }
 
 func undoIscsiCreateList(api core.Session, changes *[]typeApiCallRecord) {
+	fmt.Println("undoIscsiCreateList")
 	for _, call := range *changes {
+		fmt.Println(call.endpoint)
 		if strings.HasSuffix(call.endpoint, ".create") {
 			idList := make([]interface{}, 0)
 			for _, r := range call.resultList {
