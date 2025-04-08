@@ -238,6 +238,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	targetCreates := make([]interface{}, 0)
 	targetUpdates := make([]interface{}, 0)
+	timestampTargets := time.Now().UnixMilli()
 	for volName, t := range targets {
 		group := make(map[string]interface{})
 		isGroupEmpty := true
@@ -255,7 +256,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 
 		obj := make(map[string]interface{})
-		obj["name"] = MakeIscsiTargetUuid(prefixName, volName, time.Now().UnixMilli())
+		obj["name"] = MakeIscsiTargetUuid(prefixName, volName, timestampTargets)
 		obj["alias"] = volName
 
 		if !isGroupEmpty {
@@ -344,12 +345,12 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	extentsCreate := make([]string, 0)
 	extentsIqnCreate := make([]string, 0)
+	timestampExtents := time.Now().UnixMilli()
 	for _, vol := range args {
-		nowMillis := time.Now().UnixMilli()
 		if _, exists := extentsByDisk["zvol/" + vol]; !exists {
 			extentsCreate = append(extentsCreate, "zvol/" + vol)
 			iName := MakeIscsiTargetNameFromVolumePath(prefixName, vol)
-			extentsIqnCreate = append(extentsIqnCreate, MakeIscsiTargetUuid(prefixName, iName, nowMillis))
+			extentsIqnCreate = append(extentsIqnCreate, MakeIscsiTargetUuid(prefixName, iName, timestampExtents))
 		}
 	}
 
@@ -430,9 +431,9 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 }
 
 func undoIscsiCreateList(api core.Session, changes *[]typeApiCallRecord) {
-	fmt.Println("undoIscsiCreateList")
+	DebugString("undoIscsiCreateList")
 	for _, call := range *changes {
-		fmt.Println(call.endpoint)
+		DebugString(call.endpoint)
 		if strings.HasSuffix(call.endpoint, ".create") {
 			idList := make([]interface{}, 0)
 			for _, r := range call.resultList {
@@ -626,6 +627,9 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	cmd.SilenceUsage = true
 
+	changes := make([]typeApiCallRecord, 0)
+	defer undoIscsiDeleteList(api, &changes)
+
 	if err := CheckIscsiAdminToolExists(); err != nil {
 		return err
 	}
@@ -664,10 +668,8 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	targetIds := GetIdsOrderedByArgsFromResponse(responseTarget, "alias", args, argsMapIndex)
 	extentIds := GetIdsOrderedByArgsFromResponse(responseExtent, "disk", diskNames, diskNameIndex)
 
-	if len(targetIds) == 0 && len(extentIds) == 0 {
-		fmt.Println("No matching extents or targets were found")
-		return nil
-	}
+	DebugString("targets " + fmt.Sprint(targetIds))
+	DebugString("extents " + fmt.Sprint(extentIds))
 
 	var teInnerFilter []interface{}
 	if len(targetIds) > 0 && len(extentIds) > 0 {
@@ -696,7 +698,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 				targetIds,
 			},
 		}
-	} else {
+	} else if len(extentIds) > 0 {
 		teInnerFilter = []interface{} {
 			[]interface{} {
 				"extent",
@@ -704,18 +706,91 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 				extentIds,
 			},
 		}
+	} else {
+		fmt.Println("No matching extents or targets were found")
+		return nil
 	}
 
-	core.ApiCall(
+	teParams := []interface{} {teInnerFilter, make(map[string]interface{})}
+	DebugJson(teParams)
+	out, err := core.ApiCall(
 		api,
 		"iscsi.targetextent.query",
 		10,
-		[]interface{} {teInnerFilter, make(map[string]interface{})},
+		teParams,
 	)
+	if err != nil {
+		return err
+	}
+	DebugString(string(out))
 
-	// look for matching extents, get ids
-	// look for matching targets, get ids
-	// delete all targetextent mappings that have a matching extent OR a matching target
-	// delete matching extents and targets
+	teResults, teErrors := core.GetResultsAndErrorsFromApiResponseRaw(out)
+
+	teIds := make([]interface{}, len(teResults))
+	for i, result := range teResults {
+		teIds[i] = []interface{} {core.GetIdFromObject(result)}
+	}
+
+	_, _, err = MaybeBulkApiCallArray(api, "iscsi.targetextent.delete", 10, teIds, true)
+	if err != nil {
+		return err
+	}
+	changes = append(changes, typeApiCallRecord {
+		endpoint: "iscsi.targetextent.delete",
+		params: teIds,
+		resultList: teResults,
+		errorList: teErrors,
+	})
+
+	targets := make([]interface{}, 0)
+	for _, v := range responseTarget.resultsMap {
+		targets = append(targets, v)
+	}
+	targetIdsDelete := make([]interface{}, len(targetIds))
+	for i, t := range targetIds {
+		targetIdsDelete[i] = []interface{} {t}
+	}
+
+	_, _, err = MaybeBulkApiCallArray(api, "iscsi.target.delete", 10, targetIdsDelete, true)
+	if err != nil {
+		return err
+	}
+	changes = append(changes, typeApiCallRecord {
+		endpoint: "iscsi.target.delete",
+		params: targetIdsDelete,
+		resultList: targets,
+		errorList: nil,
+	})
+
+	extentIdsDelete := make([]interface{}, len(extentIds))
+	for i, e := range extentIds {
+		extentIdsDelete[i] = []interface{} {e}
+	}
+	_, _, err = MaybeBulkApiCallArray(api, "iscsi.extent.delete", 10, extentIdsDelete, true)
+	if err != nil {
+		return err
+	}
+
+	changes = make([]typeApiCallRecord, 0)
 	return nil
+}
+
+func undoIscsiDeleteList(api core.Session, changes *[]typeApiCallRecord) {
+	DebugString("undoIscsiDeleteList")
+	for _, call := range *changes {
+		DebugString(call.endpoint)
+		if strings.HasSuffix(call.endpoint, ".delete") {
+			idList := make([]interface{}, 0)
+			for _, r := range call.resultList {
+				idList = append(idList, core.GetIdFromObject(r))
+			}
+			MaybeBulkApiCallArray(
+				api,
+				call.endpoint[:len(call.endpoint)-7] + ".create",
+				10,
+				idList,
+				false,
+			)
+		}
+	}
 }
