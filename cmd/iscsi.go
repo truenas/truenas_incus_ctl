@@ -588,52 +588,7 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 
 	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
 
-	diskEntries, err := os.ReadDir("/dev/disk/by-path")
-	if err != nil {
-		return err
-	}
-	for _, e := range diskEntries {
-		name := e.Name()
-		if !strings.Contains(name, ipPortalAddr) {
-			continue
-		}
-		iqnFindPos := strings.Index(name, "-iscsi-iqn.")
-		if iqnFindPos == -1 {
-			continue
-		}
-		iqnStart := iqnFindPos + 7
-		iqnSepPos := strings.Index(name[iqnStart:], ":")
-		if iqnSepPos == -1 {
-			continue
-		}
-		iqn := name[iqnStart : iqnStart+iqnSepPos]
-
-		for _, iName := range iscsiNames {
-			fullName := iqn + ":" + iName
-			if strings.HasSuffix(name, fullName+"-lun-0") {
-				logoutParams := []string{
-					"--mode",
-					"node",
-					"--targetname",
-					fullName,
-					"--portal",
-					ipPortalAddr,
-					"--logout",
-				}
-				DebugString(strings.Join(logoutParams, " "))
-				_, err := RunIscsiAdminTool(logoutParams)
-				if err != nil {
-					fmt.Println("FAILED: " + fullName)
-				} else {
-					fmt.Println("deactivated: " + fullName)
-				}
-
-				// remove this entry from the map, so that it will contain all iSCSI volumes that we tried to log out but failed to
-				delete(iscsiToVolumeMap, iName)
-				break
-			}
-		}
-	}
+	DeactivateMatchingIscsiTargets(ipPortalAddr, iscsiNames, iscsiToVolumeMap, true)
 
 	for _, iName := range iscsiToVolumeMap {
 		fmt.Println("Not found: " + iName)
@@ -645,9 +600,116 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 // This command is needed to delete the iscsi extent/target without deleting the underlying dataset.
 // However, deleting a dataset will delete the extent and dataset as well.
 func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	options, _ := GetCobraFlags(cmd, nil)
+	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
+
+	iscsiNames := make([]string, 0)
+	diskNames := make([]string, 0)
+	diskNameIndex := make(map[string]int)
+	argsMapIndex := make(map[string]int)
+	iscsiToVolumeMap := make(map[string]string)
+
+	for i, vol := range args {
+		iName := MakeIscsiTargetNameFromVolumePath(prefixName, vol)
+		iscsiToVolumeMap[iName] = vol
+		iscsiNames = append(iscsiNames, iName)
+		diskNames = append(diskNames, "zvol/" + vol)
+		diskNameIndex["zvol/" + vol] = i
+		argsMapIndex[vol] = i
+	}
+
+	cmd.SilenceUsage = true
+
+	if err := CheckIscsiAdminToolExists(); err != nil {
+		return err
+	}
+
+	hostUrl, err := url.Parse(api.GetHostUrl())
+	if err != nil {
+		return err
+	}
+
+	ipAddrs, err := net.LookupIP(hostUrl.Hostname())
+	if err != nil {
+		return err
+	}
+
+	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
+
+	DeactivateMatchingIscsiTargets(ipPortalAddr, iscsiNames, nil, false)
+
+	extras := typeQueryParams{
+		valueOrder:         BuildValueOrder(true),
+		shouldGetAllProps:  true,
+		shouldGetUserProps: false,
+		shouldRecurse:      false,
+	}
+
+	responseTarget, err := QueryApi(api, "iscsi.target", args, core.StringRepeated("alias", len(args)), nil, extras)
+	if err != nil {
+		return err
+	}
+
+	responseExtent, err := QueryApi(api, "iscsi.extent", diskNames, core.StringRepeated("disk", len(diskNames)), nil, extras)
+	if err != nil {
+		return nil
+	}
+
+	targetIds := GetIdsOrderedByArgsFromResponse(responseTarget, "alias", args, argsMapIndex)
+	extentIds := GetIdsOrderedByArgsFromResponse(responseExtent, "disk", diskNames, diskNameIndex)
+
+	if len(targetIds) == 0 && len(extentIds) == 0 {
+		fmt.Println("No matching extents or targets were found")
+		return nil
+	}
+
+	var teInnerFilter []interface{}
+	if len(targetIds) > 0 && len(extentIds) > 0 {
+		teInnerFilter = []interface{} {
+			[]interface{} {
+				"OR",
+				[]interface{} {
+					[]interface{} {
+						"target",
+						"in",
+						targetIds,
+					},
+					[]interface{} {
+						"extent",
+						"in",
+						extentIds,
+					},
+				},
+			},
+		}
+	} else if len(targetIds) > 0 {
+		teInnerFilter = []interface{} {
+			[]interface{} {
+				"target",
+				"in",
+				targetIds,
+			},
+		}
+	} else {
+		teInnerFilter = []interface{} {
+			[]interface{} {
+				"extent",
+				"in",
+				extentIds,
+			},
+		}
+	}
+
+	core.ApiCall(
+		api,
+		"iscsi.targetextent.query",
+		10,
+		[]interface{} {teInnerFilter, make(map[string]interface{})},
+	)
+
 	// look for matching extents, get ids
 	// look for matching targets, get ids
-	// delete matching extents and targets
 	// delete all targetextent mappings that have a matching extent OR a matching target
+	// delete matching extents and targets
 	return nil
 }

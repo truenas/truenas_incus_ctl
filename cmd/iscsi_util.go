@@ -101,6 +101,58 @@ func LocateIqnTargetsLocally(targets []typeIscsiLoginSpec) []string {
 	return output
 }
 
+func DeactivateMatchingIscsiTargets(ipPortalAddr string, iscsiNames []string, iscsiToVolumeMap map[string]string, shouldPrintAndRemove bool) {
+	diskEntries, err := os.ReadDir("/dev/disk/by-path")
+	if err != nil {
+		return
+	}
+	for _, e := range diskEntries {
+		name := e.Name()
+		if !strings.Contains(name, ipPortalAddr) {
+			continue
+		}
+		iqnFindPos := strings.Index(name, "-iscsi-iqn.")
+		if iqnFindPos == -1 {
+			continue
+		}
+		iqnStart := iqnFindPos + 7
+		iqnSepPos := strings.Index(name[iqnStart:], ":")
+		if iqnSepPos == -1 {
+			continue
+		}
+		iqn := name[iqnStart : iqnStart+iqnSepPos]
+
+		for _, iName := range iscsiNames {
+			fullName := iqn + ":" + iName
+			if strings.HasSuffix(name, fullName+"-lun-0") {
+				logoutParams := []string{
+					"--mode",
+					"node",
+					"--targetname",
+					fullName,
+					"--portal",
+					ipPortalAddr,
+					"--logout",
+				}
+				DebugString(strings.Join(logoutParams, " "))
+				_, err := RunIscsiAdminTool(logoutParams)
+
+				if shouldPrintAndRemove && iscsiToVolumeMap != nil {
+					if err != nil {
+						fmt.Println("FAILED: " + fullName)
+					} else {
+						fmt.Println("deactivated: " + fullName)
+					}
+
+					// remove this entry from the map, so that it will contain all iSCSI volumes that we tried to log out but failed to
+					delete(iscsiToVolumeMap, iName)
+				}
+				break
+			}
+		}
+	}
+}
+
 func GetIscsiTargetsFromDiscovery(iscsiToVolumeMap map[string]string, portalAddr string) ([]typeIscsiLoginSpec, error) {
 	out, err := RunIscsiAdminTool([]string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"})
 	if err != nil {

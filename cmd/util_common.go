@@ -218,6 +218,25 @@ func GetMapFromQueryResponseKeyedOn(response *typeQueryResponse, key string) map
 	return outMap
 }
 
+func GetIdsOrderedByArgsFromResponse(response typeQueryResponse, key string, valueList []string, valueMap map[string]int) []interface{} {
+	ids := make([]interface{}, len(valueList))
+	for _, v := range response.resultsMap {
+		inner, _ := v[key]
+		if idx, exists := valueMap[fmt.Sprint(inner)]; exists {
+			ids[idx], _ = v["id"]
+		}
+	}
+	outIds := make([]interface{}, 0)
+	for i, id := range ids {
+		if id == nil {
+			fmt.Println("Could not find", valueList[i])
+		} else {
+			outIds = append(outIds, id)
+		}
+	}
+	return outIds
+}
+
 func makeQueryFilter(entries, entryTypes []string, params typeQueryParams) ([]interface{}, error) {
 	for i, e := range entries {
 		if e == "" {
