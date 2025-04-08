@@ -99,15 +99,15 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	changes := make([]typeApiCallRecord, 0)
 	defer undoIscsiCreateList(api, &changes)
 
-	toEnsure := make([]string, 0)
-	iscsiToVolumeMap := make(map[string]string)
+	maybeHashedToVolumeMap := make(map[string]string)
+	volumeToMaybeHashedMap := make(map[string]string)
 	for _, vol := range args {
-		iscsiName := MakeIscsiTargetNameFromVolumePath(prefixName, vol)
-		if _, exists := iscsiToVolumeMap[iscsiName]; exists {
+		hashed := MaybeHashIscsiNameFromVolumePath(prefixName, vol)
+		if _, exists := maybeHashedToVolumeMap[hashed]; exists {
 			return fmt.Errorf("There are duplicates in the provided list of datasets")
 		}
-		iscsiToVolumeMap[iscsiName] = vol
-		toEnsure = append(toEnsure, iscsiName)
+		maybeHashedToVolumeMap[hashed] = vol
+		volumeToMaybeHashedMap[vol] = hashed
 	}
 
 	extras := typeQueryParams{
@@ -238,7 +238,6 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	targetCreates := make([]interface{}, 0)
 	targetUpdates := make([]interface{}, 0)
-	timestampTargets := time.Now().UnixMilli()
 	for volName, t := range targets {
 		group := make(map[string]interface{})
 		isGroupEmpty := true
@@ -256,7 +255,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 
 		obj := make(map[string]interface{})
-		obj["name"] = MakeIscsiTargetUuid(prefixName, volName, timestampTargets)
+		obj["name"] = volumeToMaybeHashedMap[volName]
 		obj["alias"] = volName
 
 		if !isGroupEmpty {
@@ -345,12 +344,10 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	extentsCreate := make([]string, 0)
 	extentsIqnCreate := make([]string, 0)
-	timestampExtents := time.Now().UnixMilli()
 	for _, vol := range args {
 		if _, exists := extentsByDisk["zvol/" + vol]; !exists {
 			extentsCreate = append(extentsCreate, "zvol/" + vol)
-			iName := MakeIscsiTargetNameFromVolumePath(prefixName, vol)
-			extentsIqnCreate = append(extentsIqnCreate, MakeIscsiTargetUuid(prefixName, iName, timestampExtents))
+			extentsIqnCreate = append(extentsIqnCreate, volumeToMaybeHashedMap[vol])
 		}
 	}
 
@@ -458,7 +455,7 @@ func listIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	for _, e := range diskEntries {
 		name := e.Name()
 		/*
-			if !strings.Contains(name, ipPortalAddr) {
+			if !strings.HasPrefix(name, "ip-" + ipPortalAddr) {
 				continue
 			}
 		*/
@@ -489,12 +486,10 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 	options, _ := GetCobraFlags(cmd, nil)
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 
-	iscsiNames := make([]string, 0)
-	iscsiToVolumeMap := make(map[string]string)
+	maybeHashedToVolumeMap := make(map[string]string)
 	for _, vol := range args {
-		iName := MakeIscsiTargetNameFromVolumePath(prefixName, vol)
-		iscsiToVolumeMap[iName] = vol
-		iscsiNames = append(iscsiNames, iName)
+		maybeHashed := MaybeHashIscsiNameFromVolumePath(prefixName, vol)
+		maybeHashedToVolumeMap[maybeHashed] = vol
 	}
 
 	cmd.SilenceUsage = true
@@ -512,7 +507,7 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 	var targets []typeIscsiLoginSpec
 
 	if !isActivate {
-		targets, _ = GetIscsiTargetsFromSession(iscsiToVolumeMap)
+		targets, _ = GetIscsiTargetsFromSession(maybeHashedToVolumeMap)
 	}
 
 	if len(targets) == 0 {
@@ -522,7 +517,7 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 		}
 
 		portalAddr := hostUrl.Hostname() + ":" + options.allFlags["port"]
-		targets, err = GetIscsiTargetsFromDiscovery(iscsiToVolumeMap, portalAddr)
+		targets, err = GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap, portalAddr)
 		if err != nil {
 			return err
 		}
@@ -569,13 +564,13 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 	options, _ := GetCobraFlags(cmd, nil)
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 
-	iscsiNames := make([]string, 0)
-	iscsiToVolumeMap := make(map[string]string)
+	maybeHashedToVolumeMap := make(map[string]string)
 	for _, vol := range args {
-		iName := MakeIscsiTargetNameFromVolumePath(prefixName, vol)
-		iscsiToVolumeMap[iName] = vol
-		iscsiNames = append(iscsiNames, iName)
+		maybeHashed := MaybeHashIscsiNameFromVolumePath(prefixName, vol)
+		maybeHashedToVolumeMap[maybeHashed] = vol
 	}
+
+	fmt.Println(maybeHashedToVolumeMap)
 
 	cmd.SilenceUsage = true
 
@@ -595,10 +590,10 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 
 	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
 
-	DeactivateMatchingIscsiTargets(ipPortalAddr, iscsiNames, iscsiToVolumeMap, true)
+	DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, true)
 
-	for _, iName := range iscsiToVolumeMap {
-		fmt.Println("Not found: " + iName)
+	for _, vol := range maybeHashedToVolumeMap {
+		fmt.Println("Not found: " + vol)
 	}
 
 	return nil
@@ -610,19 +605,17 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	options, _ := GetCobraFlags(cmd, nil)
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 
-	iscsiNames := make([]string, 0)
 	diskNames := make([]string, 0)
 	diskNameIndex := make(map[string]int)
 	argsMapIndex := make(map[string]int)
-	iscsiToVolumeMap := make(map[string]string)
+	maybeHashedToVolumeMap := make(map[string]string)
 
 	for i, vol := range args {
-		iName := MakeIscsiTargetNameFromVolumePath(prefixName, vol)
-		iscsiToVolumeMap[iName] = vol
-		iscsiNames = append(iscsiNames, iName)
 		diskNames = append(diskNames, "zvol/" + vol)
 		diskNameIndex["zvol/" + vol] = i
 		argsMapIndex[vol] = i
+		maybeHashed := MaybeHashIscsiNameFromVolumePath(prefixName, vol)
+		maybeHashedToVolumeMap[maybeHashed] = vol
 	}
 
 	cmd.SilenceUsage = true
@@ -646,7 +639,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
 
-	DeactivateMatchingIscsiTargets(ipPortalAddr, iscsiNames, nil, false)
+	DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, false)
 
 	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(true),

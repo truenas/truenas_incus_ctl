@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"crypto/sha256"
+	"crypto/sha3"
 	"os"
 	"os/exec"
 	"strconv"
@@ -334,7 +334,7 @@ func MakeHashedUuid(input string) string {
 }
 
 func MakeHashedUuidRaw(input []byte) string {
-	h := sha256.Sum256(input)
+	h := sha3.Sum256(input)
 	return fmt.Sprintf(
 		"%02x%02x%02x%02x-"+
 		"%02x%02x-"+
@@ -347,6 +347,20 @@ func MakeHashedUuidRaw(input []byte) string {
 		h[8], h[9],
 		h[10], h[11], h[12], h[13], h[14], h[15],
 	)
+}
+
+func MakeHashedString(input string, length int) string {
+	h := sha3.Sum256([]byte(input))
+	var builder strings.Builder
+	for i := 0; i < length && i < 64; i++ {
+		b := (uint32(h[i/2]) >> (4*(1-(i&1)))) & 0xf
+		inc := uint32(0x30)
+		if b >= 10 {
+			inc = 0x57
+		}
+		builder.WriteByte(byte(inc + b))
+	}
+	return builder.String()
 }
 
 func RunCommandRaw(prog string, args ...string) (string, string, error) {

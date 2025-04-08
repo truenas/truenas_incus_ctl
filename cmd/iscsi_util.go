@@ -32,14 +32,14 @@ func GetIscsiTargetPrefixOrExit(options map[string]string) string {
 	if prefix == "" {
 		log.Fatal("Target prefix was not set")
 	}
-	const MAX_LENGTH = 27
+	const MAX_LENGTH = 24
 	if len(prefix) > MAX_LENGTH {
 		log.Fatal(fmt.Errorf("Target prefix exceeded maximum length of %d (was length %d)", MAX_LENGTH, len(prefix)))
 	}
 	return prefix
 }
 
-func MakeIscsiTargetNameFromVolumePath(prefix string, vol string) string {
+func MakeIscsiTargetNameFromVolumePath(prefix, vol string) string {
 	return prefix + ":" + strings.ReplaceAll(
 		strings.ReplaceAll(
 			strings.ReplaceAll(
@@ -49,11 +49,13 @@ func MakeIscsiTargetNameFromVolumePath(prefix string, vol string) string {
 		"/", ":")
 }
 
-func MakeIscsiTargetUuid(prefix, targetName string, timestamp int64) string {
-	if targetName == "" {
-		return ""
+func MaybeHashIscsiNameFromVolumePath(prefix, vol string) string {
+	iscsiName := MakeIscsiTargetNameFromVolumePath(prefix, vol)
+	if len(iscsiName) > 64 {
+		begin := prefix + ":-:"
+		return begin + core.MakeHashedString(vol, 64 - len(begin))
 	}
-	return prefix + ":" + core.MakeHashedUuid(targetName + fmt.Sprint(timestamp))
+	return iscsiName
 }
 
 func AddIscsiInitiator(initiators map[string]int, resultRow map[string]interface{}) (string, error) {
@@ -101,59 +103,60 @@ func LocateIqnTargetsLocally(targets []typeIscsiLoginSpec) []string {
 	return output
 }
 
-func DeactivateMatchingIscsiTargets(ipPortalAddr string, iscsiNames []string, iscsiToVolumeMap map[string]string, shouldPrintAndRemove bool) {
+func DeactivateMatchingIscsiTargets(ipPortalAddr string, maybeHashedToVolumeMap map[string]string, shouldPrintAndRemove bool) {
 	diskEntries, err := os.ReadDir("/dev/disk/by-path")
 	if err != nil {
 		return
 	}
 	for _, e := range diskEntries {
 		name := e.Name()
-		if !strings.Contains(name, ipPortalAddr) {
+		suffix := "-lun-0"
+		if !strings.HasSuffix(name, suffix) {
 			continue
 		}
-		iqnFindPos := strings.Index(name, "-iscsi-iqn.")
-		if iqnFindPos == -1 {
+		pathPrefix := "ip-" + ipPortalAddr
+		if !strings.HasPrefix(name, pathPrefix) {
 			continue
 		}
-		iqnStart := iqnFindPos + 7
-		iqnSepPos := strings.Index(name[iqnStart:], ":")
-		if iqnSepPos == -1 {
+		iqnPathStart := "-iscsi-iqn."
+		if !strings.HasPrefix(name[len(pathPrefix):], iqnPathStart) {
 			continue
 		}
-		iqn := name[iqnStart : iqnStart+iqnSepPos]
 
-		for _, iName := range iscsiNames {
-			fullName := iqn + ":" + iName
-			if strings.HasSuffix(name, fullName+"-lun-0") {
-				logoutParams := []string{
-					"--mode",
-					"node",
-					"--targetname",
-					fullName,
-					"--portal",
-					ipPortalAddr,
-					"--logout",
-				}
-				DebugString(strings.Join(logoutParams, " "))
-				_, err := RunIscsiAdminTool(logoutParams)
+		iqnStart := len(pathPrefix) + len(iqnPathStart) - 4
+		fullName := name[iqnStart:len(name)-len(suffix)]
+		targetName := fullName[strings.Index(fullName, ":")+1:]
 
-				if shouldPrintAndRemove && iscsiToVolumeMap != nil {
-					if err != nil {
-						fmt.Println("FAILED: " + fullName)
-					} else {
-						fmt.Println("deactivated: " + fullName)
-					}
-
-					// remove this entry from the map, so that it will contain all iSCSI volumes that we tried to log out but failed to
-					delete(iscsiToVolumeMap, iName)
-				}
-				break
+		if _, exists := maybeHashedToVolumeMap[targetName]; exists {
+			logoutParams := []string{
+				"--mode",
+				"node",
+				"--targetname",
+				fullName,
+				"--portal",
+				ipPortalAddr,
+				"--logout",
 			}
+			DebugString(strings.Join(logoutParams, " "))
+			_, err := RunIscsiAdminTool(logoutParams)
+
+			if shouldPrintAndRemove && maybeHashedToVolumeMap != nil {
+				if err != nil {
+					fmt.Println("FAILED: " + fullName)
+				} else {
+					fmt.Println("deactivated: " + fullName)
+				}
+
+				// Remove this entry from the map, so that it will contain all iSCSI volumes that we tried to log out but failed to.
+				// Not necessary, but it clarifies console output.
+				delete(maybeHashedToVolumeMap, targetName)
+			}
+			break
 		}
 	}
 }
 
-func GetIscsiTargetsFromDiscovery(iscsiToVolumeMap map[string]string, portalAddr string) ([]typeIscsiLoginSpec, error) {
+func GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap map[string]string, portalAddr string) ([]typeIscsiLoginSpec, error) {
 	out, err := RunIscsiAdminTool([]string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"})
 	if err != nil {
 		return nil, err
@@ -176,7 +179,7 @@ func GetIscsiTargetsFromDiscovery(iscsiToVolumeMap map[string]string, portalAddr
 		}
 
 		targetName := l[commaPos+iqnSepPos+1:]
-		if _, exists := iscsiToVolumeMap[targetName]; exists {
+		if _, exists := maybeHashedToVolumeMap[targetName]; exists {
 			t := typeIscsiLoginSpec{}
 			t.remoteIp = l[0:commaPos]
 			t.iqn = l[spacePos+1 : commaPos+iqnSepPos]
@@ -188,7 +191,7 @@ func GetIscsiTargetsFromDiscovery(iscsiToVolumeMap map[string]string, portalAddr
 	return targets, nil
 }
 
-func GetIscsiTargetsFromSession(iscsiToVolumeMap map[string]string) ([]typeIscsiLoginSpec, error) {
+func GetIscsiTargetsFromSession(maybeHashedToVolumeMap map[string]string) ([]typeIscsiLoginSpec, error) {
 	out, err := RunIscsiAdminTool([]string{"--mode", "session"})
 	if err != nil {
 		return nil, err
@@ -197,7 +200,11 @@ func GetIscsiTargetsFromSession(iscsiToVolumeMap map[string]string) ([]typeIscsi
 	targets := make([]typeIscsiLoginSpec, 0)
 	lines := strings.Split(out, "\n")
 	for _, l := range lines {
-		firstSpacePos := strings.Index(l, " ")
+		firstEndBracket := strings.Index(l, "]")
+		if firstEndBracket == -1 {
+			continue
+		}
+		firstSpacePos := strings.Index(l[firstEndBracket+2:], " ")
 		if firstSpacePos == -1 {
 			continue
 		}
@@ -205,13 +212,14 @@ func GetIscsiTargetsFromSession(iscsiToVolumeMap map[string]string) ([]typeIscsi
 		if lastSpacePos == firstSpacePos {
 			lastSpacePos = len(l)
 		}
-		fullName := l[firstSpacePos+1 : lastSpacePos]
+		fullName := l[firstEndBracket+2+firstSpacePos+1 : lastSpacePos]
 		firstColon := strings.Index(fullName, ":")
 		if firstColon == -1 {
 			continue
 		}
 		targetName := fullName[firstColon+1:]
-		if _, exists := iscsiToVolumeMap[targetName]; exists {
+
+		if _, exists := maybeHashedToVolumeMap[targetName]; exists {
 			iqnName := fullName[0:firstColon]
 			targets = append(targets, typeIscsiLoginSpec{
 				remoteIp: "",
