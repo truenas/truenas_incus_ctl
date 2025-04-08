@@ -53,7 +53,7 @@ func TestDatasetCreateVolume(t *testing.T) {
 		t,
 		datasetCreateCmd,
 		createOrUpdateDataset,
-		map[string]interface{}{"volume":1024},
+		map[string]interface{}{"volsize":1024},
 		[]string{"dozer/testing/test2"},
 		"[{\"name\":\"dozer/testing/test2\",\"type\":\"VOLUME\",\"volsize\":1024}]",
 	))
