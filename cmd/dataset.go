@@ -137,7 +137,7 @@ func init() {
 		cmd.Flags().BoolP("create-parents", "p", false, "Creates all the non-existing parent datasets")
 		cmd.Flags().StringP("user-props", "u", "", "Sets the specified properties")
 		cmd.Flags().StringP("option", "o", "", "Specify property=value,...")
-		cmd.Flags().Int64P("volume", "V", 0, "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size.")
+		cmd.Flags().Int64P("volsize", "V", 0, "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size.")
 		cmd.Flags().StringP("volblocksize", "b", "512", "Volume block size "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "volblocksize", []string{"512", "1K", "2K", "4K", "8K", "16K", "32K", "64K", "128K"}))
 		cmd.Flags().BoolP("sparse", "s", false, "Creates a sparse volume with no reservation")
@@ -215,7 +215,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		switch propName {
 		case "create_parents":
 			outMap["create_ancestors"] = valueStr == "true"
-		case "volume":
+		case "volsize":
 			volSize, err = strconv.ParseInt(valueStr, 10, 64)
 			if err != nil {
 				return errors.New("Failed to parse volume size: " + err.Error())
