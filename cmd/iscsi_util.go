@@ -14,7 +14,6 @@ import (
 )
 
 type typeIscsiLoginSpec struct {
-	status   string
 	remoteIp string
 	iqn      string
 	target   string
@@ -79,31 +78,7 @@ func AddIscsiInitiator(initiators map[string]int, resultRow map[string]interface
 	return name, nil
 }
 
-func LocateIqnTargetsLocally(targets []typeIscsiLoginSpec) []string {
-	output := make([]string, 0)
-	diskEntries, err := os.ReadDir("/dev/disk/by-path")
-	if err != nil {
-		return output
-	}
-	for _, e := range diskEntries {
-		name := e.Name()
-		for _, t := range targets {
-			if strings.HasSuffix(name, t.iqn+":"+t.target+"-lun-0") {
-				path := "/dev/disk/by-path/" + name
-				var line string
-				if t.status != "" {
-					line = t.status + ": " + path
-				} else {
-					line = path
-				}
-				output = append(output, line)
-			}
-		}
-	}
-	return output
-}
-
-func DeactivateMatchingIscsiTargets(ipPortalAddr string, maybeHashedToVolumeMap map[string]string, shouldPrintAndRemove bool) {
+func IterateActivatedIscsiShares(optIpPortalAddr string, callback func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string)) {
 	diskEntries, err := os.ReadDir("/dev/disk/by-path")
 	if err != nil {
 		return
@@ -114,25 +89,46 @@ func DeactivateMatchingIscsiTargets(ipPortalAddr string, maybeHashedToVolumeMap 
 		if !strings.HasSuffix(name, suffix) {
 			continue
 		}
-		pathPrefix := "ip-" + ipPortalAddr
+		pathPrefix := "ip-" + optIpPortalAddr
 		if !strings.HasPrefix(name, pathPrefix) {
 			continue
 		}
+
 		iqnPathStart := "-iscsi-iqn."
-		if !strings.HasPrefix(name[len(pathPrefix):], iqnPathStart) {
-			continue
+		var pathStartPos int
+		var ipPortalAddr string
+
+		if len(optIpPortalAddr) == 0 {
+			pathStartPos = strings.Index(name, iqnPathStart)
+			if pathStartPos == -1 {
+				continue
+			}
+			ipPortalAddr = name[3:pathStartPos]
+		} else {
+			pathStartPos = len(pathPrefix)
+			if !strings.HasPrefix(name[pathStartPos:], iqnPathStart) {
+				continue
+			}
+			ipPortalAddr = optIpPortalAddr
 		}
 
-		iqnStart := len(pathPrefix) + len(iqnPathStart) - 4
-		fullName := name[iqnStart:len(name)-len(suffix)]
-		targetName := fullName[strings.Index(fullName, ":")+1:]
+		iqnStart := pathStartPos + len(iqnPathStart) - 4
+		iqnTargetName := name[iqnStart:len(name)-len(suffix)]
+		targetOnlyName := iqnTargetName[strings.Index(iqnTargetName, ":")+1:]
 
-		if _, exists := maybeHashedToVolumeMap[targetName]; exists {
+		callback("/dev/disk/by-path", name, ipPortalAddr, iqnTargetName, targetOnlyName)
+	}
+}
+
+func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeMap map[string]string, shouldPrintAndRemove bool) {
+	IterateActivatedIscsiShares(optIpPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+		if _, exists := maybeHashedToVolumeMap[targetOnlyName]; exists {
+			fmt.Println("logging out:", iqnTargetName)
 			logoutParams := []string{
 				"--mode",
 				"node",
 				"--targetname",
-				fullName,
+				iqnTargetName,
 				"--portal",
 				ipPortalAddr,
 				"--logout",
@@ -142,18 +138,19 @@ func DeactivateMatchingIscsiTargets(ipPortalAddr string, maybeHashedToVolumeMap 
 
 			if shouldPrintAndRemove && maybeHashedToVolumeMap != nil {
 				if err != nil {
-					fmt.Println("FAILED: " + fullName)
+					fmt.Println("FAILED: " + iqnTargetName)
 				} else {
-					fmt.Println("deactivated: " + fullName)
+					fmt.Println("deactivated: " + iqnTargetName)
 				}
 
 				// Remove this entry from the map, so that it will contain all iSCSI volumes that we tried to log out but failed to.
 				// Not necessary, but it clarifies console output.
-				delete(maybeHashedToVolumeMap, targetName)
+				delete(maybeHashedToVolumeMap, targetOnlyName)
 			}
-			break
+		} else {
+			fmt.Println("\"" + targetOnlyName + "\" was not in", maybeHashedToVolumeMap)
 		}
-	}
+	})
 }
 
 func GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap map[string]string, portalAddr string) ([]typeIscsiLoginSpec, error) {
@@ -204,15 +201,21 @@ func GetIscsiTargetsFromSession(maybeHashedToVolumeMap map[string]string) ([]typ
 		if firstEndBracket == -1 {
 			continue
 		}
-		firstSpacePos := strings.Index(l[firstEndBracket+2:], " ")
+		addrStart := firstEndBracket+2
+		firstSpacePos := strings.Index(l[addrStart:], " ")
 		if firstSpacePos == -1 {
 			continue
+		}
+		firstCommaPos := strings.Index(l[addrStart:], ",")
+		if firstCommaPos == -1 || firstCommaPos > firstSpacePos {
+			firstCommaPos = firstSpacePos
 		}
 		lastSpacePos := strings.LastIndex(l, " ")
 		if lastSpacePos == firstSpacePos {
 			lastSpacePos = len(l)
 		}
-		fullName := l[firstEndBracket+2+firstSpacePos+1 : lastSpacePos]
+		ipPortalAddr := l[addrStart:firstCommaPos]
+		fullName := l[addrStart+firstSpacePos+1 : lastSpacePos]
 		firstColon := strings.Index(fullName, ":")
 		if firstColon == -1 {
 			continue
@@ -222,7 +225,7 @@ func GetIscsiTargetsFromSession(maybeHashedToVolumeMap map[string]string) ([]typ
 		if _, exists := maybeHashedToVolumeMap[targetName]; exists {
 			iqnName := fullName[0:firstColon]
 			targets = append(targets, typeIscsiLoginSpec{
-				remoteIp: "",
+				remoteIp: ipPortalAddr,
 				iqn:      iqnName,
 				target:   targetName,
 			})

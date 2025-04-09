@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -474,16 +475,7 @@ func listIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
-	return activateOrLocateIscsi(cmd, api, args, true)
-}
-
-func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
-	return activateOrLocateIscsi(cmd, api, args, false)
-}
-
-func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, isActivate bool) error {
-	options, _ := GetCobraFlags(cmd, nil)
+func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, args []string, hostUrl *url.URL, isActivate bool) ([]typeIscsiLoginSpec, map[string]bool, error) {
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 
 	maybeHashedToVolumeMap := make(map[string]string)
@@ -492,16 +484,14 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 		maybeHashedToVolumeMap[maybeHashed] = vol
 	}
 
-	cmd.SilenceUsage = true
-
 	var err error
 	if err = CheckIscsiAdminToolExists(); err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	err = MaybeLaunchIscsiDaemon()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	var targets []typeIscsiLoginSpec
@@ -511,52 +501,154 @@ func activateOrLocateIscsi(cmd *cobra.Command, api core.Session, args []string, 
 	}
 
 	if len(targets) == 0 {
-		hostUrl, err := url.Parse(api.GetHostUrl())
-		if err != nil {
-			return err
-		}
-
 		portalAddr := hostUrl.Hostname() + ":" + options.allFlags["port"]
 		targets, err = GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap, portalAddr)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 	}
 
-	if isActivate && len(targets) > 0 {
-		for _, t := range targets {
-			loginParams := []string{
-				"--mode",
-				"node",
-				"--targetname",
-				t.iqn + ":" + t.target,
-				"--portal",
-				t.remoteIp,
-				"--login",
-			}
-			DebugString(strings.Join(loginParams, " "))
-			_, err := RunIscsiAdminTool(loginParams)
-			if err != nil {
-				t.status = "FAILED"
-			} else {
-				t.status = "activated"
-			}
-		}
+	if len(targets) == 0 {
+		return nil, nil, fmt.Errorf("Could not find any matching iscsi shares")
+	}
 
-		/*
-			RunIscsiAdminTool([]string{
-				"--mode",
-				"session",
-				"-r",
-				"1",
-				"-P3",
+	shares := make(map[string]bool)
+	for _, t := range targets {
+		shares[t.iqn + ":" + t.target] = true
+	}
+
+	return targets, shares, nil
+}
+
+func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	cmd.SilenceUsage = true
+	hostUrl, err := url.Parse(api.GetHostUrl())
+	if err != nil {
+		return err
+	}
+
+	options, _ := GetCobraFlags(cmd, nil)
+	_, shares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostUrl, false)
+	if err != nil {
+		return err
+	}
+
+	ipAddrs, err := net.LookupIP(hostUrl.Hostname())
+	if err != nil {
+		return err
+	}
+
+	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
+
+	anyLocated := false
+	IterateActivatedIscsiShares(ipPortalAddr, func(root string, fullName string, ipAddr string, iqnTargetName string, targetOnlyName string) {
+		if _, exists := shares[iqnTargetName]; !exists {
+			return
+		}
+		anyLocated = true
+		fmt.Println(path.Join(root, fullName))
+	})
+
+	if !anyLocated {
+		fmt.Println("No matching iscsi shares were found")
+	}
+	return nil
+}
+
+type typeIscsiPathAndIqnTarget struct {
+	fullPath string
+	iqnTargetName string
+}
+
+func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	cmd.SilenceUsage = true
+	hostUrl, err := url.Parse(api.GetHostUrl())
+	if err != nil {
+		return err
+	}
+
+	options, _ := GetCobraFlags(cmd, nil)
+	targets, _, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostUrl, true)
+	if err != nil {
+		return err
+	}
+
+	ipAddrs, err := net.LookupIP(hostUrl.Hostname())
+	if err != nil {
+		return err
+	}
+
+	ipAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
+	outerMap := make(map[string]bool)
+
+	for _, t := range targets {
+		iqnTarget := t.iqn + ":" + t.target
+		if t.remoteIp != ipAddr {
+			continue
+		}
+		loginParams := []string{
+			"--mode",
+			"node",
+			"--targetname",
+			iqnTarget,
+			"--portal",
+			ipAddr,
+			"--login",
+		}
+		DebugString(strings.Join(loginParams, " "))
+		_, err := RunIscsiAdminTool(loginParams)
+		if err != nil {
+			fmt.Println("FAILED:", iqnTarget)
+		} else {
+			outerMap[iqnTarget] = true
+		}
+	}
+
+	if len(outerMap) == 0 {
+		fmt.Println("No matching iscsi shares were found")
+		return nil
+	}
+
+	innerMap := make(map[string]bool)
+	for key, value := range outerMap {
+		innerMap[key] = value
+	}
+
+	queue := core.MakeSimpleQueue[typeIscsiPathAndIqnTarget]()
+	go func() {
+		err := core.WaitForFilesToAppear("/dev/disk/by-path", func(fname string, wasCreate bool)bool {
+			IterateActivatedIscsiShares(ipAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+				queue.Add(typeIscsiPathAndIqnTarget {
+					fullPath: path.Join(root, fullName),
+					iqnTargetName: iqnTargetName,
+				})
+				delete(innerMap, iqnTargetName)
 			})
-		*/
+			return len(innerMap) == 0
+		})
+		if err != nil {
+			fmt.Println("err:", err)
+		}
+	}()
 
-		time.Sleep(time.Duration(4) * time.Second)
+	const maxTries = 60
+	for i := 0; i < maxTries; i++ {
+		done := false
+		for !done {
+			names, recvd := queue.Poll()
+			if !recvd {
+				break
+			}
+			fmt.Println(names.fullPath)
+			delete(outerMap, names.iqnTargetName)
+			done = len(outerMap) == 0
+		}
+		if done {
+			break
+		}
+		time.Sleep(time.Duration(500) * time.Millisecond)
 	}
 
-	fmt.Println(strings.Join(LocateIqnTargetsLocally(targets), "\n"))
 	return nil
 }
 
@@ -569,8 +661,6 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 		maybeHashed := MaybeHashIscsiNameFromVolumePath(prefixName, vol)
 		maybeHashedToVolumeMap[maybeHashed] = vol
 	}
-
-	fmt.Println(maybeHashedToVolumeMap)
 
 	cmd.SilenceUsage = true
 

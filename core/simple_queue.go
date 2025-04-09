@@ -65,3 +65,17 @@ func (q *SimpleQueue[T]) Take() T {
 	q.head = q.head.next
 	return item.value
 }
+
+func (q *SimpleQueue[T]) Poll() (T, bool) {
+	q.mtx.Lock()
+	defer q.mtx.Unlock()
+
+	if q.head == nil {
+		var defaultValue T
+		return defaultValue, false
+	}
+
+	item := q.head
+	q.head = q.head.next
+	return item.value, true
+}
