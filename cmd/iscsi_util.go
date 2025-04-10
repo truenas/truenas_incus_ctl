@@ -49,7 +49,7 @@ func MakeIscsiTargetNameFromVolumePath(prefix, vol string) string {
 		}
 		substituted.WriteRune(r)
 	}
-	return prefix + ":" + substituted.String()
+	return strings.ToLower(prefix + ":" + substituted.String())
 }
 
 func MaybeHashIscsiNameFromVolumePath(prefix, vol string) string {
