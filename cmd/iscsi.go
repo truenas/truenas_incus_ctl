@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -449,29 +448,10 @@ func undoIscsiCreateList(api core.Session, changes *[]typeApiCallRecord) {
 }
 
 func listIscsi(cmd *cobra.Command, api core.Session, args []string) error {
-	diskEntries, err := os.ReadDir("/dev/disk/by-path")
-	if err != nil {
-		return err
-	}
-	for _, e := range diskEntries {
-		name := e.Name()
-		/*
-			if !strings.HasPrefix(name, "ip-" + ipPortalAddr) {
-				continue
-			}
-		*/
-		iqnFindPos := strings.Index(name, "-iscsi-iqn.")
-		if iqnFindPos == -1 {
-			continue
-		}
-		iqnStart := iqnFindPos + 7
-		iqnSepPos := strings.Index(name[iqnStart:], ":")
-		if iqnSepPos == -1 {
-			continue
-		}
-		fmt.Println("/dev/disk/by-path/" + name)
-	}
-
+	IterateActivatedIscsiShares("", func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+		fullPath := path.Join(root, fullName)
+		fmt.Println(fullPath)
+	})
 	return nil
 }
 
@@ -614,14 +594,14 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		innerMap[key] = value
 	}
 
-	queue := core.MakeSimpleQueue[typeIscsiPathAndIqnTarget]()
+	shareCh := make(chan typeIscsiPathAndIqnTarget)
 	go func() {
 		err := core.WaitForFilesToAppear("/dev/disk/by-path", func(fname string, wasCreate bool)bool {
 			IterateActivatedIscsiShares(ipAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
-				queue.Add(typeIscsiPathAndIqnTarget {
+				shareCh <- typeIscsiPathAndIqnTarget {
 					fullPath: path.Join(root, fullName),
 					iqnTargetName: iqnTargetName,
-				})
+				}
 				delete(innerMap, iqnTargetName)
 			})
 			return len(innerMap) == 0
@@ -629,24 +609,33 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		if err != nil {
 			fmt.Println("err:", err)
 		}
+		close(shareCh)
 	}()
 
-	const maxTries = 60
+	const maxTries = 30
 	for i := 0; i < maxTries; i++ {
-		done := false
-		for !done {
-			names, recvd := queue.Poll()
-			if !recvd {
-				break
-			}
-			fmt.Println(names.fullPath)
-			delete(outerMap, names.iqnTargetName)
-			done = len(outerMap) == 0
+		select {
+			case names := <- shareCh:
+				if _, exists := outerMap[names.iqnTargetName]; exists {
+					fmt.Println(names.fullPath)
+					delete(outerMap, names.iqnTargetName)
+				}
+			case <- time.After(time.Duration(1000) * time.Millisecond):
+				IterateActivatedIscsiShares(ipAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+					if _, exists := outerMap[iqnTargetName]; exists {
+						fullPath := path.Join(root, fullName)
+						fmt.Println(fullPath)
+						delete(outerMap, iqnTargetName)
+					}
+				})
 		}
-		if done {
+		if len(outerMap) == 0 {
 			break
 		}
-		time.Sleep(time.Duration(500) * time.Millisecond)
+	}
+
+	for iqnTargetName, _ := range outerMap {
+		fmt.Println("TIMED OUT:", iqnTargetName)
 	}
 
 	return nil

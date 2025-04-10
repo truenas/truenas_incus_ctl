@@ -123,7 +123,6 @@ func IterateActivatedIscsiShares(optIpPortalAddr string, callback func(root stri
 func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeMap map[string]string, shouldPrintAndRemove bool) {
 	IterateActivatedIscsiShares(optIpPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
 		if _, exists := maybeHashedToVolumeMap[targetOnlyName]; exists {
-			fmt.Println("logging out:", iqnTargetName)
 			logoutParams := []string{
 				"--mode",
 				"node",
