@@ -68,6 +68,8 @@ func init() {
 	iscsiDeactivateCmd.RunE = WrapCommandFunc(deactivateIscsi)
 	iscsiDeleteCmd.RunE = WrapCommandFunc(deleteIscsi)
 
+	iscsiCreateCmd.Flags().Bool("readonly", false, "Ensure the new iSCSI extent is read-only. Ignored for snapshots.")
+
 	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "incus", "label to prefix the created target")
@@ -357,6 +359,8 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	if len(extentsCreate) > 0 {
+		isReadOnly := core.IsValueTrue(options.allFlags, "readonly")
+
 		paramsCreate := make([]interface{}, len(extentsCreate))
 		for i, _ := range extentsCreate {
 			snapOffset := strings.Index(extentsCreate[i], "@")
@@ -364,7 +368,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 				map[string]interface{} {
 					"name": extentsIqnCreate[i],
 					"disk": extentsCreate[i],
-					"ro": snapOffset >= 0,
+					"ro": isReadOnly || snapOffset >= 0,
 				},
 			}
 		}
