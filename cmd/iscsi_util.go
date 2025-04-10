@@ -120,7 +120,7 @@ func IterateActivatedIscsiShares(optIpPortalAddr string, callback func(root stri
 	}
 }
 
-func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeMap map[string]string, shouldPrintAndRemove bool) {
+func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeMap map[string]string, isMinimal, shouldRemove bool) {
 	IterateActivatedIscsiShares(optIpPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
 		if _, exists := maybeHashedToVolumeMap[targetOnlyName]; exists {
 			logoutParams := []string{
@@ -135,18 +135,20 @@ func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeM
 			DebugString(strings.Join(logoutParams, " "))
 			_, err := RunIscsiAdminTool(logoutParams)
 
-			if shouldPrintAndRemove && maybeHashedToVolumeMap != nil {
-				if err != nil {
-					fmt.Println("FAILED: " + iqnTargetName)
-				} else {
-					fmt.Println("deactivated: " + iqnTargetName)
-				}
+			if isMinimal && err == nil {
+				fmt.Println(iqnTargetName)
+			} else if err == nil {
+				fmt.Println("deactivated:", iqnTargetName)
+			} else if !isMinimal {
+				fmt.Println("FAILED:", iqnTargetName)
+			}
 
+			if shouldRemove && maybeHashedToVolumeMap != nil {
 				// Remove this entry from the map, so that it will contain all iSCSI volumes that we tried to log out but failed to.
 				// Not necessary, but it clarifies console output.
 				delete(maybeHashedToVolumeMap, targetOnlyName)
 			}
-		} else {
+		} else if !isMinimal {
 			fmt.Println("\"" + targetOnlyName + "\" was not in", maybeHashedToVolumeMap)
 		}
 	})

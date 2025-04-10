@@ -68,10 +68,15 @@ func init() {
 	iscsiDeactivateCmd.RunE = WrapCommandFunc(deactivateIscsi)
 	iscsiDeleteCmd.RunE = WrapCommandFunc(deleteIscsi)
 
-	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiListCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
+	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "incus", "label to prefix the created target")
 		c.Flags().IntP("port", "p", 3260, "iSCSI portal port")
+	}
+
+	_iscsiAdminCmds := []*cobra.Command {iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd}
+	for _, c := range _iscsiAdminCmds {
+		c.Flags().Bool("parsable", false, "Parsable (ie. minimal) output")
 	}
 
 	iscsiCmd.AddCommand(iscsiCreateCmd)
@@ -519,6 +524,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
+	isMinimal := core.IsValueTrue(options.allFlags, "parsable")
 
 	anyLocated := false
 	IterateActivatedIscsiShares(ipPortalAddr, func(root string, fullName string, ipAddr string, iqnTargetName string, targetOnlyName string) {
@@ -529,7 +535,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		fmt.Println(path.Join(root, fullName))
 	})
 
-	if !anyLocated {
+	if !isMinimal && !anyLocated {
 		fmt.Println("No matching iscsi shares were found")
 	}
 	return nil
@@ -558,6 +564,7 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
+	isMinimal := core.IsValueTrue(options.allFlags, "parsable")
 	ipAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
 	outerMap := make(map[string]bool)
 
@@ -578,15 +585,16 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		DebugString(strings.Join(loginParams, " "))
 		_, err := RunIscsiAdminTool(loginParams)
 		if err != nil {
-			fmt.Println("FAILED:", iqnTarget)
+			if !isMinimal {
+				fmt.Println("FAILED:", iqnTarget)
+			}
 		} else {
 			outerMap[iqnTarget] = true
 		}
 	}
 
 	if len(outerMap) == 0 {
-		fmt.Println("No matching iscsi shares were found")
-		return nil
+		return fmt.Errorf("No matching iscsi shares were found")
 	}
 
 	innerMap := make(map[string]bool)
@@ -606,7 +614,7 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			})
 			return len(innerMap) == 0
 		})
-		if err != nil {
+		if err != nil && !isMinimal {
 			fmt.Println("err:", err)
 		}
 		close(shareCh)
@@ -634,8 +642,10 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	for iqnTargetName, _ := range outerMap {
-		fmt.Println("TIMED OUT:", iqnTargetName)
+	if !isMinimal {
+		for iqnTargetName, _ := range outerMap {
+			fmt.Println("TIMED OUT:", iqnTargetName)
+		}
 	}
 
 	return nil
@@ -668,11 +678,14 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 	}
 
 	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
+	isMinimal := core.IsValueTrue(options.allFlags, "parsable")
 
-	DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, true)
+	DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, isMinimal, true)
 
-	for _, vol := range maybeHashedToVolumeMap {
-		fmt.Println("Not found: " + vol)
+	if !isMinimal {
+		for _, vol := range maybeHashedToVolumeMap {
+			fmt.Println("Not found: " + vol)
+		}
 	}
 
 	return nil
@@ -718,7 +731,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
 
-	DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, false)
+	DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, true, false)
 
 	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(true),
