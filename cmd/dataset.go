@@ -332,7 +332,10 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	params := BuildNameStrAndPropertiesJson(options, args[0])
 
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
-	out, _, err := MaybeBulkApiCall(api, "pool.dataset.delete", 10, params, objRemap, false)
+	// it can take 5s to remove a dataset which has an iscsi share, we experience timeouts even
+	// with 30s when deleting multiple incus pools.
+	// TODO: profile middleware to determine if this can be improved.
+	out, _, err := MaybeBulkApiCall(api, "pool.dataset.delete", 30, params, objRemap, false)
 	if err != nil {
 		return err
 	}
