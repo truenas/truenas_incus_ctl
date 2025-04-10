@@ -359,11 +359,12 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	if len(extentsCreate) > 0 {
 		paramsCreate := make([]interface{}, len(extentsCreate))
 		for i, _ := range extentsCreate {
+			snapOffset := strings.Index(extentsCreate[i], "@")
 			paramsCreate[i] = []interface{} {
 				map[string]interface{} {
 					"name": extentsIqnCreate[i],
 					"disk": extentsCreate[i],
-					"path": extentsCreate[i],
+					"ro": snapOffset >= 0,
 				},
 			}
 		}
@@ -423,9 +424,11 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		teCreateList = append(teCreateList, []interface{}{te})
 	}
 
-	_, _, err = MaybeBulkApiCallArray(api, "iscsi.targetextent.create", 10, teCreateList, true)
-	if err != nil {
-		return err
+	if len(teCreateList) > 0 {
+		_, _, err = MaybeBulkApiCallArray(api, "iscsi.targetextent.create", 10, teCreateList, true)
+		if err != nil {
+			return err
+		}
 	}
 
 	changes = make([]typeApiCallRecord, 0)
@@ -439,15 +442,17 @@ func undoIscsiCreateList(api core.Session, changes *[]typeApiCallRecord) {
 		if strings.HasSuffix(call.endpoint, ".create") {
 			idList := make([]interface{}, 0)
 			for _, r := range call.resultList {
-				idList = append(idList, core.GetIdFromObject(r))
+				idList = append(idList, []interface{}{core.GetIdFromObject(r)})
 			}
-			MaybeBulkApiCallArray(
-				api,
-				call.endpoint[:len(call.endpoint)-7] + ".delete",
-				10,
-				idList,
-				false,
-			)
+			if len(idList) > 0 {
+				MaybeBulkApiCallArray(
+					api,
+					call.endpoint[:len(call.endpoint)-7] + ".delete",
+					10,
+					idList,
+					false,
+				)
+			}
 		}
 	}
 }
@@ -816,16 +821,18 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		teIds[i] = []interface{} {core.GetIdFromObject(result)}
 	}
 
-	_, _, err = MaybeBulkApiCallArray(api, "iscsi.targetextent.delete", 10, teIds, true)
-	if err != nil {
-		return err
+	if len(teIds) > 0 {
+		_, _, err = MaybeBulkApiCallArray(api, "iscsi.targetextent.delete", 10, teIds, true)
+		if err != nil {
+			return err
+		}
+		changes = append(changes, typeApiCallRecord {
+			endpoint: "iscsi.targetextent.delete",
+			params: teIds,
+			resultList: teResults,
+			errorList: teErrors,
+		})
 	}
-	changes = append(changes, typeApiCallRecord {
-		endpoint: "iscsi.targetextent.delete",
-		params: teIds,
-		resultList: teResults,
-		errorList: teErrors,
-	})
 
 	targets := make([]interface{}, 0)
 	for _, v := range responseTarget.resultsMap {
@@ -836,24 +843,29 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		targetIdsDelete[i] = []interface{} {t}
 	}
 
-	_, _, err = MaybeBulkApiCallArray(api, "iscsi.target.delete", 10, targetIdsDelete, true)
-	if err != nil {
-		return err
+	if len(targetIdsDelete) > 0 {
+		_, _, err = MaybeBulkApiCallArray(api, "iscsi.target.delete", 10, targetIdsDelete, true)
+		if err != nil {
+			return err
+		}
+		changes = append(changes, typeApiCallRecord {
+			endpoint: "iscsi.target.delete",
+			params: targetIdsDelete,
+			resultList: targets,
+			errorList: nil,
+		})
 	}
-	changes = append(changes, typeApiCallRecord {
-		endpoint: "iscsi.target.delete",
-		params: targetIdsDelete,
-		resultList: targets,
-		errorList: nil,
-	})
 
 	extentIdsDelete := make([]interface{}, len(extentIds))
 	for i, e := range extentIds {
 		extentIdsDelete[i] = []interface{} {e}
 	}
-	_, _, err = MaybeBulkApiCallArray(api, "iscsi.extent.delete", 10, extentIdsDelete, true)
-	if err != nil {
-		return err
+
+	if len(extentIdsDelete) > 0 {
+		_, _, err = MaybeBulkApiCallArray(api, "iscsi.extent.delete", 10, extentIdsDelete, true)
+		if err != nil {
+			return err
+		}
 	}
 
 	changes = make([]typeApiCallRecord, 0)
@@ -869,13 +881,15 @@ func undoIscsiDeleteList(api core.Session, changes *[]typeApiCallRecord) {
 			for _, r := range call.resultList {
 				idList = append(idList, core.GetIdFromObject(r))
 			}
-			MaybeBulkApiCallArray(
-				api,
-				call.endpoint[:len(call.endpoint)-7] + ".create",
-				10,
-				idList,
-				false,
-			)
+			if len(idList) > 0 {
+				MaybeBulkApiCallArray(
+					api,
+					call.endpoint[:len(call.endpoint)-7] + ".create",
+					10,
+					idList,
+					false,
+				)
+			}
 		}
 	}
 }

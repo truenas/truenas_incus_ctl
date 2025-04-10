@@ -39,13 +39,17 @@ func GetIscsiTargetPrefixOrExit(options map[string]string) string {
 }
 
 func MakeIscsiTargetNameFromVolumePath(prefix, vol string) string {
-	return prefix + ":" + strings.ReplaceAll(
-		strings.ReplaceAll(
-			strings.ReplaceAll(
-				strings.ReplaceAll(strings.ToLower(vol), ":", "-"),
-				".", "-"),
-			"_", "-"),
-		"/", ":")
+	var substituted strings.Builder
+	for _, r := range vol {
+		if r == ':' || r == '.' || r == '_' {
+			r = '-'
+		}
+		if r == '/' || r == '@' {
+			r = ':'
+		}
+		substituted.WriteRune(r)
+	}
+	return prefix + ":" + substituted.String()
 }
 
 func MaybeHashIscsiNameFromVolumePath(prefix, vol string) string {
