@@ -70,6 +70,8 @@ func init() {
 
 	iscsiCreateCmd.Flags().Bool("readonly", false, "Ensure the new iSCSI extent is read-only. Ignored for snapshots.")
 
+	iscsiLocateCmd.Flags().Bool("activate", false, "Activate any shares that could not be located")
+
 	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "", "label to prefix the created target")
@@ -522,7 +524,9 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	options, _ := GetCobraFlags(cmd, nil)
-	_, shares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostUrl, false)
+	shouldActivate := core.IsValueTrue(options.allFlags, "activate")
+
+	targets, shares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostUrl, shouldActivate)
 	if err != nil {
 		return err
 	}
@@ -542,9 +546,18 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 		anyLocated = true
 		fmt.Println(path.Join(root, fullName))
+		delete(shares, iqnTargetName)
 	})
 
-	if !isMinimal && !anyLocated {
+	if len(shares) > 0 && shouldActivate {
+		remainingTargets := make([]typeIscsiLoginSpec, 0)
+		for _, t := range targets {
+			if _, exists := shares[t.iqn + ":" + t.target]; exists {
+				remainingTargets = append(remainingTargets, t)
+			}
+		}
+		return doIscsiActivate(remainingTargets, ipPortalAddr, isMinimal)
+	} else if !isMinimal && !anyLocated {
 		fmt.Println("No matching iscsi shares were found")
 	}
 	return nil
@@ -575,6 +588,11 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	isMinimal := core.IsValueTrue(options.allFlags, "parsable")
 	ipAddr := ipAddrs[0].String() + ":" + options.allFlags["port"]
+
+	return doIscsiActivate(targets, ipAddr, isMinimal)
+}
+
+func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool) error {
 	outerMap := make(map[string]bool)
 
 	for _, t := range targets {
