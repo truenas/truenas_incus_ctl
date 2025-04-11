@@ -400,11 +400,7 @@ func MakeHashedString(input string, length int) string {
 	var maxBits int
 	bitsNeeded := length * 5
 
-	if true {
-		h = make([]byte, length)
-		copy(h, []byte(input))
-		maxBits = bitsNeeded
-	} else if bitsNeeded > 256 {
+	if bitsNeeded > 256 {
 		h512 := sha512.Sum512([]byte(input))
 		h = h512[:]
 		maxBits = 512
