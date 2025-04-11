@@ -28,10 +28,8 @@ type typeApiCallRecord struct {
 }
 
 func GetIscsiTargetPrefixOrExit(options map[string]string) string {
-	prefix := options["target_prefix"]
-	if prefix == "" {
-		log.Fatal("Target prefix was not set")
-	}
+	prefixRaw := options["target_prefix"]
+	prefix := strings.TrimSpace(prefixRaw)
 	const MAX_LENGTH = 24
 	if len(prefix) > MAX_LENGTH {
 		log.Fatal(fmt.Errorf("Target prefix exceeded maximum length of %d (was length %d)", MAX_LENGTH, len(prefix)))
@@ -50,13 +48,21 @@ func MakeIscsiTargetNameFromVolumePath(prefix, vol string) string {
 		}
 		substituted.WriteRune(r)
 	}
+	if prefix == "" {
+		return strings.ToLower(substituted.String())
+	}
 	return strings.ToLower(prefix + ":" + substituted.String())
 }
 
 func MaybeHashIscsiNameFromVolumePath(prefix, vol string) string {
 	iscsiName := MakeIscsiTargetNameFromVolumePath(prefix, vol)
 	if len(iscsiName) > 64 {
-		begin := prefix + ":-:"
+		var begin string
+		if prefix == "" {
+			begin = "-:"
+		} else {
+			begin = prefix + ":-:"
+		}
 		return begin + core.MakeHashedString(vol, 64 - len(begin))
 	}
 	return iscsiName

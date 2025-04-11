@@ -72,7 +72,7 @@ func init() {
 
 	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
-		c.Flags().StringP("target-prefix", "t", "incus", "label to prefix the created target")
+		c.Flags().StringP("target-prefix", "t", "", "label to prefix the created target")
 		c.Flags().IntP("port", "p", 3260, "iSCSI portal port")
 	}
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"crypto/sha256"
+	"crypto/sha512"
 	"os"
 	"os/exec"
 	"slices"
@@ -395,15 +396,34 @@ func WaitForFilesToAppear(directory string, onFileAppeared func(string, bool)boo
 }
 
 func MakeHashedString(input string, length int) string {
-	h := sha256.Sum256([]byte(input))
+	var h []byte
+	var maxBits int
+	bitsNeeded := length * 5
+
+	if true {
+		h = make([]byte, length)
+		copy(h, []byte(input))
+		maxBits = bitsNeeded
+	} else if bitsNeeded > 256 {
+		h512 := sha512.Sum512([]byte(input))
+		h = h512[:]
+		maxBits = 512
+	} else {
+		h256 := sha256.Sum256([]byte(input))
+		h = h256[:]
+		maxBits = 256
+	}
+
 	var builder strings.Builder
-	for i := 0; i < length && i < 64; i++ {
-		b := (uint32(h[i/2]) >> (4*(1-(i&1)))) & 0xf
+	for pos := 0; pos < bitsNeeded && pos < maxBits - 4; pos += 5 {
+		data1 := h[pos/8] << (pos%8)
+		data2 := h[(pos+4)/8] >> (7-((pos+4)%8))
+		v := uint32((data1 >> 3) | data2) & 0x1f
 		inc := uint32(0x30)
-		if b >= 10 {
+		if v >= 10 {
 			inc = 0x57
 		}
-		builder.WriteByte(byte(inc + b))
+		builder.WriteByte(byte(inc + v))
 	}
 	return builder.String()
 }
