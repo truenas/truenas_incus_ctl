@@ -9,6 +9,7 @@ import (
 	"log"
 	//"strconv"
 	"strings"
+	"time"
 	"truenas/truenas_incus_ctl/core"
 	//"github.com/spf13/cobra"
 )
@@ -260,5 +261,11 @@ func MaybeLaunchIscsiDaemon() error {
 }
 
 func RunIscsiAdminTool(args []string) (string, error) {
-	return core.RunCommand("iscsiadm", args...)
+begin:
+	out, err := core.RunCommand("iscsiadm", args...)
+	if err != nil && strings.HasPrefix(err.Error(), "iscsiadm: Could not scan /sys/class/iscsi_transport") {
+		time.Sleep(time.Duration(500) * time.Millisecond)
+		goto begin
+	}
+	return out, err
 }
