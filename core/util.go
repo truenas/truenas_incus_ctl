@@ -2,11 +2,13 @@ package core
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"crypto/sha256"
-	"crypto/sha512"
+	"math"
+	"math/bits"
 	"os"
 	"os/exec"
 	"slices"
@@ -422,6 +424,63 @@ func MakeHashedString(input string, length int) string {
 		builder.WriteByte(byte(inc + v))
 	}
 	return builder.String()
+}
+
+func ParseSizeString(str string) (int64, error) {
+	if str == "" || str[0] < '0' || str[0] > '9' {
+		return 0, fmt.Errorf("size was not a number")
+	}
+	var multiplier int64
+	var whole int64
+	var frac int64
+	nFracDigits := 0
+	isFrac := false
+
+	for _, c := range str {
+		if c == 'k' || c == 'K' {
+			if multiplier != 0 {
+				return 0, fmt.Errorf("invalid size units in \"" + str + "\"")
+			}
+			multiplier = int64(1000)
+		} else if c == 'm' || c == 'M' {
+			if multiplier != 0 {
+				return 0, fmt.Errorf("invalid size units in \"" + str + "\"")
+			}
+			multiplier = int64(1000) * int64(1000)
+		} else if c == 'g' || c == 'G' {
+			if multiplier != 0 {
+				return 0, fmt.Errorf("invalid size units in \"" + str + "\"")
+			}
+			multiplier = int64(1000) * int64(1000) * int64(1000)
+		} else if c == 't' || c == 'T' {
+			if multiplier != 0 {
+				return 0, fmt.Errorf("invalid size units in \"" + str + "\"")
+			}
+			multiplier = int64(1000) * int64(1000) * int64(1000) * int64(1000)
+		} else if c == 'i' || c == 'I' {
+			if multiplier == 0 {
+				continue
+			}
+			multiplier = int64(1) << (1 + (63 - bits.LeadingZeros64(uint64(multiplier - 1))))
+		} else if c == '.' {
+			isFrac = true
+		} else if c >= '0' && c <= '9' {
+			if isFrac {
+				frac = frac * int64(10) + int64(c - '0')
+				nFracDigits++
+			} else {
+				whole = whole * int64(10) + int64(c - '0')
+			}
+		} else if c != 'B' && c != 'b' && c != ' ' && c != '\t' && c != '\r' && c != '\n' {
+			return 0, fmt.Errorf("unrecognized character '" + string(c) + "' in \"" + str + "\"")
+		}
+	}
+
+	if multiplier == 0 {
+		multiplier = 1
+	}
+	fracMult := float64(frac) * math.Pow10(-nFracDigits) * float64(multiplier)
+	return whole * multiplier + int64(fracMult), nil
 }
 
 func RunCommandRaw(prog string, args ...string) (string, string, error) {

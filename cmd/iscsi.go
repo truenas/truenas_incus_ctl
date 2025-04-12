@@ -471,7 +471,13 @@ func listIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, args []string, hostUrl *url.URL, isActivate bool) ([]typeIscsiLoginSpec, map[string]bool, error) {
+func getIscsiSharesFromSessionAndDiscovery(
+	options FlagMap,
+	api core.Session,
+	args []string,
+	hostUrl *url.URL,
+	isActivate bool,
+) ([]typeIscsiLoginSpec, map[string]bool, error) {
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 
 	maybeHashedToVolumeMap := make(map[string]string)
