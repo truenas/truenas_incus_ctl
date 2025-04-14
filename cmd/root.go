@@ -14,6 +14,23 @@ var rootCmd = &cobra.Command{
 	Use: "truenas_incus_ctl",
 }
 
+var daemonCmd = &cobra.Command{
+	Use:  "daemon",
+	Args: cobra.MinimumNArgs(1),
+	Run:  func(cmd *cobra.Command, args []string) {
+		var globalTimeoutStr string
+		f := cmd.Flags().Lookup("timeout")
+		if f != nil {
+			globalTimeoutStr = f.Value.String()
+		}
+		serverSockAddr := args[0]
+		if serverSockAddr == "" {
+			log.Fatal("Error: path to server socket was not provided")
+		}
+		core.RunDaemon(serverSockAddr, globalTimeoutStr)
+	},
+}
+
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
@@ -37,6 +54,10 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&g_configHost, "host", "", "Name of config to look up in config.json, defaults to first entry")
 	rootCmd.PersistentFlags().StringVarP(&g_url, "url", "U", "", "Server URL")
 	rootCmd.PersistentFlags().StringVarP(&g_apiKey, "api-key", "K", "", "API key")
+
+	daemonCmd.Flags().StringP("timeout", "t", "", "Exit the daemon if no communication occurs after this duration")
+
+	rootCmd.AddCommand(daemonCmd)
 }
 
 func RemoveGlobalFlags(flags map[string]string) {
@@ -64,10 +85,18 @@ func InitializeApiClient() core.Session {
 				log.Fatal(fmt.Errorf("Failed to parse config: %v", err))
 			}
 		}
-		api = &core.RealSession{
-			HostUrl:     g_url,
-			ApiKey:      g_apiKey,
-			ShouldWait:  !g_async,
+		if true {
+			api = &core.ClientSession{
+				HostUrl:     g_url,
+				ApiKey:      g_apiKey,
+				SocketPath:  "/home/jack/tncdaemon.sock",
+			}
+		} else {
+			api = &core.RealSession{
+				HostUrl:     g_url,
+				ApiKey:      g_apiKey,
+				ShouldWait:  !g_async,
+			}
 		}
 	}
 
