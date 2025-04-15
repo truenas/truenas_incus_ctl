@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
@@ -86,10 +87,14 @@ func InitializeApiClient() core.Session {
 			}
 		}
 		if true {
+			p, err := os.UserHomeDir()
+			if err != nil {
+				log.Fatal(err)
+			}
 			api = &core.ClientSession{
 				HostUrl:     g_url,
 				ApiKey:      g_apiKey,
-				SocketPath:  "/home/jack/tncdaemon.sock",
+				SocketPath:  path.Join(p, "tncdaemon.sock"),
 			}
 		} else {
 			api = &core.RealSession{
@@ -179,7 +184,7 @@ func getDefaultConfigPath() string {
 	if err != nil {
 		log.Fatal(err)
 	}
-	return p + "/.truenas_incus_ctl/config.json"
+	return path.Join(p, ".truenas_incus_ctl", "config.json")
 }
 
 func getMapFromMapAny(dict map[string]interface{}, key, fileName string) (map[string]interface{}, error) {
