@@ -778,125 +778,21 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	responseExtent, err := QueryApi(api, "iscsi.extent", diskNames, core.StringRepeated("disk", len(diskNames)), nil, extras)
-	if err != nil {
-		return nil
-	}
-
 	targetIds := GetIdsOrderedByArgsFromResponse(responseTarget, "alias", args, argsMapIndex)
-	extentIds := GetIdsOrderedByArgsFromResponse(responseExtent, "disk", diskNames, diskNameIndex)
 
-	DebugString("targets " + fmt.Sprint(targetIds))
-	DebugString("extents " + fmt.Sprint(extentIds))
-
-	var teInnerFilter []interface{}
-	if len(targetIds) > 0 && len(extentIds) > 0 {
-		teInnerFilter = []interface{} {
-			[]interface{} {
-				"OR",
-				[]interface{} {
-					[]interface{} {
-						"target",
-						"in",
-						targetIds,
-					},
-					[]interface{} {
-						"extent",
-						"in",
-						extentIds,
-					},
-				},
-			},
-		}
-	} else if len(targetIds) > 0 {
-		teInnerFilter = []interface{} {
-			[]interface{} {
-				"target",
-				"in",
-				targetIds,
-			},
-		}
-	} else if len(extentIds) > 0 {
-		teInnerFilter = []interface{} {
-			[]interface{} {
-				"extent",
-				"in",
-				extentIds,
-			},
-		}
-	} else {
-		fmt.Println("No matching extents or targets were found")
-		return nil
-	}
-
-	teParams := []interface{} {teInnerFilter, make(map[string]interface{})}
-	DebugJson(teParams)
-	out, err := core.ApiCall(
-		api,
-		"iscsi.targetextent.query",
-		10,
-		teParams,
-	)
-	if err != nil {
-		return err
-	}
-	DebugString(string(out))
-
-	teResults, teErrors := core.GetResultsAndErrorsFromApiResponseRaw(out)
-
-	teIds := make([]interface{}, len(teResults))
-	for i, result := range teResults {
-		teIds[i] = []interface{} {core.GetIdFromObject(result)}
-	}
-
-	if len(teIds) > 0 {
-		_, _, err = MaybeBulkApiCallArray(api, "iscsi.targetextent.delete", 10, teIds, true)
-		if err != nil {
-			return err
-		}
-		changes = append(changes, typeApiCallRecord {
-			endpoint: "iscsi.targetextent.delete",
-			params: teIds,
-			resultList: teResults,
-			errorList: teErrors,
-		})
-	}
-
-	targets := make([]interface{}, 0)
-	for _, v := range responseTarget.resultsMap {
-		targets = append(targets, v)
-	}
 	targetIdsDelete := make([]interface{}, len(targetIds))
 	for i, t := range targetIds {
-		targetIdsDelete[i] = []interface{} {t}
+		targetIdsDelete[i] = []interface{} {t, true, true} // id, force, delete_extents
 	}
 
 	if len(targetIdsDelete) > 0 {
-		_, _, err = MaybeBulkApiCallArray(api, "iscsi.target.delete", 10, targetIdsDelete, true)
-		if err != nil {
-			return err
-		}
-		changes = append(changes, typeApiCallRecord {
-			endpoint: "iscsi.target.delete",
-			params: targetIdsDelete,
-			resultList: targets,
-			errorList: nil,
-		})
-	}
-
-	extentIdsDelete := make([]interface{}, len(extentIds))
-	for i, e := range extentIds {
-		extentIdsDelete[i] = []interface{} {e}
-	}
-
-	if len(extentIdsDelete) > 0 {
-		_, _, err = MaybeBulkApiCallArray(api, "iscsi.extent.delete", 10, extentIdsDelete, true)
+		timeout := 15 * len(targetIdsDelete)
+		_, _, err = MaybeBulkApiCallArray(api, "iscsi.target.delete", int64(timeout), targetIdsDelete, true)
 		if err != nil {
 			return err
 		}
 	}
 
-	changes = make([]typeApiCallRecord, 0)
 	return nil
 }
 

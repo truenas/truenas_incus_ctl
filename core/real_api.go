@@ -5,6 +5,7 @@ import (
 	"fmt"
 	//"strconv"
 	"strings"
+	"time"
 	"encoding/json"
 	"truenas/truenas_incus_ctl/truenas_api"
 )
@@ -21,6 +22,7 @@ type RealSession struct {
 	HostUrl string
 	ApiKey string
 	ShouldWait bool
+	IsDebug bool
 	client *truenas_api.Client
 	subscribedToJobs bool
 	resultsQueue *SimpleQueue[ApiJobResult]
@@ -71,7 +73,15 @@ func (s *RealSession) GetHostUrl() string {
 }
 
 func (s *RealSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
-	return s.client.Call(method, timeoutSeconds, params)
+	var t1 time.Time
+	if s.IsDebug {
+		t1 = time.Now()
+	}
+	out, err := s.client.Call(method, timeoutSeconds, params)
+	if s.IsDebug {
+		fmt.Println(method + ":", time.Now().Sub(t1).String())
+	}
+	return out, err
 }
 
 func (s *RealSession) CallAsyncRaw(method string, params interface{}, awaitThisJob bool) (int64, error) {
