@@ -859,7 +859,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		if err != nil {
 			return err
 		}
-		time.Sleep(time.Duration(200) * time.Millisecond)
+		time.Sleep(time.Duration(500) * time.Millisecond)
 	}
 
 	targets := make([]interface{}, 0)
@@ -876,7 +876,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		if err != nil {
 			return err
 		}
-		time.Sleep(time.Duration(200) * time.Millisecond)
+		time.Sleep(time.Duration(500) * time.Millisecond)
 	}
 
 	extentIdsDelete := make([]interface{}, len(extentIds))
