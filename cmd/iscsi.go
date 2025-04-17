@@ -778,21 +778,151 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	targetIds := GetIdsOrderedByArgsFromResponse(responseTarget, "alias", args, argsMapIndex)
+	responseExtent, err := QueryApi(api, "iscsi.extent", diskNames, core.StringRepeated("disk", len(diskNames)), nil, extras)
+	if err != nil {
+		return nil
+	}
 
+	targetIds := GetIdsOrderedByArgsFromResponse(responseTarget, "alias", args, argsMapIndex)
+	extentIds := GetIdsOrderedByArgsFromResponse(responseExtent, "disk", diskNames, diskNameIndex)
+
+	DebugString("targets " + fmt.Sprint(targetIds))
+	DebugString("extents " + fmt.Sprint(extentIds))
+
+	var teInnerFilter []interface{}
+	if len(targetIds) > 0 && len(extentIds) > 0 {
+		teInnerFilter = []interface{} {
+			[]interface{} {
+				"OR",
+				[]interface{} {
+					[]interface{} {
+						"target",
+						"in",
+						targetIds,
+					},
+					[]interface{} {
+						"extent",
+						"in",
+						extentIds,
+					},
+				},
+			},
+		}
+	} else if len(targetIds) > 0 {
+		teInnerFilter = []interface{} {
+			[]interface{} {
+				"target",
+				"in",
+				targetIds,
+			},
+		}
+	} else if len(extentIds) > 0 {
+		teInnerFilter = []interface{} {
+			[]interface{} {
+				"extent",
+				"in",
+				extentIds,
+			},
+		}
+	} else {
+		fmt.Println("No matching extents or targets were found")
+		return nil
+	}
+
+	teParams := []interface{} {teInnerFilter, make(map[string]interface{})}
+	DebugJson(teParams)
+	out, err := core.ApiCall(
+		api,
+		"iscsi.targetextent.query",
+		10,
+		teParams,
+	)
+	if err != nil {
+		return err
+	}
+	DebugString(string(out))
+
+	teResults, teErrors := core.GetResultsAndErrorsFromApiResponseRaw(out)
+	teErrors = teErrors
+
+	teIds := make([]interface{}, len(teResults))
+	for i, result := range teResults {
+		teIds[i] = []interface{} {core.GetIdFromObject(result)}
+	}
+
+	teJobId := int64(-1)
+	tJobId := int64(-1)
+	eJobId := int64(-1)
+
+	if len(teIds) > 0 {
+		teJobId, err = BulkApiCallArrayAsync(api, "iscsi.targetextent.delete", teIds)
+		if err != nil {
+			return err
+		}
+		time.Sleep(time.Duration(200) * time.Millisecond)
+	}
+
+	targets := make([]interface{}, 0)
+	for _, v := range responseTarget.resultsMap {
+		targets = append(targets, v)
+	}
 	targetIdsDelete := make([]interface{}, len(targetIds))
 	for i, t := range targetIds {
-		targetIdsDelete[i] = []interface{} {t, true, true} // id, force, delete_extents
+		targetIdsDelete[i] = []interface{} {t}
 	}
 
 	if len(targetIdsDelete) > 0 {
-		timeout := 15 * len(targetIdsDelete)
-		_, _, err = MaybeBulkApiCallArray(api, "iscsi.target.delete", int64(timeout), targetIdsDelete, true)
+		tJobId, err = BulkApiCallArrayAsync(api, "iscsi.target.delete", targetIdsDelete)
+		if err != nil {
+			return err
+		}
+		time.Sleep(time.Duration(200) * time.Millisecond)
+	}
+
+	extentIdsDelete := make([]interface{}, len(extentIds))
+	for i, e := range extentIds {
+		extentIdsDelete[i] = []interface{} {e}
+	}
+
+	if len(extentIdsDelete) > 0 {
+		eJobId, err = BulkApiCallArrayAsync(api, "iscsi.extent.delete", extentIdsDelete)
 		if err != nil {
 			return err
 		}
 	}
 
+	DebugString("Waiting for targetextent, target and extent to be deleted...")
+	checkpointWait := time.Now()
+
+	if teJobId > 0 {
+		out, err := api.WaitForJob(teJobId)
+		if err != nil {
+			return fmt.Errorf("iscsi.targetextent.delete: %v", err)
+		}
+		DebugString(string(out))
+	}
+	afterTe := time.Now()
+	DebugString("iscsi.targetextent.delete: " + afterTe.Sub(checkpointWait).String())
+	if tJobId > 0 {
+		out, err := api.WaitForJob(tJobId)
+		if err != nil {
+			return fmt.Errorf("iscsi.target.delete: %v", err)
+		}
+		DebugString(string(out))
+	}
+	afterT := time.Now()
+	DebugString("iscsi.target.delete: " + afterT.Sub(afterTe).String() + " - " + afterT.Sub(checkpointWait).String())
+	if eJobId > 0 {
+		out, err := api.WaitForJob(eJobId)
+		if err != nil {
+			return fmt.Errorf("iscsi.extent.delete: %v", err)
+		}
+		DebugString(string(out))
+	}
+	afterE := time.Now()
+	DebugString("iscsi.extent.delete: " + afterE.Sub(afterT).String() + " - " + afterE.Sub(checkpointWait).String())
+
+	changes = make([]typeApiCallRecord, 0)
 	return nil
 }
 

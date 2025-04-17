@@ -653,3 +653,17 @@ func MaybeBulkApiCallArray(api core.Session, endpoint string, timeoutSeconds int
 	out, err := api.WaitForJob(jobId)
 	return out, jobId, err
 }
+
+func BulkApiCallArrayAsync(api core.Session, endpoint string, paramsArray []interface{}) (int64, error) {
+	nCalls := len(paramsArray)
+	if nCalls == 0 {
+		return -1, nil
+	}
+
+	methodAndParams := make([]interface{}, 0)
+	methodAndParams = append(methodAndParams, endpoint)
+	methodAndParams = append(methodAndParams, paramsArray)
+
+	DebugJson(methodAndParams)
+	return core.ApiCallAsync(api, "core.bulk", methodAndParams, false)
+}
