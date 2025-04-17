@@ -34,6 +34,11 @@ func (s *RealSession) IsLoggedIn() bool {
 }
 
 func (s *RealSession) Login() error {
+	var t1 time.Time
+	if s.IsDebug {
+		t1 = time.Now()
+	}
+
 	if s.client != nil {
 		// TODO: Clear resultsQueue before calling close here, since we want to log in again immediately after
 		_ = s.Close(nil)
@@ -62,6 +67,10 @@ func (s *RealSession) Login() error {
 	if err != nil {
 		client.Close()
 		return errors.New("Client login failed: " + err.Error())
+	}
+
+	if s.IsDebug {
+		fmt.Println("TrueNAS API login:", time.Now().Sub(t1).String())
 	}
 
 	s.client = client
