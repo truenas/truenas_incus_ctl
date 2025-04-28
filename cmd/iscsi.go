@@ -83,6 +83,9 @@ func init() {
 		c.Flags().Bool("parsable", false, "Parsable (ie. minimal) output")
 	}
 
+	iscsiDeleteCmd.Flags().BoolP("volume", "v", false, "Delete the associated dataset/snapshot along with the iscsi share")
+	iscsiDeleteCmd.Flags().BoolP("recursive", "r", false, "Delete all datasets/snapshots and iscsi shares under the specified root")
+
 	iscsiCmd.AddCommand(iscsiCreateCmd)
 	iscsiCmd.AddCommand(iscsiActivateCmd)
 	iscsiCmd.AddCommand(iscsiListCmd)
@@ -850,6 +853,9 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		teIds[i] = []interface{} {core.GetIdFromObject(result)}
 	}
 
+	isRecursive := core.IsValueTrue(options.allFlags, "recursive")
+
+	dsJobId := int64(-1)
 	teJobId := int64(-1)
 	tJobId := int64(-1)
 	eJobId := int64(-1)
@@ -860,6 +866,23 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			return err
 		}
 		time.Sleep(time.Duration(500) * time.Millisecond)
+	}
+
+	if core.IsValueTrue(options.allFlags, "volume") {
+		datasetParams := make([]interface{}, 0)
+		for _, ds := range args {
+			datasetParams = append(datasetParams, []interface{} {
+				ds,
+				map[string]bool {
+					"recursive": isRecursive,
+					"force": true,
+				},
+			})
+		}
+		dsJobId, err = BulkApiCallArrayAsync(api, "pool.dataset.delete", datasetParams)
+		if err != nil {
+			return err
+		}
 	}
 
 	targets := make([]interface{}, 0)
@@ -876,7 +899,6 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		if err != nil {
 			return err
 		}
-		time.Sleep(time.Duration(500) * time.Millisecond)
 	}
 
 	extentIdsDelete := make([]interface{}, len(extentIds))
@@ -921,6 +943,15 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 	afterE := time.Now()
 	DebugString("iscsi.extent.delete: " + afterE.Sub(afterT).String() + " - " + afterE.Sub(checkpointWait).String())
+	if dsJobId > 0 {
+		out, err := api.WaitForJob(dsJobId)
+		if err != nil {
+			return fmt.Errorf("pool.dataset.delete: %v", err)
+		}
+		afterDs := time.Now()
+		DebugString(string(out))
+		DebugString("pool.dataset.delete: " + afterDs.Sub(afterE).String() + " - " + afterDs.Sub(checkpointWait).String())
+	}
 
 	changes = make([]typeApiCallRecord, 0)
 	return nil
