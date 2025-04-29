@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const USE_DAEMON = true
+
 var rootCmd = &cobra.Command{
 	Use: "truenas_incus_ctl",
 }
@@ -86,7 +88,7 @@ func InitializeApiClient() core.Session {
 				log.Fatal(fmt.Errorf("Failed to parse config: %v", err))
 			}
 		}
-		if true {
+		if USE_DAEMON {
 			p, err := os.UserHomeDir()
 			if err != nil {
 				log.Fatal(err)
@@ -101,6 +103,7 @@ func InitializeApiClient() core.Session {
 				HostUrl:     g_url,
 				ApiKey:      g_apiKey,
 				ShouldWait:  !g_async,
+				IsDebug:     g_debug,
 			}
 		}
 	}

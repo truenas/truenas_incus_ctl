@@ -26,8 +26,9 @@ import (
 0.4.3 Increased timeout for asynchronous API calls
 0.4.4 Snapshot lists are now sorted by dataset then txg
 0.5.0 Add initial iSCSI support
+0.5.1 Full support for iSCSI, added human-readable size parsing
 */
-const VERSION = "0.5.0"
+const VERSION = "0.5.1"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
