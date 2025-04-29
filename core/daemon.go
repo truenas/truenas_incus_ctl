@@ -293,6 +293,24 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request inte
 
 	//fmt.Println("Writing JSON request with callId:", callId, reqMsg)
 
+	isIscsi := strings.HasPrefix(method, "iscsi.")
+	if isIscsi {
+		fakeResponse, priorJob, err := s.handleIscsiCommand(method, requestParams)
+		if err != nil {
+			return nil, err
+		}
+		if fakeResponse != nil {
+			return fakeResponse, nil
+		}
+		if priorJob > 0 {
+			isDone, dataRes, err := AwaitFutureOrTimeout(fCall, timeout)
+			if !isDone {
+				timeoutParsed := timeout.String()
+				return nil, fmt.Errorf("Timed out waiting for prior job %d (exceeded %s)", priorJob, timeoutParsed)
+			}
+		}
+	}
+
 	if err := s.conn.WriteJSON(reqMsg); err != nil {
 		return nil, err
 	}
@@ -321,7 +339,7 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request inte
 	delete(s.callMap_, callId)
 	s.mapMtx.Unlock()
 
-	if jobId > 0 && method != JOB_WAIT_STRING {
+	if jobId > 0 && !isIscsi && method != JOB_WAIT_STRING {
 		_, _ = s.callJson(JOB_WAIT_STRING, timeoutStr, []interface{}{jobId})
 	}
 
