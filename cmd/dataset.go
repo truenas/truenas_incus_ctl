@@ -124,20 +124,20 @@ func init() {
 		//cmd.Flags().String("encryption-options", "", "")
 		//cmd.Flags().Bool("encryption", false, "")
 		//cmd.Flags().Bool("inherit-encryption", true, "")
-		cmd.Flags().Int64("quota", 0, "")
+		cmd.Flags().String("quota", "0", "")
 		cmd.Flags().Int("quota-warning", 0, "Percentage (1-100 or 0)")
 		cmd.Flags().Int("quota-critical", 0, "Percentage (1-100 or 0)")
-		cmd.Flags().Int64("refquota", 0, "")
+		cmd.Flags().String("refquota", "0", "")
 		cmd.Flags().Int("refquota-warning", 0, "Percentage (1-100 or 0)")
 		cmd.Flags().Int("refquota-critical", 0, "Percentage (1-100 or 0)")
-		cmd.Flags().Int64("reservation", 0, "")
-		cmd.Flags().Int64("refreservation", 0, "")
-		cmd.Flags().Int64("special-small-block-size", 0, "")
+		cmd.Flags().String("reservation", "0", "")
+		cmd.Flags().String("refreservation", "0", "")
+		cmd.Flags().String("special-small-block-size", "0", "")
 		cmd.Flags().Int("copies", 0, "")
 		cmd.Flags().BoolP("create-parents", "p", false, "Creates all the non-existing parent datasets")
-		cmd.Flags().String("user-props", "", "Sets the specified properties")
+		cmd.Flags().StringP("user-props", "u", "", "Sets the specified properties")
 		cmd.Flags().StringP("option", "o", "", "Specify property=value,...")
-		cmd.Flags().Int64P("volume", "V", 0, "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size.")
+		cmd.Flags().StringP("volsize", "V", "0", "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size.")
 		cmd.Flags().StringP("volblocksize", "b", "512", "Volume block size "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "volblocksize", []string{"512", "1K", "2K", "4K", "8K", "16K", "32K", "64K", "128K"}))
 		cmd.Flags().BoolP("sparse", "s", false, "Creates a sparse volume with no reservation")
@@ -207,7 +207,6 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 
 	outMap := make(map[string]interface{})
 
-	var volSize int64
 	var userPropsStr string
 
 	for propName, valueStr := range options.usedFlags {
@@ -215,14 +214,25 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		switch propName {
 		case "create_parents":
 			outMap["create_ancestors"] = valueStr == "true"
-		case "volume":
-			volSize, err = strconv.ParseInt(valueStr, 10, 64)
+		case "quota":
+			fallthrough
+		case "refquota":
+			fallthrough
+		case "reservation":
+			fallthrough
+		case "refreservation":
+			fallthrough
+		case "special-small-block-size":
+			fallthrough
+		case "volsize":
+			size, err := core.ParseSizeString(valueStr)
 			if err != nil {
-				return errors.New("Failed to parse volume size: " + err.Error())
+				return errors.New("Failed to parse " + propName + ": " + err.Error())
 			}
-			if volSize < 0 {
-				return errors.New("Failed to parse volume size: negative numbers are not permitted")
+			if size < 0 {
+				return errors.New("Failed to parse " + propName + ": negative numbers are not permitted")
 			}
+			outMap[propName] = size
 		case "user_props":
 			userPropsStr = valueStr
 		case "option":
@@ -258,10 +268,6 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		outMap["user_properties"] = userPropsArr
 	}
 
-	if volSize != 0 {
-		outMap["volsize"] = volSize
-	}
-
 	cmd.SilenceUsage = true
 
 	var listToCreate []string
@@ -276,7 +282,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 			shouldGetUserProps: false,
 			shouldRecurse:      false,
 		}
-		response, err := QueryApi(api, "dataset", specs, types, nil, extras)
+		response, err := QueryApi(api, "pool.dataset", specs, types, nil, extras)
 		if err != nil {
 			return err
 		}
@@ -300,7 +306,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 
 	if len(listToUpdate) > 0 {
 		objRemap := map[string][]interface{}{"": core.ToAnyArray(listToUpdate)}
-		out, err := MaybeBulkApiCall(api, "pool.dataset.update", 10, []interface{}{outMap}, objRemap, false)
+		out, _, err := MaybeBulkApiCall(api, "pool.dataset.update", 10, []interface{}{outMap}, objRemap, false)
 		if err != nil {
 			return err
 		}
@@ -308,14 +314,14 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	}
 
 	if len(listToCreate) > 0 {
-		if volSize != 0 {
+		if _, exists := outMap["volsize"]; exists {
 			outMap["type"] = "VOLUME"
 		} else {
 			outMap["type"] = "FILESYSTEM"
 		}
 
 		objRemap := map[string][]interface{}{"name": core.ToAnyArray(listToCreate)}
-		out, err := MaybeBulkApiCall(api, "pool.dataset.create", 10, []interface{}{outMap}, objRemap, false)
+		out, _, err := MaybeBulkApiCall(api, "pool.dataset.create", 10, []interface{}{outMap}, objRemap, false)
 		if err != nil {
 			return err
 		}
@@ -332,7 +338,10 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	params := BuildNameStrAndPropertiesJson(options, args[0])
 
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
-	out, err := MaybeBulkApiCall(api, "pool.dataset.delete", 10, params, objRemap, false)
+	// it can take 5s to remove a dataset which has an iscsi share, we experience timeouts even
+	// with 30s when deleting multiple incus pools.
+	// TODO: profile middleware to determine if this can be improved.
+	out, _, err := MaybeBulkApiCall(api, "pool.dataset.delete", 30, params, objRemap, false)
 	if err != nil {
 		return err
 	}
@@ -375,7 +384,7 @@ func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	response, err := QueryApi(api, "dataset", args, idTypes, properties, extras)
+	response, err := QueryApi(api, "pool.dataset", args, idTypes, properties, extras)
 	if err != nil {
 		return err
 	}
@@ -403,7 +412,7 @@ func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 
 	params := []interface{}{args[0]}
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
-	out, err := MaybeBulkApiCall(api, "pool.dataset.promote", 10, params, objRemap, false)
+	out, _, err := MaybeBulkApiCall(api, "pool.dataset.promote", 10, params, objRemap, false)
 	if err != nil {
 		return err
 	}

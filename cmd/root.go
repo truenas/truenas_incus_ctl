@@ -68,6 +68,7 @@ func InitializeApiClient() core.Session {
 			HostUrl:     g_url,
 			ApiKey:      g_apiKey,
 			ShouldWait:  !g_async,
+			IsDebug:     g_debug,
 		}
 	}
 

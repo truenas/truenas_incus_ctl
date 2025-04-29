@@ -134,7 +134,7 @@ func createNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	objRemap := map[string][]interface{}{"path": core.ToAnyArray(paths)}
-	out, err := MaybeBulkApiCall(api, "sharing.nfs.create", 10, params, objRemap, false)
+	out, _, err := MaybeBulkApiCall(api, "sharing.nfs.create", 10, params, objRemap, false)
 	if err != nil {
 		return err
 	}
@@ -169,7 +169,7 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		shouldGetUserProps: false,
 		shouldRecurse:      false,
 	}
-	response, err := QueryApi(api, "nfs", specs.specs, specs.types, nil, extras)
+	response, err := QueryApi(api, "sharing.nfs", specs.specs, specs.types, nil, extras)
 	if err != nil {
 		return err
 	}
@@ -232,7 +232,7 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 
 	if len(listToUpdate) > 0 {
 		objRemap := map[string][]interface{}{"": core.ToAnyArray(listToUpdate)}
-		out, err := MaybeBulkApiCall(api, "sharing.nfs.update", 10, params, objRemap, false)
+		out, _, err := MaybeBulkApiCall(api, "sharing.nfs.update", 10, params, objRemap, false)
 		if err != nil {
 			return err
 		}
@@ -243,7 +243,7 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 
 	if len(listToCreate) > 0 {
 		objRemap := map[string][]interface{}{"path": core.ToAnyArray(listToCreate)}
-		out, err := MaybeBulkApiCall(api, "sharing.nfs.create", 10, params, objRemap, false)
+		out, _, err := MaybeBulkApiCall(api, "sharing.nfs.create", 10, params, objRemap, false)
 		if err != nil {
 			return err
 		}
@@ -296,7 +296,7 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		DebugJson(params)
 
 		objRemap := map[string][]interface{}{"": core.ToAnyArray(idListInts)}
-		_, err := MaybeBulkApiCall(api, "sharing.nfs.delete", 10, params, objRemap, false)
+		_, _, err := MaybeBulkApiCall(api, "sharing.nfs.delete", 10, params, objRemap, false)
 		return err
 	}
 
@@ -306,7 +306,7 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		shouldGetUserProps: false,
 		shouldRecurse:      false,
 	}
-	response, err := QueryApi(api, "nfs", specs.specs, specs.types, nil, extras)
+	response, err := QueryApi(api, "sharing.nfs", specs.specs, specs.types, nil, extras)
 	if err != nil {
 		return err
 	}
@@ -338,7 +338,7 @@ func deleteNfs(cmd *cobra.Command, api core.Session, args []string) error {
 
 	params := []interface{}{responseIdList[0]}
 	objRemap := map[string][]interface{}{"": responseIdList}
-	out, err := MaybeBulkApiCall(api, "sharing.nfs.delete", 10, params, objRemap, false)
+	out, _, err := MaybeBulkApiCall(api, "sharing.nfs.delete", 10, params, objRemap, false)
 	if err != nil {
 		return err
 	}
@@ -416,7 +416,7 @@ func listNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
 	}
 
-	response, err := QueryApi(api, "nfs", args, idTypes, properties, extras)
+	response, err := QueryApi(api, "sharing.nfs", args, idTypes, properties, extras)
 	if err != nil {
 		return err
 	}

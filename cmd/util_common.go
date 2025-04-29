@@ -35,20 +35,10 @@ func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) []interface{
 	return []interface{}{nameStr, outMap}
 }
 
-func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsList []string, params typeQueryParams) (typeQueryResponse, error) {
+func QueryApi(api core.Session, category string, entries, entryTypes, propsList []string, params typeQueryParams) (typeQueryResponse, error) {
 	response := typeQueryResponse{}
-
-	var endpoint string
-	switch endpointType {
-	case "dataset":
-		endpoint = "pool.dataset.query"
-	case "snapshot":
-		endpoint = "zfs.snapshot.query"
-	case "nfs":
-		endpoint = "sharing.nfs.query"
-	default:
-		return response, fmt.Errorf("unrecognised retrieve format \"%s\"", endpointType)
-	}
+	endpoint := category + ".query"
+	isNfs := endpoint == "sharing.nfs.query"
 
 	if len(entryTypes) != len(entries) {
 		return response, fmt.Errorf("length mismatch between entries and entry types: %d != %d", len(entries), len(entryTypes))
@@ -60,7 +50,7 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 	}
 
 	query := []interface{}{filter}
-	if endpointType != "nfs" {
+	if !isNfs {
 		query = append(query, makeQueryOptions(propsList, params, strings.Contains(endpoint, "snapshot")))
 	}
 
@@ -124,7 +114,7 @@ func QueryApi(api core.Session, endpointType string, entries, entryTypes, propsL
 		dict := make(map[string]interface{})
 		dict["id"] = primaryValue
 
-		if endpointType == "nfs" {
+		if isNfs {
 			dict["type"] = "NFS"
 		}
 
@@ -212,6 +202,39 @@ func GetListFromQueryResponse(response *typeQueryResponse) []map[string]interfac
 	}
 
 	return resultsList
+}
+
+func GetMapFromQueryResponseKeyedOn(response *typeQueryResponse, key string) map[string]map[string]interface{} {
+	outMap := make(map[string]map[string]interface{})
+	for _, data := range response.resultsMap {
+		if value, exists := data[key]; exists {
+			if valueStr, ok := value.(string); ok {
+				outMap[valueStr] = data
+			} else {
+				outMap[fmt.Sprint(value)] = data
+			}
+		}
+	}
+	return outMap
+}
+
+func GetIdsOrderedByArgsFromResponse(response typeQueryResponse, key string, valueList []string, valueMap map[string]int) []interface{} {
+	ids := make([]interface{}, len(valueList))
+	for _, v := range response.resultsMap {
+		inner, _ := v[key]
+		if idx, exists := valueMap[fmt.Sprint(inner)]; exists {
+			ids[idx], _ = v["id"]
+		}
+	}
+	outIds := make([]interface{}, 0)
+	for i, id := range ids {
+		if id == nil {
+			fmt.Println("Could not find", valueList[i])
+		} else {
+			outIds = append(outIds, id)
+		}
+	}
+	return outIds
 }
 
 func makeQueryFilter(entries, entryTypes []string, params typeQueryParams) ([]interface{}, error) {
@@ -323,7 +346,7 @@ func insertProperties(dstMap, srcMap map[string]interface{}, excludeKeys []strin
 			continue
 		}
 
-		DebugJson(value)
+		//DebugJson(value)
 
 		var elem interface{}
 		if valueMap, ok := value.(map[string]interface{}); ok {
@@ -380,7 +403,7 @@ func LookupNfsIdByPath(api core.Session, sharePath string, optShareProperties ma
 		shouldRecurse:      false,
 	}
 
-	response, err := QueryApi(api, "nfs", []string{sharePath}, []string{"path"}, []string{"id", "path"}, extras)
+	response, err := QueryApi(api, "sharing.nfs", []string{sharePath}, []string{"path"}, []string{"id", "path"}, extras)
 	if err != nil {
 		return "", false, errors.New("API error: " + fmt.Sprint(err))
 	}
@@ -559,7 +582,7 @@ func GetTableFormat(properties map[string]string) (string, error) {
 	return properties["format"], nil
 }
 
-func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, params interface{}, remapList map[string][]interface{}, shouldWaitNow bool) (json.RawMessage, error) {
+func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, params interface{}, remapList map[string][]interface{}, shouldWaitNow bool) (json.RawMessage, int64, error) {
 	allParams := make([][]interface{}, 0)
 	for key, valueList := range remapList {
 		for i, value := range valueList {
@@ -585,10 +608,11 @@ func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, p
 
 	nParams := len(allParams)
 	if nParams == 0 {
-		return nil, errors.New("MaybeBulkApiCall: Nothing to do")
+		return nil, -1, errors.New("MaybeBulkApiCall: Nothing to do")
 	} else if nParams == 1 {
 		DebugJson(allParams[0])
-		return core.ApiCall(api, endpoint, timeoutSeconds, allParams[0])
+		out, err := core.ApiCall(api, endpoint, timeoutSeconds, allParams[0])
+		return out, -1, err
 	}
 
 	methodAndParams := make([]interface{}, 0)
@@ -598,8 +622,34 @@ func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, p
 	DebugJson(methodAndParams)
 	jobId, err := core.ApiCallAsync(api, "core.bulk", methodAndParams, shouldWaitNow)
 	if !shouldWaitNow || err != nil || jobId < 0 {
-		return nil, err
+		return nil, jobId, err
 	}
 
-	return api.WaitForJob(jobId)
+	out, err := api.WaitForJob(jobId)
+	return out, jobId, err
+}
+
+func MaybeBulkApiCallArray(api core.Session, endpoint string, timeoutSeconds int64, paramsArray []interface{}, shouldWaitNow bool) (json.RawMessage, int64, error) {
+	nCalls := len(paramsArray)
+	if nCalls == 0 {
+		return nil, -1, errors.New("MaybeBulkApiCallArray: Nothing to do")
+	}
+	if nCalls == 1 {
+		DebugJson(paramsArray[0])
+		out, err := core.ApiCall(api, endpoint, timeoutSeconds, paramsArray[0])
+		return out, -1, err
+	}
+
+	methodAndParams := make([]interface{}, 0)
+	methodAndParams = append(methodAndParams, endpoint)
+	methodAndParams = append(methodAndParams, paramsArray)
+
+	DebugJson(methodAndParams)
+	jobId, err := core.ApiCallAsync(api, "core.bulk", methodAndParams, shouldWaitNow)
+	if !shouldWaitNow || err != nil || jobId < 0 {
+		return nil, jobId, err
+	}
+
+	out, err := api.WaitForJob(jobId)
+	return out, jobId, err
 }

@@ -22,6 +22,10 @@ func (s *MockSession) IsLoggedIn() bool {
 	return !s.closed
 }
 
+func (s *MockSession) GetHostUrl() string {
+	return ""
+}
+
 func (s *MockSession) Close(internalError error) error {
 	s.closed = true
 	return nil

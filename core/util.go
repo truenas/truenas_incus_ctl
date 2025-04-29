@@ -1,13 +1,20 @@
 package core
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"math/bits"
 	"os"
+	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
-	"slices"
+	"syscall"
 )
 
 func IdentifyObject(obj string) (string, string) {
@@ -103,6 +110,76 @@ func DeepCopy(input interface{}) interface{} {
 	return output
 }
 
+func GetResultsAndErrorsFromApiResponseRaw(response json.RawMessage) ([]interface{}, []interface{}) {
+	var unmarshalled map[string]interface{}
+	if err := json.Unmarshal(response, &unmarshalled); err != nil {
+		return nil, nil
+	}
+	return GetResultsAndErrorsFromApiResponse(unmarshalled)
+}
+
+func GetResultsAndErrorsFromApiResponse(response map[string]interface{}) ([]interface{}, []interface{}) {
+	if response == nil {
+		return nil, nil
+	}
+
+	var errorList []interface{}
+	if errorObj, exists := response["error"]; exists {
+		if errValue, ok := errorObj.(map[string]interface{}); ok {
+			if len(errValue) > 0 {
+				errorList = []interface{} {errValue}
+			}
+		} else if errValue, ok := errorObj.([]interface{}); ok {
+			if len(errValue) > 0 {
+				errorList = errValue
+			}
+		}
+	}
+
+	var resultList []interface{}
+	if resultsObj, exists := response["result"]; exists {
+		if resultsMap, ok := resultsObj.(map[string]interface{}); ok {
+			resultList = []interface{} {resultsMap}
+		} else if resultsArray, ok := resultsObj.([]interface{}); ok && len(resultsArray) > 0 {
+			resultList = resultsArray
+		}
+	}
+	if len(resultList) == 0 {
+		return nil, errorList
+	}
+
+	isCoreBulk := false
+	if firstResult, ok := resultList[0].(map[string]interface{}); ok {
+		outerMethod, _ := firstResult["method"].(string)
+		isCoreBulk = outerMethod == "core.bulk"
+	}
+	if !isCoreBulk {
+		return resultList, errorList
+	}
+
+	outResults := make([]interface{}, 0)
+	outErrors := make([]interface{}, 0)
+	for _, r := range resultList {
+		if obj, ok := r.(map[string]interface{}); ok {
+			subResults, subErrors := GetResultsAndErrorsFromApiResponse(obj)
+			if len(subResults) > 0 {
+				outResults = append(outResults, subResults...)
+			}
+			if len(subErrors) > 0 {
+				outErrors = append(outErrors, subErrors...)
+			}
+		}
+	}
+
+	if len(outResults) == 0 {
+		outResults = nil
+	}
+	if len(outErrors) == 0 {
+		outErrors = nil
+	}
+	return outResults, outErrors
+}
+
 func ExtractJsonArrayOfMaps(obj map[string]interface{}, key string) ([]map[string]interface{}, string) {
 	if value, ok := obj[key]; ok {
 		if array, ok := value.([]interface{}); ok {
@@ -129,6 +206,23 @@ func IsValueTrue(dict map[string]string, key string) bool {
 		return valueStr == "true"
 	}
 	return false
+}
+
+func GetIdFromObject(obj interface{}) interface{} {
+	if obj == nil {
+		return nil
+	} else if objF, ok := obj.(float64); ok {
+		return objF
+	} else if objI64, ok := obj.(int64); ok {
+		return objI64
+	} else if objI, ok := obj.(int); ok {
+		return objI
+	} else if objMap, ok := obj.(map[string]interface{}); ok {
+		return objMap["id"]
+	} else if objArr, ok := obj.([]interface{}); ok {
+		return GetIdFromObject(objArr[0])
+	}
+	return nil
 }
 
 func GetIntegerFromJsonObjectOr(data map[string]interface{}, key string, ifNotFound int64) int64 {
@@ -162,6 +256,10 @@ func ExtractApiError(data json.RawMessage) string {
 		return ""
 	}
 
+	return ExtractApiErrorJson(responseMap)
+}
+
+func ExtractApiErrorJson(responseMap map[string]interface{}) string {
 	errorValue, exists := responseMap["error"]
 	if !exists {
 		return ""
@@ -233,6 +331,187 @@ func GetJobNumberFromObject(responseJson interface{}) (int, error) {
 	} else {
 		return -1, errors.New("response was not a json object")
 	}
+}
+
+func WaitForFilesToAppear(directory string, onFileAppeared func(string, bool)bool) error {
+	fdInotify, err := syscall.InotifyInit()
+	if err != nil {
+		return fmt.Errorf("syscall.InotifyInit: %v", err)
+	}
+	defer syscall.Close(fdInotify)
+
+	flagsInterested := uint32(syscall.IN_CREATE)
+	watchDesc, err := syscall.InotifyAddWatch(fdInotify, directory, flagsInterested)
+	if err != nil {
+		return fmt.Errorf("syscall.InotifyAddWatch: %v", err)
+	}
+	defer syscall.InotifyRmWatch(fdInotify, uint32(watchDesc)) // why is the type uint32 here?
+
+	var prevName string
+	wasCreate := false
+	buf := make([]byte, 4096)
+
+	for true {
+		if onFileAppeared(prevName, wasCreate) {
+			break
+		}
+		prevName = ""
+		wasCreate = false
+
+		nRead := 0
+		nRead, err = syscall.Read(fdInotify, buf)
+		if err != nil {
+			return fmt.Errorf("syscall.Read fdInotify: %v (read %d bytes)", err, nRead)
+		}
+
+		nameLen := int(buf[12]) | (int(buf[13]) << 8) | (int(buf[14]) << 16) | (int(buf[15]) << 24)
+		if nameLen < 0 {
+			return fmt.Errorf("inotify event: invalid name length %d", nameLen)
+		}
+		if nameLen == 0 {
+			//fmt.Println("name was empty")
+			continue
+		}
+
+		name := string(buf[16:16+nameLen])
+		for bytePos, codePoint := range name {
+			if codePoint == 0 {
+				if bytePos == 0 {
+					name = ""
+					break
+				}
+				name = name[0:bytePos]
+				break
+			}
+		}
+
+		if len(name) == 0 {
+			continue
+		}
+
+		mask := uint32(buf[4]) | (uint32(buf[5]) << 8) | (uint32(buf[6]) << 16) | (uint32(buf[7]) << 24)
+		wasCreate = (mask & syscall.IN_CREATE) != 0
+		prevName = name
+	}
+
+	return nil
+}
+
+func MakeHashedString(input string, length int) string {
+	var h []byte
+	var maxBits int
+	bitsNeeded := length * 5
+
+	if bitsNeeded > 256 {
+		h512 := sha512.Sum512([]byte(input))
+		h = h512[:]
+		maxBits = 512
+	} else {
+		h256 := sha256.Sum256([]byte(input))
+		h = h256[:]
+		maxBits = 256
+	}
+
+	var builder strings.Builder
+	for pos := 0; pos < bitsNeeded && pos < maxBits - 4; pos += 5 {
+		data1 := h[pos/8] << (pos%8)
+		data2 := h[(pos+4)/8] >> (7-((pos+4)%8))
+		v := uint32((data1 >> 3) | data2) & 0x1f
+		inc := uint32(0x30)
+		if v >= 10 {
+			inc = 0x57
+		}
+		builder.WriteByte(byte(inc + v))
+	}
+	return builder.String()
+}
+
+func ParseSizeString(str string) (int64, error) {
+	if str == "" || str[0] < '0' || str[0] > '9' {
+		return 0, fmt.Errorf("size was not a number")
+	}
+	var multiplier int64
+	var whole int64
+	var frac int64
+	nFracDigits := 0
+	isFrac := false
+
+	for _, c := range str {
+		if c == 'k' || c == 'K' {
+			if multiplier != 0 {
+				return 0, fmt.Errorf("invalid size units in \"" + str + "\"")
+			}
+			multiplier = int64(1000)
+		} else if c == 'm' || c == 'M' {
+			if multiplier != 0 {
+				return 0, fmt.Errorf("invalid size units in \"" + str + "\"")
+			}
+			multiplier = int64(1000) * int64(1000)
+		} else if c == 'g' || c == 'G' {
+			if multiplier != 0 {
+				return 0, fmt.Errorf("invalid size units in \"" + str + "\"")
+			}
+			multiplier = int64(1000) * int64(1000) * int64(1000)
+		} else if c == 't' || c == 'T' {
+			if multiplier != 0 {
+				return 0, fmt.Errorf("invalid size units in \"" + str + "\"")
+			}
+			multiplier = int64(1000) * int64(1000) * int64(1000) * int64(1000)
+		} else if c == 'i' || c == 'I' {
+			if multiplier == 0 {
+				continue
+			}
+			multiplier = int64(1) << (1 + (63 - bits.LeadingZeros64(uint64(multiplier - 1))))
+		} else if c == '.' {
+			isFrac = true
+		} else if c >= '0' && c <= '9' {
+			if isFrac {
+				frac = frac * int64(10) + int64(c - '0')
+				nFracDigits++
+			} else {
+				whole = whole * int64(10) + int64(c - '0')
+			}
+		} else if c != 'B' && c != 'b' && c != ' ' && c != '\t' && c != '\r' && c != '\n' {
+			return 0, fmt.Errorf("unrecognized character '" + string(c) + "' in \"" + str + "\"")
+		}
+	}
+
+	if multiplier == 0 {
+		multiplier = 1
+	}
+	fracMult := float64(frac) * math.Pow10(-nFracDigits) * float64(multiplier)
+	return whole * multiplier + int64(fracMult), nil
+}
+
+func RunCommandRaw(prog string, args ...string) (string, string, error) {
+	var outBuf bytes.Buffer
+	var errBuf bytes.Buffer
+	cmd := exec.Command(prog, args...)
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+	return outBuf.String(), errBuf.String(), err
+}
+
+func RunCommand(prog string, args ...string) (string, error) {
+	out, warn, err := RunCommandRaw(prog, args...)
+	var errMsg strings.Builder
+	isError := false
+	if warn != "" {
+		errMsg.WriteString(warn)
+		if warn[len(warn)-1] != '\n' {
+			errMsg.WriteString("\n")
+		}
+		isError = true
+	}
+	if err != nil {
+		errMsg.WriteString(err.Error())
+		isError = true
+	}
+	if isError {
+		return "", errors.New(errMsg.String())
+	}
+	return out, nil
 }
 
 func FlushString(str string) {
