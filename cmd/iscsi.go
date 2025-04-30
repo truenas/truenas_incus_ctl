@@ -26,14 +26,14 @@ var iscsiCmd = &cobra.Command{
 }
 
 var iscsiCreateCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create description",
+	Use:   "create <dataset>...",
+	Short: "Create iscsi extents and targets that map to the given datasets",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var iscsiActivateCmd = &cobra.Command{
-	Use:   "activate",
-	Short: "Activate description",
+	Use:   "activate <dataset>...",
+	Short: "Activate the iscsi targets that map to the given datasets",
 	Args:  cobra.MinimumNArgs(1),
 }
 
@@ -43,20 +43,20 @@ var iscsiListCmd = &cobra.Command{
 }
 
 var iscsiLocateCmd = &cobra.Command{
-	Use:   "locate",
-	Short: "Locate description",
+	Use:   "locate <dataset>...",
+	Short: "Locate the iscsi targets that map to the given datasets",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var iscsiDeactivateCmd = &cobra.Command{
-	Use:   "deactivate",
-	Short: "Deactivate description",
+	Use:   "deactivate <dataset>...",
+	Short: "Deactivate the iscsi targets that map to the given datasets",
 	Args:  cobra.MinimumNArgs(1),
 }
 
 var iscsiDeleteCmd = &cobra.Command{
-	Use:     "delete",
-	Short:   "Delete description",
+	Use:     "delete <dataset>...",
+	Short:   "Delete the iscsi targets that map to the given datasets",
 	Args:  cobra.MinimumNArgs(1),
 }
 
