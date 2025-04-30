@@ -29,6 +29,7 @@ type TruenasSession struct {
 	curCallId_ int64
 	callMap_   map[int64]*Future[json.RawMessage]
 	jobMap_    map[int64]*Future[json.RawMessage]
+	
 }
 
 type DaemonContext struct {
@@ -267,6 +268,43 @@ func (s *TruenasSession) call(method string, timeoutStr string, data json.RawMes
 }
 
 func (s *TruenasSession) callJson(method string, timeoutStr string, request interface{}) (json.RawMessage, error) {
+	if method != "core.bulk" {
+		return s.callImpl(method, timeoutStr, request)
+	}
+
+	requestParams, ok := request.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("Request body was not a JSON array")
+	}
+	if len(requestParams) < 2 {
+		return nil, fmt.Errorf("Invalid core.bulk request (requires a method and a parameters array)")
+	}
+
+	methodStr, ok := requestParams[0].(string)
+	if !ok || len(methodStr) == 0 {
+		return nil, fmt.Errorf("Invalid core.bulk request (method was not a string)")
+	}
+	paramsArray, ok := []interface{}
+	if !ok || len(paramsArray) == 0 {
+		return nil, fmt.Errorf("Invalid core.bulk request (params array was empty)")
+	}
+
+	go func() {
+		results := make([]interface{}, len(paramsArray))
+		for idx, p := range paramsArray {
+			data, err := s.callImpl(method, timeoutStr, p)
+			results[idx] = res
+		}
+	}()
+
+	return MakeCoreBulkResponse(), nil
+}
+
+func MakeCoreBulkResponse(callId int64) {
+	"id": "daemon_" + callId
+}
+
+func (s *TruenasSession) callImpl(method string, timeoutStr string, request interface{}) (json.RawMessage, error) {
 	s.ctx.UpdateCountdown()
 
 	requestParams, ok := request.([]interface{})
@@ -293,26 +331,45 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request inte
 
 	//fmt.Println("Writing JSON request with callId:", callId, reqMsg)
 
-	isIscsi := strings.HasPrefix(method, "iscsi.")
-	if isIscsi {
-		fakeResponse, priorJob, err := s.handleIscsiCommand(method, requestParams)
-		if err != nil {
-			return nil, err
-		}
-		if fakeResponse != nil {
-			return fakeResponse, nil
-		}
-		if priorJob > 0 {
-			isDone, dataRes, err := AwaitFutureOrTimeout(fCall, timeout)
-			if !isDone {
-				timeoutParsed := timeout.String()
-				return nil, fmt.Errorf("Timed out waiting for prior job %d (exceeded %s)", priorJob, timeoutParsed)
+	isFsObj :=
+		strings.HasPrefix(method, "pool.") ||
+		strings.HasPrefix(method, "zfs.") ||
+		strings.HasPrefix(method, "sharing.") ||
+		strings.HasPrefix(method, "iscsi.")
+
+	isDelete := strings.HasSuffix(method, ".delete")
+
+	if isFsObj {
+		priorCallId := s.lookForPendingFsAction(method, requestParams)
+		if priorCallId > 0 {
+			s.mapMtx.Lock()
+			priorCall, exists := s.callMap_[priorCallId]
+			s.mapMtx.Unlock()
+			if exists {
+				isDone, dataRes, err := AwaitFutureOrTimeout(priorCall, timeout)
+				if !isDone {
+					timeoutParsed := timeout.String()
+					return nil, fmt.Errorf("Timed out waiting for prior call %d (exceeded %s)", priorCallId, timeoutParsed)
+				}
 			}
 		}
+		s.exchangePendingFsAction(method, requestParams)
 	}
 
 	if err := s.conn.WriteJSON(reqMsg); err != nil {
 		return nil, err
+	}
+
+	if isFsObj && isDelete {
+		isDone, dataRes, err := AwaitFutureOrTimeout(fCall, time.Duration(500) * time.Millisecond)
+		if isDone {
+			s.removePendingFsAction(method, requestParams)
+			if err != nil {
+				return nil, err
+			}
+			return dataRes, nil
+		}
+		return MakeApiResult(callId), nil
 	}
 
 	timeout, err := time.ParseDuration(timeoutStr)
@@ -325,7 +382,9 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request inte
 		timeoutParsed := timeout.String()
 		return nil, fmt.Errorf("Request timed out (exceeded %s)", timeoutParsed)
 	}
-
+	if isFsObj {
+		s.removePendingFsAction(method, requestParams)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -339,7 +398,7 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request inte
 	delete(s.callMap_, callId)
 	s.mapMtx.Unlock()
 
-	if jobId > 0 && !isIscsi && method != JOB_WAIT_STRING {
+	if jobId > 0 && method != JOB_WAIT_STRING {
 		_, _ = s.callJson(JOB_WAIT_STRING, timeoutStr, []interface{}{jobId})
 	}
 
@@ -456,7 +515,17 @@ func (s *TruenasSession) handleDaemonProcedure(proc string, timeoutStr string, p
 	return nil, fmt.Errorf("Unrecognised daemon command \"tnc_daemon.%s\"", proc)
 }
 
-func (s *TruenasSession) getJobFuture(id int64) (*Future[json.RawMessage]) {
+func (s *TruenasSession) handleIscsiCommand(
+	method string,
+	requestParams interface{},
+	reqMsg map[string]interface{},
+) (interface{}, int64, error) {
+	if strings.HasSuffix(method, ".delete") {
+		
+	}
+}
+
+func (s *TruenasSession) getJobFuture(id int64) *Future[json.RawMessage] {
 	s.mapMtx.Lock()
 	defer s.mapMtx.Unlock()
 	f, exists := s.jobMap_[id]
@@ -466,7 +535,7 @@ func (s *TruenasSession) getJobFuture(id int64) (*Future[json.RawMessage]) {
 	return f
 }
 
-func (s *TruenasSession) getCallFuture(id int64) (*Future[json.RawMessage]) {
+func (s *TruenasSession) getCallFuture(id int64) *Future[json.RawMessage] {
 	s.mapMtx.Lock()
 	defer s.mapMtx.Unlock()
 	f, exists := s.callMap_[id]
