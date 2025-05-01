@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"truenas/truenas_incus_ctl/core"
+	"truenas/truenas_incus_ctl/truenas_api"
 
 	"github.com/spf13/cobra"
 )
@@ -73,7 +75,98 @@ func showConfig(cmd *cobra.Command, api core.Session, args []string) error {
 
 // loginToHost implements the login subcommand functionality
 func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
-	// Placeholder for login functionality
-	// This will be implemented in a future enhancement
-	return fmt.Errorf("Login functionality not yet implemented")
+	hostname := args[0]
+	fmt.Printf("Setting up connection to TrueNAS host: %s\n", hostname)
+
+	// Prompt for API key
+	fmt.Print("Enter your TrueNAS API key: ")
+	var apiKey string
+	fmt.Scanln(&apiKey)
+	if apiKey == "" {
+		return fmt.Errorf("API key cannot be empty")
+	}
+
+	// Construct the URL
+	url := "https://" + hostname
+	fmt.Printf("Testing connection to %s...\n", url)
+
+	// Test the connection by creating a temporary client
+	client, err := truenas_api.NewClient(url, false)
+	if err != nil {
+		return fmt.Errorf("Failed to create connection to %s: %v", url, err)
+	}
+
+	// Attempt to login to verify API key
+	err = client.Login("", "", apiKey)
+	if err != nil {
+		client.Close()
+		return fmt.Errorf("Failed to login to %s: %v", url, err)
+	}
+
+	// Test basic connectivity with a ping
+	result, err := client.Ping()
+	if err != nil {
+		client.Close()
+		return fmt.Errorf("Failed to ping %s: %v", url, err)
+	}
+
+	if result != "pong" {
+		client.Close()
+		return fmt.Errorf("Unexpected ping response from %s: %s", url, result)
+	}
+
+	fmt.Printf("Successfully connected to %s\n", url)
+	client.Close()
+
+	// Get the config file path
+	configPath := g_configFileName
+	if configPath == "" {
+		configPath = getDefaultConfigPath()
+	}
+
+	// Ensure the config directory exists
+	configDir := path.Dir(configPath)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("Failed to create config directory %s: %v", configDir, err)
+	}
+
+	// Read existing config or create new config
+	var config map[string]interface{}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		// If the file doesn't exist, create a new config
+		config = make(map[string]interface{})
+	} else {
+		// Parse existing config
+		if err := json.Unmarshal(data, &config); err != nil {
+			return fmt.Errorf("Failed to parse config file %s: %v", configPath, err)
+		}
+	}
+
+	// Ensure hosts section exists
+	hosts, ok := config["hosts"].(map[string]interface{})
+	if !ok {
+		hosts = make(map[string]interface{})
+		config["hosts"] = hosts
+	}
+
+	// Add or update host entry
+	hostConfig := map[string]interface{}{
+		"url":     url,
+		"api_key": apiKey,
+	}
+	hosts[hostname] = hostConfig
+
+	// Write the updated config back to file
+	updatedData, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("Failed to serialize config: %v", err)
+	}
+
+	if err := os.WriteFile(configPath, updatedData, 0600); err != nil {
+		return fmt.Errorf("Failed to write config to %s: %v", configPath, err)
+	}
+
+	fmt.Printf("Configuration for %s saved to %s\n", hostname, configPath)
+	return nil
 }
