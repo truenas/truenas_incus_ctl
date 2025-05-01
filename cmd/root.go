@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const USE_DAEMON = true
+const USE_DAEMON = false
 
 var rootCmd = &cobra.Command{
 	Use: "truenas_incus_ctl",
