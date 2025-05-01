@@ -17,12 +17,16 @@ var configCmd = &cobra.Command{
 	Long: `Manage TrueNAS connection configurations.
 	
 Available Commands:
-  login <hostname>  - Interactively add a new host to the configuration file
-  list              - Lists all saved connections
-  show              - Display the raw contents of the configuration file
-  remove <nickname> - Remove a saved connection by nickname`,
-	Example: `  # Add a new connection
-  truenas_incus_ctl config login 192.168.0.31
+  login                             - Interactively add a new connection
+  add <nickname> <hostname> <apikey> - Non-interactively add a new connection
+  list                              - Lists all saved connections
+  show                              - Display the raw contents of the configuration file
+  remove <nickname>                 - Remove a saved connection by nickname`,
+	Example: `  # Add a new connection interactively
+  truenas_incus_ctl config login
+
+  # Add a new connection non-interactively
+  truenas_incus_ctl config add prod-server 192.168.0.31 "api-key-goes-here"
   
   # List all saved connections
   truenas_incus_ctl config list
@@ -38,9 +42,9 @@ Available Commands:
 }
 
 var configLoginCmd = &cobra.Command{
-	Use:   "login <hostname>...",
-	Short: "Interactively logs into and creates an API key for the specified hostname",
-	Args:  cobra.MinimumNArgs(1),
+	Use:   "login",
+	Short: "Interactively add a new connection to the configuration",
+	Args:  cobra.NoArgs,
 }
 
 var configShowCmd = &cobra.Command{
@@ -61,16 +65,24 @@ var configRemoveCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 }
 
+var configAddCmd = &cobra.Command{
+	Use:   "add <nickname> <hostname> <apikey>",
+	Short: "Non-interactively add a new connection to the configuration",
+	Args:  cobra.ExactArgs(3),
+}
+
 func init() {
 	configLoginCmd.RunE = WrapCommandFunc(loginToHost)
 	configShowCmd.RunE = WrapCommandFunc(showConfig)
 	configListCmd.RunE = WrapCommandFunc(listConfigs)
 	configRemoveCmd.RunE = WrapCommandFunc(removeConfig)
+	configAddCmd.RunE = WrapCommandFunc(addHost)
 
 	configCmd.AddCommand(configLoginCmd)
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configListCmd)
 	configCmd.AddCommand(configRemoveCmd)
+	configCmd.AddCommand(configAddCmd)
 	rootCmd.AddCommand(configCmd)
 }
 
@@ -101,6 +113,103 @@ func showConfig(cmd *cobra.Command, api core.Session, args []string) error {
 
 	fmt.Printf("Configuration file: %s\n\n", configPath)
 	fmt.Println(string(prettyJSON))
+	return nil
+}
+
+// addHost implements the non-interactive version of adding a connection to the config
+func addHost(cmd *cobra.Command, api core.Session, args []string) error {
+	// Note: 'api' parameter will be nil for this command, which is expected
+	nickname := args[0]
+	hostname := args[1]
+	apiKey := args[2]
+
+	if apiKey == "" {
+		return fmt.Errorf("API key cannot be empty")
+	}
+
+	// Construct the WebSocket URL with API endpoint
+	url := "wss://" + hostname + "/api/current"
+	fmt.Printf("Testing connection to %s...\n", url)
+
+	// Test the connection by creating a temporary client
+	client, err := truenas_api.NewClient(url, false)
+	if err != nil {
+		return fmt.Errorf("Failed to create connection to %s: %v", url, err)
+	}
+
+	// Attempt to login to verify API key
+	err = client.Login("", "", apiKey)
+	if err != nil {
+		client.Close()
+		return fmt.Errorf("Failed to login to %s: %v", url, err)
+	}
+
+	// Test basic connectivity with a ping
+	result, err := client.Ping()
+	if err != nil {
+		client.Close()
+		return fmt.Errorf("Failed to ping %s: %v", url, err)
+	}
+
+	if result != "pong" {
+		client.Close()
+		return fmt.Errorf("Unexpected ping response from %s: %s", url, result)
+	}
+
+	fmt.Printf("Successfully connected to %s\n", url)
+	client.Close()
+
+	// Get the config file path
+	configPath := g_configFileName
+	if configPath == "" {
+		configPath = getDefaultConfigPath()
+	}
+
+	// Ensure the config directory exists
+	configDir := path.Dir(configPath)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("Failed to create config directory %s: %v", configDir, err)
+	}
+
+	// Read existing config or create new config
+	var config map[string]interface{}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		// If the file doesn't exist, create a new config
+		config = make(map[string]interface{})
+	} else {
+		// Parse existing config
+		if err := json.Unmarshal(data, &config); err != nil {
+			return fmt.Errorf("Failed to parse config file %s: %v", configPath, err)
+		}
+	}
+
+	// Ensure hosts section exists
+	hosts, ok := config["hosts"].(map[string]interface{})
+	if !ok {
+		hosts = make(map[string]interface{})
+		config["hosts"] = hosts
+	}
+
+	// Add or update host entry with URL including API endpoint
+	// Store the complete URL with /api/current path under the nickname
+	hostConfig := map[string]interface{}{
+		"url":     url, // Using the same URL with /api/current path
+		"api_key": apiKey,
+	}
+	hosts[nickname] = hostConfig
+
+	// Write the updated config back to file
+	updatedData, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("Failed to serialize config: %v", err)
+	}
+
+	if err := os.WriteFile(configPath, updatedData, 0600); err != nil {
+		return fmt.Errorf("Failed to write config to %s: %v", configPath, err)
+	}
+
+	fmt.Printf("Configuration for '%s' (connecting to %s) saved to %s\n", nickname, hostname, configPath)
 	return nil
 }
 
@@ -199,24 +308,77 @@ func removeConfig(cmd *cobra.Command, api core.Session, args []string) error {
 // loginToHost implements the login subcommand functionality
 func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
 	// Note: 'api' parameter will be nil for this command, which is expected
-	hostname := args[0]
-	fmt.Printf("Setting up connection to TrueNAS host: %s\n", hostname)
 
-	// Prompt for nickname
-	fmt.Print("Enter a nickname for this connection (press Enter to use hostname): ")
-	var nickname string
-	fmt.Scanln(&nickname)
-	if nickname == "" {
-		nickname = hostname
-		fmt.Printf("Using '%s' as the nickname\n", nickname)
+	// Get the config file path to check for existing nicknames
+	configPath := g_configFileName
+	if configPath == "" {
+		configPath = getDefaultConfigPath()
 	}
 
+	// Read existing config if it exists
+	var config map[string]interface{}
+	data, err := os.ReadFile(configPath)
+	if err == nil {
+		// Parse existing config
+		if err := json.Unmarshal(data, &config); err != nil {
+			return fmt.Errorf("Failed to parse config file %s: %v", configPath, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("Error reading config file %s: %v", configPath, err)
+	} else {
+		// If file doesn't exist, create a new config
+		config = make(map[string]interface{})
+	}
+
+	// Ensure hosts section exists
+	var hosts map[string]interface{}
+	if hostsObj, ok := config["hosts"]; ok {
+		hosts, _ = hostsObj.(map[string]interface{})
+	}
+	if hosts == nil {
+		hosts = make(map[string]interface{})
+		config["hosts"] = hosts
+	}
+
+	// Prompt for nickname and validate it doesn't exist
+	var nickname string
+	for {
+		fmt.Print("Enter a nickname for this connection: ")
+		fmt.Scanln(&nickname)
+		if nickname == "" {
+			fmt.Println("Nickname cannot be empty. Please try again.")
+			continue
+		}
+		if _, exists := hosts[nickname]; exists {
+			fmt.Printf("Error: A connection with nickname '%s' already exists. Please choose a different nickname.\n", nickname)
+			continue
+		}
+		break
+	}
+
+	// Prompt for hostname
+	var hostname string
+	for {
+		fmt.Print("Enter the TrueNAS hostname or IP address: ")
+		fmt.Scanln(&hostname)
+		if hostname == "" {
+			fmt.Println("Hostname cannot be empty. Please try again.")
+			continue
+		}
+		break
+	}
+	fmt.Printf("Setting up connection to TrueNAS host: %s\n", hostname)
+
 	// Prompt for API key
-	fmt.Print("Enter your TrueNAS API key: ")
 	var apiKey string
-	fmt.Scanln(&apiKey)
-	if apiKey == "" {
-		return fmt.Errorf("API key cannot be empty")
+	for {
+		fmt.Print("Enter your TrueNAS API key: ")
+		fmt.Scanln(&apiKey)
+		if apiKey == "" {
+			fmt.Println("API key cannot be empty. Please try again.")
+			continue
+		}
+		break
 	}
 
 	// Construct the WebSocket URL with API endpoint
@@ -251,36 +413,10 @@ func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
 	fmt.Printf("Successfully connected to %s\n", url)
 	client.Close()
 
-	// Get the config file path
-	configPath := g_configFileName
-	if configPath == "" {
-		configPath = getDefaultConfigPath()
-	}
-
 	// Ensure the config directory exists
 	configDir := path.Dir(configPath)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return fmt.Errorf("Failed to create config directory %s: %v", configDir, err)
-	}
-
-	// Read existing config or create new config
-	var config map[string]interface{}
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		// If the file doesn't exist, create a new config
-		config = make(map[string]interface{})
-	} else {
-		// Parse existing config
-		if err := json.Unmarshal(data, &config); err != nil {
-			return fmt.Errorf("Failed to parse config file %s: %v", configPath, err)
-		}
-	}
-
-	// Ensure hosts section exists
-	hosts, ok := config["hosts"].(map[string]interface{})
-	if !ok {
-		hosts = make(map[string]interface{})
-		config["hosts"] = hosts
 	}
 
 	// Add or update host entry with URL including API endpoint
@@ -301,6 +437,6 @@ func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
 		return fmt.Errorf("Failed to write config to %s: %v", configPath, err)
 	}
 
-	fmt.Printf("Configuration for '%s' (nickname for %s) saved to %s\n", nickname, hostname, configPath)
+	fmt.Printf("Configuration for '%s' (connecting to %s) saved to %s\n", nickname, hostname, configPath)
 	return nil
 }

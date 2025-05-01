@@ -188,9 +188,9 @@ func AddFlagsEnum(enumMap *map[string][]string, flagName string, newEnum []strin
 
 func WrapCommandFunc(cmdFunc func(*cobra.Command,core.Session,[]string)error) func(*cobra.Command,[]string)error {
 	return func(cmd *cobra.Command, args []string) error {
-		// Special case for 'config login' command - it shouldn't try to initialize an API client
-		if cmd.Use == "login <hostname>..." {
-			// For login command, we'll pass nil as the session since we don't need an existing connection
+		// Special case for config commands that shouldn't try to initialize an API client
+		if cmd.Use == "login" || cmd.Use == "add <nickname> <hostname> <apikey>" {
+			// For these commands, we'll pass nil as the session since we don't need an existing connection
 			return cmdFunc(cmd, nil, args)
 		}
 		
