@@ -540,7 +540,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	shouldDeactivate := core.IsValueTrue(options.allFlags, "deactivate")
 
 	if shouldActivate && shouldDeactivate {
-		return fmt.Errorf("--activate and --deactivate commands are incompatible")
+		return fmt.Errorf("--activate and --deactivate options are incompatible")
 	}
 
 	targets, shares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostUrl, shouldActivate, shouldDeactivate)
