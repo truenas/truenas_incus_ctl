@@ -24,6 +24,21 @@ func MakeFuture[T any]() *Future[T] {
 	}
 }
 
+func MakeFutureArray[T any](count int) []*Future[T] {
+	m := &sync.Mutex{}
+	cv := sync.NewCond(m)
+	arr := make([]*Future[T], count)
+	for i := 0; i < count; i++ {
+		arr[i] = &Future[T]{
+			mtx: m,
+			cv: cv,
+			done_: false,
+			err_: nil,
+		}
+	}
+	return arr
+}
+
 func (f *Future[T]) Complete(value T) {
 	f.Reach(value, nil)
 }

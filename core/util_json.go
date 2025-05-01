@@ -226,33 +226,38 @@ func ExtractApiErrorJsonGivenError(errorValue interface{}) string {
 	return builder.String()
 }
 
-func GetJobNumber(data json.RawMessage) (int64, error) {
+func GetJobNumber(data json.RawMessage) (int64, string, error) {
 	var responseJson interface{}
 	if err := json.Unmarshal(data, &responseJson); err != nil {
-		return -1, err
+		return -1, "", err
 	}
 	return GetJobNumberFromObject(responseJson)
 }
 
-func GetJobNumberFromObject(responseJson interface{}) (int64, error) {
+func GetJobNumberFromObject(responseJson interface{}) (int64, string, error) {
 	if responseJson == nil {
-		return -1, errors.New("response was nil")
+		return -1, "", errors.New("response was nil")
 	}
 	if obj, ok := responseJson.(map[string]interface{}); ok {
-		if resultObj, exists := obj["result"]; exists {
-			if resultNumberFloat, ok := resultObj.(float64); ok {
-				return int64(resultNumberFloat), nil
-			} else if resultNumber64, ok := resultObj.(int64); ok {
-				return resultNumber64, nil
-			} else if resultNumber, ok := resultObj.(int); ok {
-				return int64(resultNumber), nil
-			} else {
-				return -1, errors.New("result in response was not a job number")
+		kind := "daemon"
+		resultObj, exists := obj["daemon_id"]
+		if !exists {
+			kind = "external"
+			resultObj, exists = obj["result"]
+			if !exists {
+				return -1, "", errors.New("result nor daemon_id was not found in response")
 			}
+		}
+		if resultNumberFloat, ok := resultObj.(float64); ok {
+			return int64(resultNumberFloat), kind, nil
+		} else if resultNumber64, ok := resultObj.(int64); ok {
+			return resultNumber64, kind, nil
+		} else if resultNumber, ok := resultObj.(int); ok {
+			return int64(resultNumber), kind, nil
 		} else {
-			return -1, errors.New("result was not found in response")
+			return -1, kind, errors.New("result in response was not a job number")
 		}
 	} else {
-		return -1, errors.New("response was not a json object")
+		return -1, "", errors.New("response was not a json object")
 	}
 }

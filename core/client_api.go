@@ -17,13 +17,18 @@ import (
 	"time"
 )
 
+type ClientJob struct {
+	id int64
+	kind string
+}
+
 type ClientSession struct {
 	HostUrl string
 	ApiKey string
 	SocketPath string
 	client *http.Client
 	timeout time.Duration
-	jobsList []int64
+	jobsList []ClientJob
 }
 
 func (s *ClientSession) IsLoggedIn() bool {
@@ -36,7 +41,7 @@ func (s *ClientSession) GetHostUrl() string {
 
 func (s *ClientSession) Login() error {
 	if s.jobsList == nil {
-		s.jobsList = make([]int64, 0)
+		s.jobsList = make([]ClientJob, 0)
 	}
 
 	var errBuilder strings.Builder
@@ -130,13 +135,20 @@ func (s *ClientSession) CallAsyncRaw(method string, params interface{}, awaitThi
 	if err != nil {
 		return -1, err
 	}
-	jobId, _ := GetJobNumber(data)
-	s.jobsList = append(s.jobsList, jobId)
+	jobId, jobType, _ := GetJobNumber(data)
+	s.jobsList = append(s.jobsList, ClientJob {
+		id: jobId,
+		kind: jobType,
+	})
 	return jobId, nil
 }
 
-func (s *ClientSession) WaitForJob(jobId int64) (json.RawMessage, error) {
-	return s.CallRaw("tnc_daemon.await_job", 0, []interface{} {jobId})
+func (s *ClientSession) WaitForJob(jobId int64, jobType string) (json.RawMessage, error) {
+	method := "tnc_daemon.await_external_job"
+	if jobType == "daemon" {
+		method = "tnc_daemon.await_daemon_job"
+	}
+	return s.CallRaw(method, 0, []interface{} {jobId})
 }
 
 func (s *ClientSession) Close(internalError error) error {
@@ -149,11 +161,11 @@ func (s *ClientSession) Close(internalError error) error {
 		errorList = append(errorList, internalError)
 	}
 
-	for _, jobId := range s.jobsList {
-		if jobId < 0 {
+	for _, job := range s.jobsList {
+		if job.id < 0 {
 			continue
 		}
-		data, err := s.CallRaw("tnc_daemon.await_job", 0, []interface{} {jobId})
+		data, err := s.WaitForJob(job.id, job.kind)
 		if err != nil {
 			errorList = append(errorList, err)
 		} else if data != nil {

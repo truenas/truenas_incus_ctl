@@ -26,10 +26,11 @@ type TruenasSession struct {
 	ctx        *DaemonContext
 	sessionKey string
 	mapMtx     *sync.Mutex
+	curDmJob_  int64
 	curCallId_ int64
 	callMap_   map[int64]*Future[json.RawMessage]
 	jobMap_    map[int64]*Future[json.RawMessage]
-	
+	dmJobMap_  map[int64][]*Future[json.RawMessage]
 }
 
 type DaemonContext struct {
@@ -240,9 +241,11 @@ func (d *DaemonContext) createSession(truenasServerUrl string, loginMethod strin
 		ctx: d,
 		sessionKey: sessionKey,
 		mapMtx: &sync.Mutex{},
+		curDmJob_: 0,
 		curCallId_: 0,
 		callMap_: make(map[int64]*Future[json.RawMessage]),
 		jobMap_: make(map[int64]*Future[json.RawMessage]),
+		dmJobMap_: make(map[int64][]*Future[json.RawMessage]),
 	}
 
 	go session.listen()
@@ -280,8 +283,8 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request inte
 		return nil, fmt.Errorf("Invalid core.bulk request (requires a method and a parameters array)")
 	}
 
-	methodStr, ok := requestParams[0].(string)
-	if !ok || len(methodStr) == 0 {
+	innerMethod, ok := requestParams[0].(string)
+	if !ok || len(innerMethod) == 0 {
 		return nil, fmt.Errorf("Invalid core.bulk request (method was not a string)")
 	}
 	paramsArray, ok := []interface{}
@@ -289,19 +292,24 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request inte
 		return nil, fmt.Errorf("Invalid core.bulk request (params array was empty)")
 	}
 
+	s.mapMtx.Lock()
+	s.curDmJob_++
+	daemonJobId := s.curDmJob_
+	jobArray := MakeFutureArray[json.RawMessage](len(paramsArray))
+	s.dmJobMap_[daemonJobId] = jobArray
+	s.mapMtx.Unlock()
+
 	go func() {
 		results := make([]interface{}, len(paramsArray))
 		for idx, p := range paramsArray {
-			data, err := s.callImpl(method, timeoutStr, p)
+			data, err := s.callJson(innerMethod, timeoutStr, p)
 			results[idx] = res
 		}
 	}()
 
-	return MakeCoreBulkResponse(), nil
-}
-
-func MakeCoreBulkResponse(callId int64) {
-	"id": "daemon_" + callId
+	return map[string]interface{} {
+		"daemon_id": daemonJobId,
+	}, nil
 }
 
 func (s *TruenasSession) callImpl(method string, timeoutStr string, request interface{}) (json.RawMessage, error) {
@@ -389,7 +397,8 @@ func (s *TruenasSession) callImpl(method string, timeoutStr string, request inte
 		return nil, err
 	}
 
-	jobId, _ := GetJobNumber(dataRes)
+	jobId, jobType, _ := GetJobNumber(dataRes)
+	jobType = jobType
 
 	s.mapMtx.Lock()
 	if jobId > 0 {
@@ -494,9 +503,9 @@ func (s *TruenasSession) handleDaemonProcedure(proc string, timeoutStr string, p
 	}
 
 	switch proc {
-	case "peek_job":
+	case "peek_external_job":
 		if !isFirstParamNumber {
-			return nil, fmt.Errorf("tnc_daemon.peek_job expects the first parameter to be a job number")
+			return nil, fmt.Errorf("tnc_daemon.peek_external_job expects the first parameter to be a job number")
 		}
 		fJob := s.getJobFuture(firstParamAsNumber)
 		isDone, response, err := fJob.Peek()
@@ -504,25 +513,26 @@ func (s *TruenasSession) handleDaemonProcedure(proc string, timeoutStr string, p
 			return response, err
 		}
 		return MakeIncompleteJobStatus(firstParamAsNumber)
-	case "await_job":
+
+	case "peek_daemon_job":
 		if !isFirstParamNumber {
-			return nil, fmt.Errorf("tnc_daemon.await_job expects the first parameter to be a job number")
+			return nil, fmt.Errorf("tnc_daemon.peek_daemon_job expects the first parameter to be a job number")
+		}
+
+	case "await_external_job":
+		if !isFirstParamNumber {
+			return nil, fmt.Errorf("tnc_daemon.await_external_job expects the first parameter to be a job number")
 		}
 		fJob := s.getJobFuture(firstParamAsNumber)
 		return fJob.Get()
+
+	case "await_daemon_job":
+		if !isFirstParamNumber {
+			return nil, fmt.Errorf("tnc_daemon.await_daemon_job expects the first parameter to be a job number")
+		}
 	}
 
 	return nil, fmt.Errorf("Unrecognised daemon command \"tnc_daemon.%s\"", proc)
-}
-
-func (s *TruenasSession) handleIscsiCommand(
-	method string,
-	requestParams interface{},
-	reqMsg map[string]interface{},
-) (interface{}, int64, error) {
-	if strings.HasSuffix(method, ".delete") {
-		
-	}
 }
 
 func (s *TruenasSession) getJobFuture(id int64) *Future[json.RawMessage] {
