@@ -478,6 +478,7 @@ func getIscsiSharesFromSessionAndDiscovery(
 	args []string,
 	hostUrl *url.URL,
 	isActivate bool,
+	isDeactivate bool,
 ) ([]typeIscsiLoginSpec, map[string]bool, error) {
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 
@@ -503,7 +504,7 @@ func getIscsiSharesFromSessionAndDiscovery(
 		targets, _ = GetIscsiTargetsFromSession(maybeHashedToVolumeMap)
 	}
 
-	if len(targets) == 0 {
+	if !isDeactivate && len(targets) == 0 {
 		portalAddr := hostUrl.Hostname() + ":" + options.allFlags["port"]
 		targets, err = GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap, portalAddr)
 		if err != nil {
@@ -538,7 +539,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return fmt.Errorf("--activate and --deactivate commands are incompatible")
 	}
 
-	targets, shares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostUrl, shouldActivate)
+	targets, shares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostUrl, shouldActivate, shouldDeactivate)
 	if err != nil {
 		return err
 	}
@@ -572,7 +573,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		delete(shares, iqnTargetName)
 	})
 
-	if len(toDeactivate) > 0 {
+	if shouldDeactivate {
 		for _, t := range toDeactivate {
 			logoutParams := []string{
 				"--mode",
@@ -590,6 +591,9 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			} else {
 				fmt.Println("deactivated\t" + t)
 			}
+		}
+		for t, _ := range shares {
+			fmt.Println("not-found\t" + t)
 		}
 	} else if shouldActivate && len(shares) > 0 {
 		remainingTargets := make([]typeIscsiLoginSpec, 0)
@@ -618,7 +622,7 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	options, _ := GetCobraFlags(cmd, nil)
-	targets, _, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostUrl, true)
+	targets, _, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostUrl, true, false)
 	if err != nil {
 		return err
 	}
