@@ -287,7 +287,7 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request inte
 	if !ok || len(innerMethod) == 0 {
 		return nil, fmt.Errorf("Invalid core.bulk request (method was not a string)")
 	}
-	paramsArray, ok := []interface{}
+	paramsArray, ok := requestParams[1].([]interface{})
 	if !ok || len(paramsArray) == 0 {
 		return nil, fmt.Errorf("Invalid core.bulk request (params array was empty)")
 	}
@@ -300,16 +300,15 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request inte
 	s.mapMtx.Unlock()
 
 	go func() {
-		results := make([]interface{}, len(paramsArray))
 		for idx, p := range paramsArray {
-			data, err := s.callJson(innerMethod, timeoutStr, p)
-			results[idx] = res
+			jobArray[idx].Reach(s.callJson(innerMethod, timeoutStr, p))
 		}
 	}()
 
-	return map[string]interface{} {
+	result := map[string]interface{} {
 		"daemon_id": daemonJobId,
-	}, nil
+	}
+	return json.Marshal(result)
 }
 
 func (s *TruenasSession) callImpl(method string, timeoutStr string, request interface{}) (json.RawMessage, error) {
@@ -336,6 +335,11 @@ func (s *TruenasSession) callImpl(method string, timeoutStr string, request inte
 	reqMsg["method"] = method
 	reqMsg["params"] = requestParams
 	reqMsg["id"] = callId
+
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		timeout = time.Duration(10) * time.Second
+	}
 
 	//fmt.Println("Writing JSON request with callId:", callId, reqMsg)
 
@@ -378,11 +382,6 @@ func (s *TruenasSession) callImpl(method string, timeoutStr string, request inte
 			return dataRes, nil
 		}
 		return MakeApiResult(callId), nil
-	}
-
-	timeout, err := time.ParseDuration(timeoutStr)
-	if err != nil {
-		timeout = time.Duration(10) * time.Second
 	}
 
 	isDone, dataRes, err := AwaitFutureOrTimeout(fCall, timeout)
@@ -518,6 +517,8 @@ func (s *TruenasSession) handleDaemonProcedure(proc string, timeoutStr string, p
 		if !isFirstParamNumber {
 			return nil, fmt.Errorf("tnc_daemon.peek_daemon_job expects the first parameter to be a job number")
 		}
+		datas, errs := s.peekDaemonJob(firstParamAsNumber)
+		return MakeDaemonJobResult(datas, errs)
 
 	case "await_external_job":
 		if !isFirstParamNumber {
@@ -530,6 +531,8 @@ func (s *TruenasSession) handleDaemonProcedure(proc string, timeoutStr string, p
 		if !isFirstParamNumber {
 			return nil, fmt.Errorf("tnc_daemon.await_daemon_job expects the first parameter to be a job number")
 		}
+		datas, errs := s.awaitDaemonJob(firstParamAsNumber)
+		return MakeDaemonJobResult(datas, errs)
 	}
 
 	return nil, fmt.Errorf("Unrecognised daemon command \"tnc_daemon.%s\"", proc)
@@ -553,6 +556,38 @@ func (s *TruenasSession) getCallFuture(id int64) *Future[json.RawMessage] {
 		return nil
 	}
 	return f
+}
+
+func (s *TruenasSession) peekDaemonJob(id int64) ([]json.RawMessage, []error) {
+	s.mapMtx.Lock()
+	fArr, exists := s.dmJobMap_[id]
+	s.mapMtx.Unlock()
+	if !exists {
+		return nil, nil
+	}
+
+	datas := make([]json.RawMessage, len(fArr))
+	errs := make([]error, len(fArr))
+	for i, f := range fArr {
+		_, datas[i], errs[i] = f.Peek()
+	}
+	return datas, errs
+}
+
+func (s *TruenasSession) awaitDaemonJob(id int64) ([]json.RawMessage, []error) {
+	s.mapMtx.Lock()
+	fArr, exists := s.dmJobMap_[id]
+	s.mapMtx.Unlock()
+	if !exists {
+		return nil, nil
+	}
+
+	datas := make([]json.RawMessage, len(fArr))
+	errs := make([]error, len(fArr))
+	for i, f := range fArr {
+		datas[i], errs[i] = f.Get()
+	}
+	return datas, errs
 }
 
 func MakeIncompleteJobStatus(jobId int64) (json.RawMessage, error) {
