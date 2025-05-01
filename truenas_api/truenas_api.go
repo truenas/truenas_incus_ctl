@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"sync"
@@ -150,10 +151,14 @@ func NewClientWithCallback(serverURL string, verifySSL bool, jobsCallback func(i
 		return nil, fmt.Errorf("invalid URL: %w", err)
 	}
 
-	// Configure WebSocket connection options
-	dialer := websocket.DefaultDialer
-	if u.Scheme == "wss" && !verifySSL {
-		dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // Disable SSL verification for wss
+	// Configure WebSocket connection options with insecure TLS
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true, // Always disable certificate verification to allow self-signed certs
+	}
+
+	dialer := &websocket.Dialer{
+		TLSClientConfig: tlsConfig,
+		Proxy:           http.ProxyFromEnvironment,
 	}
 
 	// Establish the WebSocket connection

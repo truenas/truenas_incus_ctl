@@ -132,6 +132,7 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 	fmt.Printf("Testing connection to %s...\n", url)
 
 	// Test the connection by creating a temporary client
+	// Pass false to disable SSL verification and allow self-signed certificates
 	client, err := truenas_api.NewClient(url, false)
 	if err != nil {
 		return fmt.Errorf("Failed to create connection to %s: %v", url, err)
@@ -386,6 +387,7 @@ func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
 	fmt.Printf("Testing connection to %s...\n", url)
 
 	// Test the connection by creating a temporary client
+	// Pass false to disable SSL verification and allow self-signed certificates
 	client, err := truenas_api.NewClient(url, false)
 	if err != nil {
 		return fmt.Errorf("Failed to create connection to %s: %v", url, err)

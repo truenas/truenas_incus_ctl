@@ -1,6 +1,7 @@
 package core
 
 import (
+	"crypto/tls"
 	"io"
 	"os"
 	"fmt"
@@ -222,8 +223,16 @@ func (d *DaemonContext) createSession(truenasServerUrl string, loginMethod strin
 		return nil, fmt.Errorf("Invalid URL: %w", err)
 	}
 
+	// Configure WebSocket connection with insecure TLS to accept self-signed certs
+	dialer := &websocket.Dialer{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+		Proxy: http.ProxyFromEnvironment,
+	}
+
 	// Establish the WebSocket connection
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	conn, _, err := dialer.Dial(u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to connect: %w", err)
 	}
