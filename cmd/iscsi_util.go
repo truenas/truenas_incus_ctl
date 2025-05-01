@@ -149,9 +149,9 @@ func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeM
 			if isMinimal && err == nil {
 				fmt.Println(iqnTargetName)
 			} else if err == nil {
-				fmt.Println("deactivated:", iqnTargetName)
+				fmt.Println("deactivated\t", iqnTargetName)
 			} else if !isMinimal {
-				fmt.Println("FAILED:", iqnTargetName)
+				fmt.Println("failed\t", iqnTargetName)
 			}
 
 			if shouldRemove && maybeHashedToVolumeMap != nil {

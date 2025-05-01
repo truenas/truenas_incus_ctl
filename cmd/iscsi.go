@@ -513,7 +513,11 @@ func getIscsiSharesFromSessionAndDiscovery(
 	}
 
 	if len(targets) == 0 {
-		return nil, nil, fmt.Errorf("Could not find any matching iscsi shares")
+		var notFoundErr error
+		if !core.IsValueTrue(options.allFlags, "parsable") {
+			notFoundErr = fmt.Errorf("Could not find any matching iscsi shares")
+		}
+		return nil, nil, notFoundErr
 	}
 
 	shares := make(map[string]bool)
@@ -542,6 +546,9 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	targets, shares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostUrl, shouldActivate, shouldDeactivate)
 	if err != nil {
 		return err
+	}
+	if len(targets) == 0 {
+		return nil
 	}
 
 	ipAddrs, err := net.LookupIP(hostUrl.Hostname())
@@ -625,6 +632,9 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	targets, _, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostUrl, true, false)
 	if err != nil {
 		return err
+	}
+	if len(targets) == 0 {
+		return nil
 	}
 
 	ipAddrs, err := net.LookupIP(hostUrl.Hostname())
