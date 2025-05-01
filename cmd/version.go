@@ -28,8 +28,9 @@ import (
 0.5.0 Add initial iSCSI support
 0.5.1 Full support for iSCSI, added human-readable size parsing
 0.5.2 Add a connection daemon, allowing for logins to be cached, more flexibility in handling jobs, etc
+0.5.3 `share iscsi locate --activate/--deactivate`
 */
-const VERSION = "0.5.2"
+const VERSION = "0.5.3"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",

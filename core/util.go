@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"math/bits"
 	"os"
 	"os/exec"
 	"slices"
@@ -189,33 +188,18 @@ func ParseSizeString(str string) (int64, error) {
 	nFracDigits := 0
 	isFrac := false
 
+outer_loop:
 	for _, c := range str {
-		if c == 'k' || c == 'K' {
-			if multiplier != 0 {
-				return 0, fmt.Errorf("invalid size units in \"" + str + "\"")
+		for j, unit := range "KMGTP" {
+			if c == unit || c == unit + 0x20 {
+				if multiplier != 0 {
+					return 0, fmt.Errorf("invalid size units in \"" + str + "\"")
+				}
+				multiplier = int64(1) << (10 * (j + 1))
+				continue outer_loop
 			}
-			multiplier = int64(1000)
-		} else if c == 'm' || c == 'M' {
-			if multiplier != 0 {
-				return 0, fmt.Errorf("invalid size units in \"" + str + "\"")
-			}
-			multiplier = int64(1000) * int64(1000)
-		} else if c == 'g' || c == 'G' {
-			if multiplier != 0 {
-				return 0, fmt.Errorf("invalid size units in \"" + str + "\"")
-			}
-			multiplier = int64(1000) * int64(1000) * int64(1000)
-		} else if c == 't' || c == 'T' {
-			if multiplier != 0 {
-				return 0, fmt.Errorf("invalid size units in \"" + str + "\"")
-			}
-			multiplier = int64(1000) * int64(1000) * int64(1000) * int64(1000)
-		} else if c == 'i' || c == 'I' {
-			if multiplier == 0 {
-				continue
-			}
-			multiplier = int64(1) << (1 + (63 - bits.LeadingZeros64(uint64(multiplier - 1))))
-		} else if c == '.' {
+		}
+		if c == '.' {
 			isFrac = true
 		} else if c >= '0' && c <= '9' {
 			if isFrac {
@@ -224,7 +208,7 @@ func ParseSizeString(str string) (int64, error) {
 			} else {
 				whole = whole * int64(10) + int64(c - '0')
 			}
-		} else if c != 'B' && c != 'b' && c != ' ' && c != '\t' && c != '\r' && c != '\n' {
+		} else if c != 'B' && c != 'b' && c != 'I' && c != 'i' && c != ' ' && c != '\t' && c != '\r' && c != '\n' {
 			return 0, fmt.Errorf("unrecognized character '" + string(c) + "' in \"" + str + "\"")
 		}
 	}
