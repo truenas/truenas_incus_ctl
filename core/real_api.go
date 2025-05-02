@@ -54,7 +54,7 @@ func (s *RealSession) Login() error {
 
 	client, err := truenas_api.NewClientWithCallback(
 		s.HostUrl,
-		strings.HasPrefix(s.HostUrl, "wss://"),
+		false, // Always disable SSL verification to allow self-signed certificates
 		func(waitingJobId int64, innerJobId int64, params map[string]interface{}) {
 			s.HandleJobUpdate(waitingJobId, innerJobId, params)
 		},

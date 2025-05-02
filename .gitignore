@@ -3,3 +3,5 @@ truenas-admin
 admin-tool
 key.txt
 datasets.tsv
+
+**/.claude/settings.local.json
