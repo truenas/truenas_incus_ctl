@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const USE_DAEMON = false
+const USE_DAEMON = true
 
 var rootCmd = &cobra.Command{
 	Use: "truenas_incus_ctl",
@@ -20,7 +20,7 @@ var rootCmd = &cobra.Command{
 var daemonCmd = &cobra.Command{
 	Use:  "daemon",
 	Args: cobra.MinimumNArgs(1),
-	Run:  func(cmd *cobra.Command, args []string) {
+	Run: func(cmd *cobra.Command, args []string) {
 		var globalTimeoutStr string
 		f := cmd.Flags().Lookup("timeout")
 		if f != nil {
@@ -94,26 +94,26 @@ func InitializeApiClient() core.Session {
 				log.Fatal(err)
 			}
 			api = &core.ClientSession{
-				HostUrl:     g_url,
-				ApiKey:      g_apiKey,
-				SocketPath:  path.Join(p, "tncdaemon.sock"),
+				HostUrl:    g_url,
+				ApiKey:     g_apiKey,
+				SocketPath: path.Join(p, "tncdaemon.sock"),
 			}
 		} else {
 			api = &core.RealSession{
-				HostUrl:     g_url,
-				ApiKey:      g_apiKey,
-				ShouldWait:  !g_async,
-				IsDebug:     g_debug,
+				HostUrl:    g_url,
+				ApiKey:     g_apiKey,
+				ShouldWait: !g_async,
+				IsDebug:    g_debug,
 			}
 		}
 	}
 
 	/*
-	err := api.Login()
-	if err != nil {
-		api.Close(err)
-		log.Fatal(err)
-	}
+		err := api.Login()
+		if err != nil {
+			api.Close(err)
+			log.Fatal(err)
+		}
 	*/
 
 	return api
