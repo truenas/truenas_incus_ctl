@@ -14,7 +14,6 @@ import (
 	"golang.org/x/term"
 )
 
-// set <nickname> [parameters...]    - Update parameters in config file
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage local configuration settings",
@@ -23,6 +22,7 @@ var configCmd = &cobra.Command{
 Available Commands:
   login                             - Interactively add a new connection
   add <nickname> [parameters...]    - Non-interactively add a new connection
+  set <nickname> [parameters...]    - Update parameters in config file
   list                              - Lists all saved connections
   show                              - Display the raw contents of the configuration file
   remove <nickname>                 - Remove a saved connection by nickname`,
@@ -75,13 +75,11 @@ var configAddCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 }
 
-/*
 var configSetCmd = &cobra.Command{
 	Use:   "set <nickname> [parameters...]",
 	Short: "Edit the configuration of the given connection",
 	Args:  cobra.ExactArgs(1),
 }
-*/
 
 func init() {
 	configLoginCmd.RunE = WrapCommandFuncWithoutApi(loginToHost)
@@ -89,12 +87,14 @@ func init() {
 	configListCmd.RunE = WrapCommandFunc(listConfigs)
 	configRemoveCmd.RunE = WrapCommandFunc(removeConfig)
 	configAddCmd.RunE = WrapCommandFuncWithoutApi(addHost)
+	configSetCmd.RunE = WrapCommandFuncWithoutApi(setHost)
 
 	configCmd.AddCommand(configLoginCmd)
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configListCmd)
 	configCmd.AddCommand(configRemoveCmd)
 	configCmd.AddCommand(configAddCmd)
+	configCmd.AddCommand(configSetCmd)
 	rootCmd.AddCommand(configCmd)
 }
 
@@ -131,10 +131,10 @@ func showConfig(cmd *cobra.Command, api core.Session, args []string) error {
 // addHost implements the non-interactive version of adding a connection to the config
 func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 	// Note: 'api' parameter will be nil for this command, which is expected
-	options, _ := GetCobraFlags(cmd, nil)
+	//options, _ := GetCobraFlags(cmd, nil)
 	nickname := args[0]
-	hostname, _ := options.allFlags["host"]
-	apiKey, _ := options.allFlags["api-key"]
+	hostname := g_hostName
+	apiKey := g_apiKey
 
 	if hostname == "" {
 		return fmt.Errorf("Hostname cannot be empty")
@@ -227,6 +227,10 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	fmt.Printf("Configuration for '%s' (connecting to %s) saved to %s\n", nickname, hostname, configPath)
+	return nil
+}
+
+func setHost(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 

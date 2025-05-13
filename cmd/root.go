@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"path"
 	"truenas/truenas_incus_ctl/core"
@@ -41,7 +42,6 @@ func Execute() {
 	}
 }
 
-var g_useMock bool
 var g_debug bool
 var g_async bool
 var g_configFileName string
@@ -51,7 +51,6 @@ var g_apiKey string
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&g_debug, "debug", false, "Enable debug logs")
-	rootCmd.PersistentFlags().BoolVar(&g_useMock, "mock", false, "Use the mock API instead of a TrueNAS server")
 	rootCmd.PersistentFlags().BoolVar(&g_async, "nowait", false, "Disable waiting until every job completes")
 	rootCmd.PersistentFlags().StringVarP(&g_configFileName, "config-file", "F", "", "Override config filename (~/.truenas_incus_ctl/config.json)")
 	rootCmd.PersistentFlags().StringVarP(&g_configNickname, "config", "C", "", "Name of config to look up in config.json, defaults to first entry")
@@ -77,42 +76,36 @@ func RemoveGlobalFlags(flags map[string]string) {
 
 func InitializeApiClient() core.Session {
 	var api core.Session
-	if g_useMock {
-		api = &core.MockSession{
-			DatasetSource: &core.FileRawa{FileName: "datasets.tsv"},
+	if g_hostName == "" && g_apiKey == "" {
+		var err error
+		g_hostName, g_apiKey, err = loadConfig(g_configFileName, g_configNickname)
+		if err != nil {
+			log.Fatal(fmt.Errorf("Failed to parse config: %v", err))
+		}
+	}
+	if USE_DAEMON {
+		p, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatal(err)
+		}
+		api = &core.ClientSession{
+			HostName:   g_hostName,
+			ApiKey:     g_apiKey,
+			SocketPath: path.Join(p, "tncdaemon.sock"),
 		}
 	} else {
-		if g_hostName == "" && g_apiKey == "" {
-			var err error
-			g_hostName, g_apiKey, err = loadConfig(g_configFileName, g_configNickname)
-			if err != nil {
-				log.Fatal(fmt.Errorf("Failed to parse config: %v", err))
-			}
-		}
-		if USE_DAEMON {
-			p, err := os.UserHomeDir()
-			if err != nil {
-				log.Fatal(err)
-			}
-			api = &core.ClientSession{
-				HostName:   g_hostName,
-				ApiKey:     g_apiKey,
-				SocketPath: path.Join(p, "tncdaemon.sock"),
-			}
-		} else {
-			api = &core.RealSession{
-				HostName:   g_hostName,
-				ApiKey:     g_apiKey,
-				ShouldWait: !g_async,
-				IsDebug:    g_debug,
-			}
+		api = &core.RealSession{
+			HostName:   g_hostName,
+			ApiKey:     g_apiKey,
+			ShouldWait: !g_async,
+			IsDebug:    g_debug,
 		}
 	}
 
 	return api
 }
 
-func loadConfig(fileName, hostName string) (string, string, error) {
+func loadConfig(fileName, nickname string) (string, string, error) {
 	var data []byte
 	var err error
 
@@ -136,43 +129,48 @@ func loadConfig(fileName, hostName string) (string, string, error) {
 		return "", "", fmt.Errorf("\"%s\": %v", fileName, err)
 	}
 
-	config, ok := obj.(map[string]interface{})
+	jsonObj, ok := obj.(map[string]interface{})
 	if !ok {
 		return "", "", fmt.Errorf("Config was not a JSON object \"%s\"", fileName)
 	}
 
-	hosts, err := getMapFromMapAny(config, "hosts", fileName)
+	hosts, err := getMapFromMapAny(jsonObj, "hosts", fileName)
 	if err != nil {
 		return "", "", err
 	}
 
-	if hostName == "" {
+	if nickname == "" {
 		for key, _ := range hosts {
-			if hostName == "" || key < hostName {
-				hostName = key
+			if nickname == "" || key < nickname {
+				nickname = key
 			}
 		}
-		if hostName == "" {
+		if nickname == "" {
 			return "", "", fmt.Errorf("Could not find any hosts in config \"%s\"", fileName)
 		}
 	}
 
-	host, err := getMapFromMapAny(hosts, hostName, fileName)
+	config, err := getMapFromMapAny(hosts, nickname, fileName)
 	if err != nil {
 		return "", "", err
 	}
 
-	apiKey, err := getNonEmptyStringFromMapAny(host, "api_key", fileName)
+	apiKey, err := getNonEmptyStringFromMapAny(config, "api_key", fileName)
 	if err != nil {
 		return "", "", err
 	}
 
-	url, err := getNonEmptyStringFromMapAny(host, "url", fileName)
+	u, err := getNonEmptyStringFromMapAny(config, "url", fileName)
 	if err != nil {
 		return "", "", err
 	}
 
-	return url, apiKey, nil
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return "", "", err
+	}
+
+	return parsed.Hostname(), apiKey, nil
 }
 
 func getDefaultConfigPath() string {
