@@ -18,7 +18,7 @@ import (
 )
 
 type ClientSession struct {
-	HostUrl string
+	HostName string
 	ApiKey string
 	SocketPath string
 	client *http.Client
@@ -30,8 +30,8 @@ func (s *ClientSession) IsLoggedIn() bool {
 	return s.client != nil
 }
 
-func (s *ClientSession) GetHostUrl() string {
-	return s.HostUrl
+func (s *ClientSession) GetHostName() string {
+	return s.HostName
 }
 
 func (s *ClientSession) Login() error {
@@ -40,8 +40,8 @@ func (s *ClientSession) Login() error {
 	}
 
 	var errBuilder strings.Builder
-	if s.HostUrl == "" {
-		errBuilder.WriteString("Host URL was not provided\n")
+	if s.HostName == "" {
+		errBuilder.WriteString("Hostname was not provided\n")
 	}
 	if s.ApiKey == "" {
 		errBuilder.WriteString("API key was not provided\n")
@@ -89,7 +89,7 @@ func (s *ClientSession) CallRaw(method string, timeoutSeconds int64, params inte
 	}
 
 	request, _ := http.NewRequest("POST", "http://unix/tnc-daemon", bytes.NewReader(paramsData))
-	request.Header.Set("TNC-Host-Url", s.HostUrl)
+	request.Header.Set("TNC-Host-Url", HostNameToApiUrl(s.HostName))
 	request.Header.Set("TNC-Api-Key", s.ApiKey)
 	request.Header.Set("TNC-Call-Method", method)
 	if timeoutSeconds > 0 {

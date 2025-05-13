@@ -14,6 +14,7 @@ import (
 	"golang.org/x/term"
 )
 
+// set <nickname> [parameters...]    - Update parameters in config file
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage local configuration settings",
@@ -21,7 +22,7 @@ var configCmd = &cobra.Command{
 	
 Available Commands:
   login                             - Interactively add a new connection
-  add <nickname> <hostname> <apikey> - Non-interactively add a new connection
+  add <nickname> [parameters...]    - Non-interactively add a new connection
   list                              - Lists all saved connections
   show                              - Display the raw contents of the configuration file
   remove <nickname>                 - Remove a saved connection by nickname`,
@@ -29,11 +30,11 @@ Available Commands:
   truenas_incus_ctl config login
 
   # Add a new connection non-interactively
-  truenas_incus_ctl config add prod-server 192.168.0.31 "api-key-goes-here"
-  
+  truenas_incus_ctl config add prod-server --host 192.168.0.31 --api-key "api-key-goes-here"
+
   # List all saved connections
   truenas_incus_ctl config list
-  
+
   # Remove a connection
   truenas_incus_ctl config remove truenas-production`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -69,17 +70,25 @@ var configRemoveCmd = &cobra.Command{
 }
 
 var configAddCmd = &cobra.Command{
-	Use:   "add <nickname> <hostname> <apikey>",
+	Use:   "add <nickname> [parameters...]",
 	Short: "Non-interactively add a new connection to the configuration",
-	Args:  cobra.ExactArgs(3),
+	Args:  cobra.ExactArgs(1),
 }
 
+/*
+var configSetCmd = &cobra.Command{
+	Use:   "set <nickname> [parameters...]",
+	Short: "Edit the configuration of the given connection",
+	Args:  cobra.ExactArgs(1),
+}
+*/
+
 func init() {
-	configLoginCmd.RunE = WrapCommandFunc(loginToHost)
+	configLoginCmd.RunE = WrapCommandFuncWithoutApi(loginToHost)
 	configShowCmd.RunE = WrapCommandFunc(showConfig)
 	configListCmd.RunE = WrapCommandFunc(listConfigs)
 	configRemoveCmd.RunE = WrapCommandFunc(removeConfig)
-	configAddCmd.RunE = WrapCommandFunc(addHost)
+	configAddCmd.RunE = WrapCommandFuncWithoutApi(addHost)
 
 	configCmd.AddCommand(configLoginCmd)
 	configCmd.AddCommand(configShowCmd)
@@ -122,16 +131,20 @@ func showConfig(cmd *cobra.Command, api core.Session, args []string) error {
 // addHost implements the non-interactive version of adding a connection to the config
 func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 	// Note: 'api' parameter will be nil for this command, which is expected
+	options, _ := GetCobraFlags(cmd, nil)
 	nickname := args[0]
-	hostname := args[1]
-	apiKey := args[2]
+	hostname, _ := options.allFlags["host"]
+	apiKey, _ := options.allFlags["api-key"]
 
+	if hostname == "" {
+		return fmt.Errorf("Hostname cannot be empty")
+	}
 	if apiKey == "" {
 		return fmt.Errorf("API key cannot be empty")
 	}
 
 	// Construct the WebSocket URL with API endpoint
-	url := "wss://" + hostname + "/api/current"
+	url := core.HostNameToApiUrl(hostname)
 	fmt.Printf("Testing connection to %s...\n", url)
 
 	// Test the connection by creating a temporary client
@@ -386,7 +399,7 @@ func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	// Construct the WebSocket URL with API endpoint
-	url := "wss://" + hostname + "/api/current"
+	url := core.HostNameToApiUrl(hostname)
 	fmt.Printf("Testing connection to %s...\n", url)
 
 	// Test the connection by creating a temporary client

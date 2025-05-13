@@ -22,7 +22,7 @@ func (s *MockSession) IsLoggedIn() bool {
 	return !s.closed
 }
 
-func (s *MockSession) GetHostUrl() string {
+func (s *MockSession) GetHostName() string {
 	return ""
 }
 

@@ -27,7 +27,7 @@ func init() {
 	listCmd.Flags().StringP("types", "t", "fs,vol", "Array of types of data to retrieve. By default, types are deduced from arguments, else fs,vol. (fs,vol,snap,nfs)")
 	listCmd.Flags().BoolP("recursive", "r", false, "Retrieves properties for children")
 	listCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
-	listCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
+	listCmd.Flags().BoolP("no-headers", "c", false, "Equivalent to --format=compact. More easily parsed by scripts")
 	listCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
 		AddFlagsEnum(&g_genericListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	listCmd.Flags().StringP("output", "o", "", "Output property list")

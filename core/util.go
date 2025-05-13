@@ -15,6 +15,10 @@ import (
 	"syscall"
 )
 
+func HostNameToApiUrl(hostname string) string {
+	return "wss://" + hostname + "/api/current"
+}
+
 func IdentifyObject(obj string) (string, string) {
 	if obj == "" {
 		return "", ""

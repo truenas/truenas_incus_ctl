@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/url"
 	"path"
 	"strconv"
 	"strings"
@@ -56,7 +55,7 @@ var iscsiDeactivateCmd = &cobra.Command{
 
 var iscsiDeleteCmd = &cobra.Command{
 	Use:     "delete <dataset>...",
-	Short:   "Delete the iscsi targets that map to the given datasets",
+	Short:   "Delete the iscsi targets that map to the given datasets, after deactivating them first",
 	Args:  cobra.MinimumNArgs(1),
 }
 
@@ -476,7 +475,7 @@ func getIscsiSharesFromSessionAndDiscovery(
 	options FlagMap,
 	api core.Session,
 	args []string,
-	hostUrl *url.URL,
+	hostname string,
 	isActivate bool,
 	isDeactivate bool,
 ) ([]typeIscsiLoginSpec, map[string]bool, error) {
@@ -505,7 +504,7 @@ func getIscsiSharesFromSessionAndDiscovery(
 	}
 
 	if !isDeactivate && len(targets) == 0 {
-		portalAddr := hostUrl.Hostname() + ":" + options.allFlags["port"]
+		portalAddr := hostname + ":" + options.allFlags["port"]
 		targets, err = GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap, portalAddr)
 		if err != nil {
 			return nil, nil, err
@@ -530,20 +529,18 @@ func getIscsiSharesFromSessionAndDiscovery(
 
 func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
-	hostUrl, err := url.Parse(api.GetHostUrl())
-	if err != nil {
-		return err
-	}
-
 	options, _ := GetCobraFlags(cmd, nil)
 	shouldActivate := core.IsValueTrue(options.allFlags, "activate")
 	shouldDeactivate := core.IsValueTrue(options.allFlags, "deactivate")
 
+	/* TODO: ensure the two can be used together, then remove this check
 	if shouldActivate && shouldDeactivate {
 		return fmt.Errorf("--activate and --deactivate options are incompatible")
 	}
+	*/
 
-	targets, shares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostUrl, shouldActivate, shouldDeactivate)
+	hostname := api.GetHostName()
+	targets, shares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostname, shouldActivate, shouldDeactivate)
 	if err != nil {
 		return err
 	}
@@ -551,7 +548,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return nil
 	}
 
-	ipAddrs, err := net.LookupIP(hostUrl.Hostname())
+	ipAddrs, err := net.LookupIP(hostname)
 	if err != nil {
 		return err
 	}
@@ -623,13 +620,10 @@ type typeIscsiPathAndIqnTarget struct {
 
 func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
-	hostUrl, err := url.Parse(api.GetHostUrl())
-	if err != nil {
-		return err
-	}
+	hostname := api.GetHostName()
 
 	options, _ := GetCobraFlags(cmd, nil)
-	targets, _, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostUrl, true, false)
+	targets, _, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostname, true, false)
 	if err != nil {
 		return err
 	}
@@ -637,7 +631,7 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return nil
 	}
 
-	ipAddrs, err := net.LookupIP(hostUrl.Hostname())
+	ipAddrs, err := net.LookupIP(hostname)
 	if err != nil {
 		return err
 	}
@@ -758,12 +752,8 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 		return err
 	}
 
-	hostUrl, err := url.Parse(api.GetHostUrl())
-	if err != nil {
-		return err
-	}
-
-	ipAddrs, err := net.LookupIP(hostUrl.Hostname())
+	hostname := api.GetHostName()
+	ipAddrs, err := net.LookupIP(hostname)
 	if err != nil {
 		return err
 	}
@@ -783,7 +773,8 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 }
 
 // This command is needed to delete the iscsi extent/target without deleting the underlying dataset.
-// However, deleting a dataset will delete the extent and dataset as well.
+// However, deleting a dataset will delete the extent and target as well.
+// It will deactivate the share before deleting it.
 func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	options, _ := GetCobraFlags(cmd, nil)
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
@@ -810,12 +801,8 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	hostUrl, err := url.Parse(api.GetHostUrl())
-	if err != nil {
-		return err
-	}
-
-	ipAddrs, err := net.LookupIP(hostUrl.Hostname())
+	hostname := api.GetHostName()
+	ipAddrs, err := net.LookupIP(hostname)
 	if err != nil {
 		return err
 	}

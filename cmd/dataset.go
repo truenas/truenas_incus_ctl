@@ -146,7 +146,7 @@ func init() {
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "snapdev", []string{"hidden", "visible"}))
 	}
 
-	datasetUpdateCmd.Flags().BoolP("create", "c", false, "If a dataset doesn't exist, create it. Off by default.")
+	datasetUpdateCmd.Flags().Bool("create", false, "If a dataset doesn't exist, create it. Off by default.")
 
 	g_datasetCreateUpdateEnums["type"] = []string{"volume", "filesystem"}
 
@@ -157,7 +157,7 @@ func init() {
 	datasetListCmd.Flags().BoolP("recursive", "r", false, "Retrieves properties for children")
 	datasetListCmd.Flags().BoolP("user-properties", "u", false, "Include user-properties")
 	datasetListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
-	datasetListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
+	datasetListCmd.Flags().BoolP("no-headers", "c", false, "Equivalent to --format=compact. More easily parsed by scripts")
 	datasetListCmd.Flags().String("format", "table", "Output table format "+
 		AddFlagsEnum(&g_datasetListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	datasetListCmd.Flags().StringP("output", "o", "", "Output property list")

@@ -45,17 +45,17 @@ var g_useMock bool
 var g_debug bool
 var g_async bool
 var g_configFileName string
-var g_configHost string
-var g_url string
+var g_configNickname string
+var g_hostName string
 var g_apiKey string
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&g_debug, "debug", false, "Enable debug logs")
 	rootCmd.PersistentFlags().BoolVar(&g_useMock, "mock", false, "Use the mock API instead of a TrueNAS server")
 	rootCmd.PersistentFlags().BoolVar(&g_async, "nowait", false, "Disable waiting until every job completes")
-	rootCmd.PersistentFlags().StringVar(&g_configFileName, "config", "", "Override config filename (~/.truenas_incus_ctl/config.json)")
-	rootCmd.PersistentFlags().StringVar(&g_configHost, "host", "", "Name of config to look up in config.json, defaults to first entry")
-	rootCmd.PersistentFlags().StringVarP(&g_url, "url", "U", "", "Server URL")
+	rootCmd.PersistentFlags().StringVarP(&g_configFileName, "config-file", "F", "", "Override config filename (~/.truenas_incus_ctl/config.json)")
+	rootCmd.PersistentFlags().StringVarP(&g_configNickname, "config", "C", "", "Name of config to look up in config.json, defaults to first entry")
+	rootCmd.PersistentFlags().StringVarP(&g_hostName, "host", "H", "", "Server URL")
 	rootCmd.PersistentFlags().StringVarP(&g_apiKey, "api-key", "K", "", "API key")
 
 	daemonCmd.Flags().StringP("timeout", "t", "", "Exit the daemon if no communication occurs after this duration")
@@ -67,9 +67,10 @@ func RemoveGlobalFlags(flags map[string]string) {
 	delete(flags, "debug")
 	delete(flags, "mock")
 	delete(flags, "nowait")
+	delete(flags, "config-file")
+	delete(flags, "config_file")
 	delete(flags, "config")
 	delete(flags, "host")
-	delete(flags, "url")
 	delete(flags, "api-key")
 	delete(flags, "api_key")
 }
@@ -81,9 +82,9 @@ func InitializeApiClient() core.Session {
 			DatasetSource: &core.FileRawa{FileName: "datasets.tsv"},
 		}
 	} else {
-		if g_url == "" && g_apiKey == "" {
+		if g_hostName == "" && g_apiKey == "" {
 			var err error
-			g_url, g_apiKey, err = loadConfig(g_configFileName, g_configHost)
+			g_hostName, g_apiKey, err = loadConfig(g_configFileName, g_configNickname)
 			if err != nil {
 				log.Fatal(fmt.Errorf("Failed to parse config: %v", err))
 			}
@@ -94,27 +95,19 @@ func InitializeApiClient() core.Session {
 				log.Fatal(err)
 			}
 			api = &core.ClientSession{
-				HostUrl:    g_url,
+				HostName:   g_hostName,
 				ApiKey:     g_apiKey,
 				SocketPath: path.Join(p, "tncdaemon.sock"),
 			}
 		} else {
 			api = &core.RealSession{
-				HostUrl:    g_url,
+				HostName:   g_hostName,
 				ApiKey:     g_apiKey,
 				ShouldWait: !g_async,
 				IsDebug:    g_debug,
 			}
 		}
 	}
-
-	/*
-		err := api.Login()
-		if err != nil {
-			api.Close(err)
-			log.Fatal(err)
-		}
-	*/
 
 	return api
 }

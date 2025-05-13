@@ -19,7 +19,7 @@ type ApiJobResult struct {
 }
 
 type RealSession struct {
-	HostUrl string
+	HostName string
 	ApiKey string
 	ShouldWait bool
 	IsDebug bool
@@ -44,8 +44,8 @@ func (s *RealSession) Login() error {
 		_ = s.Close(nil)
 	}
 
-	if s.HostUrl == "" || s.ApiKey == "" {
-		return errors.New("--url and --api-key were not provided")
+	if s.HostName == "" || s.ApiKey == "" {
+		return errors.New("Hostname and API key were not provided")
 	}
 
 	if s.resultsQueue == nil {
@@ -53,7 +53,7 @@ func (s *RealSession) Login() error {
 	}
 
 	client, err := truenas_api.NewClientWithCallback(
-		s.HostUrl,
+		HostNameToApiUrl(s.HostName),
 		false, // Always disable SSL verification to allow self-signed certificates
 		func(waitingJobId int64, innerJobId int64, params map[string]interface{}) {
 			s.HandleJobUpdate(waitingJobId, innerJobId, params)
@@ -77,8 +77,8 @@ func (s *RealSession) Login() error {
 	return nil
 }
 
-func (s *RealSession) GetHostUrl() string {
-	return s.HostUrl
+func (s *RealSession) GetHostName() string {
+	return s.HostName
 }
 
 func (s *RealSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
