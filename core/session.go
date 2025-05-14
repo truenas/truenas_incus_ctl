@@ -10,6 +10,7 @@ type Session interface {
 	Login() error
 	IsLoggedIn() bool
 	GetHostName() string
+	GetUrl() string
 	CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error)
 	CallAsyncRaw(method string, params interface{}, awaitThisJob bool) (int64, error)
 	WaitForJob(jobId int64) (json.RawMessage, error)

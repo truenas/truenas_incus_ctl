@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"path"
+	"strings"
 	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
@@ -49,6 +49,10 @@ var g_configNickname string
 var g_hostName string
 var g_apiKey string
 
+var g_oldHostName string
+var g_oldApiKey string
+var g_oldDebug bool
+
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&g_debug, "debug", false, "Enable debug logs")
 	rootCmd.PersistentFlags().BoolVar(&g_async, "nowait", false, "Disable waiting until every job completes")
@@ -75,10 +79,14 @@ func RemoveGlobalFlags(flags map[string]string) {
 }
 
 func InitializeApiClient() core.Session {
+	g_oldHostName = g_hostName
+	g_oldApiKey = g_apiKey
+	g_oldDebug = g_debug
+
 	var api core.Session
 	if g_hostName == "" && g_apiKey == "" {
 		var err error
-		g_hostName, g_apiKey, err = loadConfig(g_configFileName, g_configNickname)
+		g_hostName, g_apiKey, g_debug, err = getUrlAndApiKeyFromConfig(g_configFileName, g_configNickname)
 		if err != nil {
 			log.Fatal(fmt.Errorf("Failed to parse config: %v", err))
 		}
@@ -105,7 +113,7 @@ func InitializeApiClient() core.Session {
 	return api
 }
 
-func loadConfig(fileName, nickname string) (string, string, error) {
+func getUrlAndApiKeyFromConfig(fileName, nickname string) (string, string, bool, error) {
 	var data []byte
 	var err error
 
@@ -121,22 +129,22 @@ func loadConfig(fileName, nickname string) (string, string, error) {
 	}
 
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 
 	var obj interface{}
 	if err = json.Unmarshal(data, &obj); err != nil {
-		return "", "", fmt.Errorf("\"%s\": %v", fileName, err)
+		return "", "", false, fmt.Errorf("\"%s\": %v", fileName, err)
 	}
 
 	jsonObj, ok := obj.(map[string]interface{})
 	if !ok {
-		return "", "", fmt.Errorf("Config was not a JSON object \"%s\"", fileName)
+		return "", "", false, fmt.Errorf("Config was not a JSON object \"%s\"", fileName)
 	}
 
 	hosts, err := getMapFromMapAny(jsonObj, "hosts", fileName)
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 
 	if nickname == "" {
@@ -146,31 +154,35 @@ func loadConfig(fileName, nickname string) (string, string, error) {
 			}
 		}
 		if nickname == "" {
-			return "", "", fmt.Errorf("Could not find any hosts in config \"%s\"", fileName)
+			return "", "", false, fmt.Errorf("Could not find any hosts in config \"%s\"", fileName)
 		}
 	}
 
 	config, err := getMapFromMapAny(hosts, nickname, fileName)
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 
 	apiKey, err := getNonEmptyStringFromMapAny(config, "api_key", fileName)
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 
 	u, err := getNonEmptyStringFromMapAny(config, "url", fileName)
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 
-	parsed, err := url.Parse(u)
-	if err != nil {
-		return "", "", err
+	isDebug := false
+	if isDebugObj, exists := config["debug"]; exists {
+		if isDebugBool, ok := isDebugObj.(bool); ok {
+			isDebug = isDebugBool
+		} else if isDebugStr, ok := isDebugObj.(string); ok {
+			isDebug = strings.ToLower(isDebugStr) == "true"
+		}
 	}
 
-	return parsed.Hostname(), apiKey, nil
+	return u, apiKey, isDebug, nil
 }
 
 func getDefaultConfigPath() string {

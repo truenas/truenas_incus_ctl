@@ -87,7 +87,12 @@ func init() {
 	configListCmd.RunE = WrapCommandFunc(listConfigs)
 	configRemoveCmd.RunE = WrapCommandFunc(removeConfig)
 	configAddCmd.RunE = WrapCommandFuncWithoutApi(addHost)
-	configSetCmd.RunE = WrapCommandFuncWithoutApi(setHost)
+	configSetCmd.RunE = WrapCommandFuncWithoutApi(setConfig)
+
+	_configEditCommands := []*cobra.Command {configAddCmd, configSetCmd}
+	for _, c := range _configEditCommands {
+		c.Flags().Bool("no-verify", false, "Don't verify the new host and API key before updating the config")
+	}
 
 	configCmd.AddCommand(configLoginCmd)
 	configCmd.AddCommand(configShowCmd)
@@ -131,10 +136,11 @@ func showConfig(cmd *cobra.Command, api core.Session, args []string) error {
 // addHost implements the non-interactive version of adding a connection to the config
 func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 	// Note: 'api' parameter will be nil for this command, which is expected
-	//options, _ := GetCobraFlags(cmd, nil)
+	options, _ := GetCobraFlags(cmd, nil)
 	nickname := args[0]
-	hostname := g_hostName
-	apiKey := g_apiKey
+	hostname := g_oldHostName
+	apiKey := g_oldApiKey
+	isDebug := g_oldDebug
 
 	if hostname == "" {
 		return fmt.Errorf("Hostname cannot be empty")
@@ -143,38 +149,11 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 		return fmt.Errorf("API key cannot be empty")
 	}
 
-	// Construct the WebSocket URL with API endpoint
-	url := core.HostNameToApiUrl(hostname)
-	fmt.Printf("Testing connection to %s...\n", url)
-
-	// Test the connection by creating a temporary client
-	// Pass false to disable SSL verification and allow self-signed certificates
-	client, err := truenas_api.NewClient(url, false)
-	if err != nil {
-		return fmt.Errorf("Failed to create connection to %s: %v", url, err)
+	if !core.IsValueTrue(options.allFlags, "no_verify") {
+		if err := verifyHost(hostname, apiKey); err != nil {
+			return err
+		}
 	}
-
-	// Attempt to login to verify API key
-	err = client.Login("", "", apiKey)
-	if err != nil {
-		client.Close()
-		return fmt.Errorf("Failed to login to %s: %v", url, err)
-	}
-
-	// Test basic connectivity with a ping
-	result, err := client.Ping()
-	if err != nil {
-		client.Close()
-		return fmt.Errorf("Failed to ping %s: %v", url, err)
-	}
-
-	if result != "pong" {
-		client.Close()
-		return fmt.Errorf("Unexpected ping response from %s: %s", url, result)
-	}
-
-	fmt.Printf("Successfully connected to %s\n", url)
-	client.Close()
 
 	// Get the config file path
 	configPath := g_configFileName
@@ -182,55 +161,93 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 		configPath = getDefaultConfigPath()
 	}
 
-	// Ensure the config directory exists
-	configDir := path.Dir(configPath)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return fmt.Errorf("Failed to create config directory %s: %v", configDir, err)
-	}
-
-	// Read existing config or create new config
-	var config map[string]interface{}
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		// If the file doesn't exist, create a new config
-		config = make(map[string]interface{})
-	} else {
-		// Parse existing config
-		if err := json.Unmarshal(data, &config); err != nil {
-			return fmt.Errorf("Failed to parse config file %s: %v", configPath, err)
-		}
-	}
-
-	// Ensure hosts section exists
-	hosts, ok := config["hosts"].(map[string]interface{})
-	if !ok {
-		hosts = make(map[string]interface{})
-		config["hosts"] = hosts
-	}
+	configs, err := loadConfig(configPath)
 
 	// Add or update host entry with URL including API endpoint
 	// Store the complete URL with /api/current path under the nickname
 	hostConfig := map[string]interface{}{
-		"url":     url, // Using the same URL with /api/current path
+		"url":     hostname,
 		"api_key": apiKey,
 	}
-	hosts[nickname] = hostConfig
-
-	// Write the updated config back to file
-	updatedData, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("Failed to serialize config: %v", err)
+	if isDebug {
+		hostConfig["debug"] = true
 	}
 
-	if err := os.WriteFile(configPath, updatedData, 0600); err != nil {
-		return fmt.Errorf("Failed to write config to %s: %v", configPath, err)
+	hosts, _ := configs["hosts"].(map[string]interface{})
+	hosts[nickname] = hostConfig
+	configs["hosts"] = hosts
+
+	if err = saveConfig(configPath, configs); err != nil {
+		return err
 	}
 
 	fmt.Printf("Configuration for '%s' (connecting to %s) saved to %s\n", nickname, hostname, configPath)
 	return nil
 }
 
-func setHost(cmd *cobra.Command, api core.Session, args []string) error {
+func setConfig(cmd *cobra.Command, api core.Session, args []string) error {
+	// Note: 'api' parameter will be nil for this command, which is expected
+	options, _ := GetCobraFlags(cmd, nil)
+	nickname := args[0]
+	hostname := g_oldHostName
+	apiKey := g_oldApiKey
+	isDebug := g_oldDebug
+
+	// Get the config file path
+	configPath := g_configFileName
+	if configPath == "" {
+		configPath = getDefaultConfigPath()
+	}
+
+	configs, err := loadConfig(configPath)
+
+	hosts, _ := configs["hosts"].(map[string]interface{})
+	if len(hosts) == 0 {
+		return fmt.Errorf("Could not find hosts in config file")
+	}
+	profile, _ := hosts[nickname].(map[string]interface{})
+	if len(profile) == 0 {
+		return fmt.Errorf("Could not find host \"%s\" in config file", nickname)
+	}
+
+	if hostname == "" {
+		hostname, _ = profile["url"].(string)
+		if hostname == "" {
+			return fmt.Errorf("Hostname cannot be empty")
+		}
+	} else {
+		profile["url"] = hostname
+	}
+
+	if apiKey == "" {
+		apiKey, _ = profile["api_key"].(string)
+		if apiKey == "" {
+			return fmt.Errorf("API key cannot be empty")
+		}
+	} else {
+		profile["api_key"] = apiKey
+	}
+
+	if !core.IsValueTrue(options.allFlags, "no_verify") {
+		if err := verifyHost(hostname, apiKey); err != nil {
+			return err
+		}
+	}
+
+	if isDebug {
+		profile["debug"] = true
+	} else {
+		delete(profile, "debug")
+	}
+
+	hosts[nickname] = profile
+	configs["hosts"] = hosts
+
+	if err = saveConfig(configPath, configs); err != nil {
+		return err
+	}
+
+	fmt.Printf("Configuration for '%s' (connecting to %s) saved to %s\n", nickname, hostname, configPath)
 	return nil
 }
 
@@ -276,7 +293,7 @@ func listConfigs(cmd *cobra.Command, api core.Session, args []string) error {
 // removeConfig removes a connection from the config by nickname
 func removeConfig(cmd *cobra.Command, api core.Session, args []string) error {
 	nickname := args[0]
-	
+
 	// Get the config file path
 	configPath := g_configFileName
 	if configPath == "" {
@@ -293,13 +310,13 @@ func removeConfig(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	// Parse the JSON
-	var config map[string]interface{}
-	if err := json.Unmarshal(data, &config); err != nil {
+	var configs map[string]interface{}
+	if err := json.Unmarshal(data, &configs); err != nil {
 		return fmt.Errorf("Failed to parse config file %s: %v", configPath, err)
 	}
 
 	// Check if hosts section exists
-	hosts, ok := config["hosts"].(map[string]interface{})
+	hosts, ok := configs["hosts"].(map[string]interface{})
 	if !ok || len(hosts) == 0 {
 		return fmt.Errorf("No connections configured in %s", configPath)
 	}
@@ -311,9 +328,19 @@ func removeConfig(cmd *cobra.Command, api core.Session, args []string) error {
 
 	// Remove the connection
 	delete(hosts, nickname)
+	configs["hosts"] = hosts
 
+	if err = saveConfig(configPath, configs); err != nil {
+		return err
+	}
+
+	fmt.Printf("Connection '%s' has been removed from the configuration\n", nickname)
+	return nil
+}
+
+func saveConfig(configPath string, configs map[string]interface{}) error {
 	// Write the updated config back to file
-	updatedData, err := json.MarshalIndent(config, "", "  ")
+	updatedData, err := json.MarshalIndent(configs, "", "  ")
 	if err != nil {
 		return fmt.Errorf("Failed to serialize config: %v", err)
 	}
@@ -322,7 +349,67 @@ func removeConfig(cmd *cobra.Command, api core.Session, args []string) error {
 		return fmt.Errorf("Failed to write config to %s: %v", configPath, err)
 	}
 
-	fmt.Printf("Connection '%s' has been removed from the configuration\n", nickname)
+	return nil
+}
+
+func loadConfig(configPath string) (map[string]interface{}, error) {
+	// Ensure the config directory exists
+	configDir := path.Dir(configPath)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return nil, fmt.Errorf("Failed to create config directory %s: %v", configDir, err)
+	}
+
+	// Read existing config or create new config
+	var configs map[string]interface{}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		// If the file doesn't exist, create a new config
+		configs = make(map[string]interface{})
+	} else {
+		// Parse existing config
+		if err := json.Unmarshal(data, &configs); err != nil {
+			return nil, fmt.Errorf("Failed to parse config file %s: %v", configPath, err)
+		}
+	}
+
+	// Ensure hosts section exists and is a map
+	if _, ok := configs["hosts"].(map[string]interface{}); !ok {
+		configs["hosts"] = make(map[string]interface{})
+	}
+
+	return configs, nil
+}
+
+func verifyHost(hostname, apiKey string) error {
+	// Construct the WebSocket URL with API endpoint
+	url := core.GetApiUrlFromHostName(hostname)
+	fmt.Printf("Testing connection to %s...\n", url)
+
+	// Test the connection by creating a temporary client
+	// Pass false to disable SSL verification and allow self-signed certificates
+	client, err := truenas_api.NewClient(url, false)
+	if err != nil {
+		return fmt.Errorf("Failed to create connection to %s: %v", url, err)
+	}
+	defer client.Close()
+
+	// Attempt to login to verify API key
+	err = client.Login("", "", apiKey)
+	if err != nil {
+		return fmt.Errorf("Failed to login to %s: %v", url, err)
+	}
+
+	// Test basic connectivity with a ping
+	result, err := client.Ping()
+	if err != nil {
+		return fmt.Errorf("Failed to ping %s: %v", url, err)
+	}
+
+	if result != "pong" {
+		return fmt.Errorf("Unexpected ping response from %s: %s", url, result)
+	}
+
+	fmt.Printf("Successfully connected to %s\n", url)
 	return nil
 }
 
@@ -403,7 +490,7 @@ func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	// Construct the WebSocket URL with API endpoint
-	url := core.HostNameToApiUrl(hostname)
+	url := core.GetApiUrlFromHostName(hostname)
 	fmt.Printf("Testing connection to %s...\n", url)
 
 	// Test the connection by creating a temporary client

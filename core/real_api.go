@@ -53,7 +53,7 @@ func (s *RealSession) Login() error {
 	}
 
 	client, err := truenas_api.NewClientWithCallback(
-		HostNameToApiUrl(s.HostName),
+		GetApiUrlFromHostName(s.HostName),
 		false, // Always disable SSL verification to allow self-signed certificates
 		func(waitingJobId int64, innerJobId int64, params map[string]interface{}) {
 			s.HandleJobUpdate(waitingJobId, innerJobId, params)
@@ -78,7 +78,10 @@ func (s *RealSession) Login() error {
 }
 
 func (s *RealSession) GetHostName() string {
-	return s.HostName
+	return GetHostNameFromApiUrl(s.HostName)
+}
+func (s *RealSession) GetUrl() string {
+	return GetApiUrlFromHostName(s.HostName)
 }
 
 func (s *RealSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {

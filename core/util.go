@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"os/exec"
 	"slices"
@@ -15,7 +16,24 @@ import (
 	"syscall"
 )
 
-func HostNameToApiUrl(hostname string) string {
+func GetHostNameFromApiUrl(urlString string) string {
+	hostname := urlString
+	if strings.Contains(urlString, "://") {
+		parsed, err := url.Parse(urlString)
+		if err != nil {
+			hostname = parsed.Hostname()
+		}
+	}
+	return hostname
+}
+
+func GetApiUrlFromHostName(hostname string) string {
+	if strings.Contains(hostname, "://") {
+		parsed, err := url.Parse(hostname)
+		if err != nil {
+			return parsed.String()
+		}
+	}
 	return "wss://" + hostname + "/api/current"
 }
 
