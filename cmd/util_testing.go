@@ -25,6 +25,7 @@ func (s *UnitTestSession) IsLoggedIn() bool { return true }
 func (s *UnitTestSession) GetHostName() string { return "" }
 func (s *UnitTestSession) GetUrl() string { return "" }
 func (s *UnitTestSession) WaitForJob(jobId int64) (json.RawMessage, error) { return nil, nil }
+func (s *UnitTestSession) SkipWaitingJobOnClose(jobId int64) {}
 func (s *UnitTestSession) Close(internalError error) error { return nil }
 
 func (s *UnitTestSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
@@ -43,7 +44,7 @@ func (s *UnitTestSession) CallRaw(method string, timeoutSeconds int64, params in
 	return response, nil
 }
 
-func (s *UnitTestSession) CallAsyncRaw(method string, params interface{}, awaitThisJob bool) (int64, error) {
+func (s *UnitTestSession) CallAsyncRaw(method string, params interface{}) (int64, error) {
 	_, err := s.CallRaw(method, 10, params)
 	return -1, err
 }

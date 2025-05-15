@@ -36,7 +36,7 @@ func ResetAuxCobraFlags(cmd *cobra.Command) {
 	}
 }
 
-func GetCobraFlags(cmd *cobra.Command, cmdEnums map[string][]string) (FlagMap, error) {
+func GetCobraFlags(cmd *cobra.Command, keepGlobals bool, cmdEnums map[string][]string) (FlagMap, error) {
 	fm := FlagMap{}
 	fm.usedFlags = make(map[string]string)
 	cmd.Flags().Visit(func(flag *pflag.Flag) {
@@ -81,9 +81,11 @@ func GetCobraFlags(cmd *cobra.Command, cmdEnums map[string][]string) (FlagMap, e
 		}
 	}
 
-	RemoveGlobalFlags(fm.usedFlags)
-	RemoveGlobalFlags(fm.allFlags)
-	RemoveGlobalFlags(fm.allTypes)
+	if !keepGlobals {
+		RemoveGlobalFlags(fm.usedFlags)
+		RemoveGlobalFlags(fm.allFlags)
+		RemoveGlobalFlags(fm.allTypes)
+	}
 
 	if err := ValidateFlagEnums(&fm.usedFlags, cmdEnums); err != nil {
 		return FlagMap{}, err

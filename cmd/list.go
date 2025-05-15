@@ -38,7 +38,7 @@ func init() {
 }
 
 func doList(cmd *cobra.Command, api core.Session, args []string) error {
-	options, err := GetCobraFlags(cmd, g_genericListEnums)
+	options, err := GetCobraFlags(cmd, false, g_genericListEnums)
 	if err != nil {
 		return err
 	}
@@ -185,11 +185,11 @@ func doList(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	extras := typeQueryParams{
-		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parsable")),
+		valueOrder:         BuildValueOrder(core.IsStringTrue(options.allFlags, "parsable")),
 		shouldSkipKeyBuild: true,
-		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
+		shouldGetAllProps:  core.IsStringTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
-		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+		shouldRecurse:      len(args) == 0 || core.IsStringTrue(options.allFlags, "recursive"),
 	}
 
 	combinedResponse := typeQueryResponse{}

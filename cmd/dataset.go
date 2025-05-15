@@ -185,7 +185,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		return errors.New("cmdType was not create or update")
 	}
 
-	options, err := GetCobraFlags(cmd, g_datasetCreateUpdateEnums)
+	options, err := GetCobraFlags(cmd, false, g_datasetCreateUpdateEnums)
 	if err != nil {
 		return err
 	}
@@ -201,7 +201,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 		types[i] = "name" // always "name"
 	}
 
-	flagCreate := core.IsValueTrue(options.allFlags, "create")
+	flagCreate := core.IsStringTrue(options.allFlags, "create")
 	delete(options.allFlags, "create")
 	delete(options.usedFlags, "create")
 
@@ -334,7 +334,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
-	options, _ := GetCobraFlags(cmd, nil)
+	options, _ := GetCobraFlags(cmd, false, nil)
 	params := BuildNameStrAndPropertiesJson(options, args[0])
 
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
@@ -351,7 +351,7 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 }
 
 func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
-	options, err := GetCobraFlags(cmd, g_datasetListEnums)
+	options, err := GetCobraFlags(cmd, false, g_datasetListEnums)
 	if err != nil {
 		return err
 	}
@@ -371,10 +371,10 @@ func listDataset(cmd *cobra.Command, api core.Session, args []string) error {
 
 	// `zfs list` will "recurse" if no names are specified.
 	extras := typeQueryParams{
-		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parsable")),
-		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
-		shouldGetUserProps: core.IsValueTrue(options.allFlags, "user_properties"),
-		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+		valueOrder:         BuildValueOrder(core.IsStringTrue(options.allFlags, "parsable")),
+		shouldGetAllProps:  core.IsStringTrue(options.allFlags, "all"),
+		shouldGetUserProps: core.IsStringTrue(options.allFlags, "user_properties"),
+		shouldRecurse:      len(args) == 0 || core.IsStringTrue(options.allFlags, "recursive"),
 	}
 
 	for _, prop := range properties {
@@ -424,7 +424,7 @@ func promoteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
-	options, _ := GetCobraFlags(cmd, nil)
+	options, _ := GetCobraFlags(cmd, false, nil)
 
 	source := args[0]
 	dest := args[1]
@@ -442,7 +442,7 @@ func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	DebugString(string(out))
 
 	// no point updating the share if we're renaming a snapshot.
-	if core.IsValueTrue(options.allFlags, "update_shares") && !strings.Contains(source, "@") {
+	if core.IsStringTrue(options.allFlags, "update_shares") && !strings.Contains(source, "@") {
 		idStr, found, err := LookupNfsIdByPath(api, "/mnt/"+source, nil)
 		if err != nil {
 			return err

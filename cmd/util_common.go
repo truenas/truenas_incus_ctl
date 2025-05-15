@@ -569,8 +569,8 @@ func GetUsedPropertyColumns[T any](data []map[string]T, required []string) []str
 }
 
 func GetTableFormat(properties map[string]string) (string, error) {
-	isJson := core.IsValueTrue(properties, "json")
-	isCompact := core.IsValueTrue(properties, "no_headers")
+	isJson := core.IsStringTrue(properties, "json")
+	isCompact := core.IsStringTrue(properties, "no_headers")
 	if isJson && isCompact {
 		return "", errors.New("--json and --no_headers cannot be used together")
 	} else if isJson {

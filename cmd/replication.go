@@ -98,7 +98,7 @@ func init() {
 }
 
 func startReplication(cmd *cobra.Command, api core.Session, args []string) error {
-	options, err := GetCobraFlags(cmd, g_replStartEnums)
+	options, err := GetCobraFlags(cmd, false, g_replStartEnums)
 	if err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func startReplication(cmd *cobra.Command, api core.Session, args []string) error
 	outMap["transport"] = transportType
 	outMap["source_datasets"] = sources
 	outMap["target_dataset"] = targets[0]
-	outMap["recursive"] = core.IsValueTrue(options.allFlags, "recursive")
+	outMap["recursive"] = core.IsStringTrue(options.allFlags, "recursive")
 	outMap["retention_policy"] = options.allFlags["retention_policy"]
 
 	if mainSchemaStr != "" {

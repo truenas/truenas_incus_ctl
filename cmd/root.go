@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"path"
-	"strings"
 	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
@@ -21,19 +20,15 @@ var rootCmd = &cobra.Command{
 var daemonCmd = &cobra.Command{
 	Use:  "daemon",
 	Args: cobra.MinimumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		var globalTimeoutStr string
-		f := cmd.Flags().Lookup("timeout")
-		if f != nil {
-			globalTimeoutStr = f.Value.String()
-		}
-		serverSockAddr := args[0]
-		if serverSockAddr == "" {
-			log.Fatal("Error: path to server socket was not provided")
-		}
-		core.RunDaemon(serverSockAddr, globalTimeoutStr)
-	},
+	Run:  runDaemon,
 }
+
+var g_debug bool
+var g_allowInsecure bool
+var g_configFileName string
+var g_configNickname string
+var g_hostName string
+var g_apiKey string
 
 func Execute() {
 	err := rootCmd.Execute()
@@ -42,20 +37,9 @@ func Execute() {
 	}
 }
 
-var g_debug bool
-var g_async bool
-var g_configFileName string
-var g_configNickname string
-var g_hostName string
-var g_apiKey string
-
-var g_oldHostName string
-var g_oldApiKey string
-var g_oldDebug bool
-
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&g_debug, "debug", false, "Enable debug logs")
-	rootCmd.PersistentFlags().BoolVar(&g_async, "nowait", false, "Disable waiting until every job completes")
+	rootCmd.PersistentFlags().BoolVar(&g_allowInsecure, "allow-insecure", false, "Allow self-signed or non-trusted SSL certificates")
 	rootCmd.PersistentFlags().StringVarP(&g_configFileName, "config-file", "F", "", "Override config filename (~/.truenas_incus_ctl/config.json)")
 	rootCmd.PersistentFlags().StringVarP(&g_configNickname, "config", "C", "", "Name of config to look up in config.json, defaults to first entry")
 	rootCmd.PersistentFlags().StringVarP(&g_hostName, "host", "H", "", "Server hostname or URL")
@@ -69,7 +53,8 @@ func init() {
 func RemoveGlobalFlags(flags map[string]string) {
 	delete(flags, "debug")
 	delete(flags, "mock")
-	delete(flags, "nowait")
+	delete(flags, "allow-insecure")
+	delete(flags, "allow_insecure")
 	delete(flags, "config-file")
 	delete(flags, "config_file")
 	delete(flags, "config")
@@ -78,15 +63,24 @@ func RemoveGlobalFlags(flags map[string]string) {
 	delete(flags, "api_key")
 }
 
-func InitializeApiClient() core.Session {
-	g_oldHostName = g_hostName
-	g_oldApiKey = g_apiKey
-	g_oldDebug = g_debug
+func runDaemon(cmd *cobra.Command, args []string) {
+	var globalTimeoutStr string
+	f := cmd.Flags().Lookup("timeout")
+	if f != nil {
+		globalTimeoutStr = f.Value.String()
+	}
+	serverSockAddr := args[0]
+	if serverSockAddr == "" {
+		log.Fatal("Error: path to server socket was not provided")
+	}
+	core.RunDaemon(serverSockAddr, globalTimeoutStr, g_allowInsecure)
+}
 
+func InitializeApiClient() core.Session {
 	var api core.Session
 	if g_hostName == "" && g_apiKey == "" {
 		var err error
-		g_hostName, g_apiKey, g_debug, err = getUrlAndApiKeyFromConfig(g_configFileName, g_configNickname)
+		g_hostName, g_apiKey, g_debug, g_allowInsecure, err = getUrlAndApiKeyFromConfig(g_configFileName, g_configNickname)
 		if err != nil {
 			log.Fatal(fmt.Errorf("Failed to parse config: %v", err))
 		}
@@ -97,23 +91,24 @@ func InitializeApiClient() core.Session {
 			log.Fatal(err)
 		}
 		api = &core.ClientSession{
-			HostName:   g_hostName,
-			ApiKey:     g_apiKey,
-			SocketPath: path.Join(p, "tncdaemon.sock"),
+			HostName:      g_hostName,
+			ApiKey:        g_apiKey,
+			SocketPath:    path.Join(p, "tncdaemon.sock"),
+			AllowInsecure: g_allowInsecure,
 		}
 	} else {
 		api = &core.RealSession{
-			HostName:   g_hostName,
-			ApiKey:     g_apiKey,
-			ShouldWait: !g_async,
-			IsDebug:    g_debug,
+			HostName:      g_hostName,
+			ApiKey:        g_apiKey,
+			IsDebug:       g_debug,
+			AllowInsecure: g_allowInsecure,
 		}
 	}
 
 	return api
 }
 
-func getUrlAndApiKeyFromConfig(fileName, nickname string) (string, string, bool, error) {
+func getUrlAndApiKeyFromConfig(fileName, nickname string) (string, string, bool, bool, error) {
 	var data []byte
 	var err error
 
@@ -129,22 +124,22 @@ func getUrlAndApiKeyFromConfig(fileName, nickname string) (string, string, bool,
 	}
 
 	if err != nil {
-		return "", "", false, err
+		return "", "", false, false, err
 	}
 
 	var obj interface{}
 	if err = json.Unmarshal(data, &obj); err != nil {
-		return "", "", false, fmt.Errorf("\"%s\": %v", fileName, err)
+		return "", "", false, false, fmt.Errorf("\"%s\": %v", fileName, err)
 	}
 
 	jsonObj, ok := obj.(map[string]interface{})
 	if !ok {
-		return "", "", false, fmt.Errorf("Config was not a JSON object \"%s\"", fileName)
+		return "", "", false, false, fmt.Errorf("Config was not a JSON object \"%s\"", fileName)
 	}
 
 	hosts, err := getMapFromMapAny(jsonObj, "hosts", fileName)
 	if err != nil {
-		return "", "", false, err
+		return "", "", false, false, err
 	}
 
 	if nickname == "" {
@@ -154,35 +149,29 @@ func getUrlAndApiKeyFromConfig(fileName, nickname string) (string, string, bool,
 			}
 		}
 		if nickname == "" {
-			return "", "", false, fmt.Errorf("Could not find any hosts in config \"%s\"", fileName)
+			return "", "", false, false, fmt.Errorf("Could not find any hosts in config \"%s\"", fileName)
 		}
 	}
 
 	config, err := getMapFromMapAny(hosts, nickname, fileName)
 	if err != nil {
-		return "", "", false, err
+		return "", "", false, false, err
 	}
 
 	apiKey, err := getNonEmptyStringFromMapAny(config, "api_key", fileName)
 	if err != nil {
-		return "", "", false, err
+		return "", "", false, false, err
 	}
 
 	u, err := getNonEmptyStringFromMapAny(config, "url", fileName)
 	if err != nil {
-		return "", "", false, err
+		return "", "", false, false, err
 	}
 
-	isDebug := false
-	if isDebugObj, exists := config["debug"]; exists {
-		if isDebugBool, ok := isDebugObj.(bool); ok {
-			isDebug = isDebugBool
-		} else if isDebugStr, ok := isDebugObj.(string); ok {
-			isDebug = strings.ToLower(isDebugStr) == "true"
-		}
-	}
+	isDebug := core.IsValueTrue(config, "debug")
+	allowInsecure := core.IsValueTrue(config, "allow_insecure")
 
-	return u, apiKey, isDebug, nil
+	return u, apiKey, isDebug, allowInsecure, nil
 }
 
 func getDefaultConfigPath() string {

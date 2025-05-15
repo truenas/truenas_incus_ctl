@@ -21,9 +21,11 @@ type ClientSession struct {
 	HostName string
 	ApiKey string
 	SocketPath string
+	AllowInsecure bool
 	client *http.Client
 	timeout time.Duration
 	jobsList []int64
+	mapSkipWaitOnClose map[int64]bool
 }
 
 func (s *ClientSession) IsLoggedIn() bool {
@@ -60,7 +62,7 @@ func (s *ClientSession) Login() error {
 
 	st, err := os.Stat(s.SocketPath)
 	if err != nil {
-		if err = launchDaemonAndAwaitSocket(s.SocketPath, s.timeout, nil); err != nil {
+		if err = launchDaemonAndAwaitSocket(s.SocketPath, s.timeout, s.AllowInsecure, nil); err != nil {
 			return fmt.Errorf("launchDaemonAndAwaitSocket: %v", err)
 		}
 		st, err = os.Stat(s.SocketPath)
@@ -128,7 +130,7 @@ call:
 	return data, err
 }
 
-func (s *ClientSession) CallAsyncRaw(method string, params interface{}, awaitThisJob bool) (int64, error) {
+func (s *ClientSession) CallAsyncRaw(method string, params interface{}) (int64, error) {
 	data, err := s.CallRaw(method, 0, params)
 	if err != nil {
 		return -1, err
@@ -140,6 +142,10 @@ func (s *ClientSession) CallAsyncRaw(method string, params interface{}, awaitThi
 
 func (s *ClientSession) WaitForJob(jobId int64) (json.RawMessage, error) {
 	return s.CallRaw("tnc_daemon.await_job", 0, []interface{} {jobId})
+}
+
+func (s *ClientSession) SkipWaitingJobOnClose(jobId int64) {
+	s.mapSkipWaitOnClose[jobId] = true
 }
 
 func (s *ClientSession) Close(internalError error) error {
@@ -154,6 +160,9 @@ func (s *ClientSession) Close(internalError error) error {
 
 	for _, jobId := range s.jobsList {
 		if jobId < 0 {
+			continue
+		}
+		if shouldSkip, _ := s.mapSkipWaitOnClose[jobId]; shouldSkip {
 			continue
 		}
 		data, err := s.CallRaw("tnc_daemon.await_job", 0, []interface{} {jobId})
@@ -171,7 +180,7 @@ func (s *ClientSession) Close(internalError error) error {
 	return MakeErrorFromList(errorList)
 }
 
-func launchDaemonAndAwaitSocket(socketPath string, daemonTimeout time.Duration, optWarningBuilder *strings.Builder) error {
+func launchDaemonAndAwaitSocket(socketPath string, daemonTimeout time.Duration, allowInsecure bool, optWarningBuilder *strings.Builder) error {
 	thisExec, err := os.Executable()
 	if err != nil {
 		return err
@@ -194,12 +203,16 @@ func launchDaemonAndAwaitSocket(socketPath string, daemonTimeout time.Duration, 
 		})
 	}()
 
-	if daemonTimeout >= time.Second {
-		err = exec.Command(thisExec, "daemon", "-t", daemonTimeout.String(), socketPath).Start()
-	} else {
-		err = exec.Command(thisExec, "daemon", socketPath).Start()
+	cmd := []string { "daemon" }
+	if allowInsecure {
+		cmd = append(cmd, "--allow-insecure")
 	}
-	if err != nil {
+	if daemonTimeout >= time.Second {
+		cmd = append(cmd, "-t", daemonTimeout.String())
+	}
+	cmd = append(cmd, socketPath)
+
+	if err = exec.Command(thisExec, cmd...).Start(); err != nil {
 		return fmt.Errorf("Failed to launch daemon: %v", err)
 	}
 

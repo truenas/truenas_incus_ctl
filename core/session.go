@@ -12,8 +12,9 @@ type Session interface {
 	GetHostName() string
 	GetUrl() string
 	CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error)
-	CallAsyncRaw(method string, params interface{}, awaitThisJob bool) (int64, error)
+	CallAsyncRaw(method string, params interface{}) (int64, error)
 	WaitForJob(jobId int64) (json.RawMessage, error)
+	SkipWaitingJobOnClose(jobId int64)
 	Close(error) error
 }
 
@@ -42,5 +43,9 @@ func ApiCallAsync(s Session, method string, params interface{}, awaitThisJob boo
 	if err := MaybeLogin(s); err != nil {
 		return -1, err
 	}
-	return s.CallAsyncRaw(method, params, awaitThisJob)
+	jobId, err := s.CallAsyncRaw(method, params)
+	if err != nil && jobId > 0 && !awaitThisJob {
+		s.SkipWaitingJobOnClose(jobId)
+	}
+	return jobId, err
 }

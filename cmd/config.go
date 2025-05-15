@@ -136,11 +136,12 @@ func showConfig(cmd *cobra.Command, api core.Session, args []string) error {
 // addHost implements the non-interactive version of adding a connection to the config
 func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 	// Note: 'api' parameter will be nil for this command, which is expected
-	options, _ := GetCobraFlags(cmd, nil)
+	options, _ := GetCobraFlags(cmd, false, nil)
 	nickname := args[0]
-	hostname := g_oldHostName
-	apiKey := g_oldApiKey
-	isDebug := g_oldDebug
+	hostname := options.allFlags["host"]
+	apiKey := options.allFlags["api_key"]
+	objDebug, passedDebug := options.usedFlags["debug"]
+	objInsecure, passedInsecure := options.usedFlags["allow_insecure"]
 
 	if hostname == "" {
 		return fmt.Errorf("Hostname cannot be empty")
@@ -149,7 +150,7 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 		return fmt.Errorf("API key cannot be empty")
 	}
 
-	if !core.IsValueTrue(options.allFlags, "no_verify") {
+	if !core.IsStringTrue(options.allFlags, "no_verify") {
 		if err := verifyHost(hostname, apiKey); err != nil {
 			return err
 		}
@@ -169,8 +170,11 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 		"url":     hostname,
 		"api_key": apiKey,
 	}
-	if isDebug {
-		hostConfig["debug"] = true
+	if passedDebug {
+		hostConfig["debug"] = fmt.Sprint(objDebug) == "true"
+	}
+	if passedInsecure {
+		hostConfig["allow_insecure"] = fmt.Sprint(objInsecure) == "true"
 	}
 
 	hosts, _ := configs["hosts"].(map[string]interface{})
@@ -187,11 +191,12 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 
 func setConfig(cmd *cobra.Command, api core.Session, args []string) error {
 	// Note: 'api' parameter will be nil for this command, which is expected
-	options, _ := GetCobraFlags(cmd, nil)
+	options, _ := GetCobraFlags(cmd, false, nil)
 	nickname := args[0]
-	hostname := g_oldHostName
-	apiKey := g_oldApiKey
-	isDebug := g_oldDebug
+	hostname := options.allFlags["host"]
+	apiKey := options.allFlags["api_key"]
+	objDebug, passedDebug := options.usedFlags["debug"]
+	objInsecure, passedInsecure := options.usedFlags["allow_insecure"]
 
 	// Get the config file path
 	configPath := g_configFileName
@@ -228,16 +233,17 @@ func setConfig(cmd *cobra.Command, api core.Session, args []string) error {
 		profile["api_key"] = apiKey
 	}
 
-	if !core.IsValueTrue(options.allFlags, "no_verify") {
+	if !core.IsStringTrue(options.allFlags, "no_verify") {
 		if err := verifyHost(hostname, apiKey); err != nil {
 			return err
 		}
 	}
 
-	if isDebug {
-		profile["debug"] = true
-	} else {
-		delete(profile, "debug")
+	if passedDebug {
+		profile["debug"] = fmt.Sprint(objDebug) == "true"
+	}
+	if passedInsecure {
+		profile["allow_insecure"] = fmt.Sprint(objInsecure) == "true"
 	}
 
 	hosts[nickname] = profile

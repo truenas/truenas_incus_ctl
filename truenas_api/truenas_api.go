@@ -151,9 +151,8 @@ func NewClientWithCallback(serverURL string, verifySSL bool, jobsCallback func(i
 		return nil, fmt.Errorf("invalid URL: %w", err)
 	}
 
-	// Configure WebSocket connection options with insecure TLS
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true, // Always disable certificate verification to allow self-signed certs
+		InsecureSkipVerify: verifySSL,
 	}
 
 	dialer := &websocket.Dialer{
