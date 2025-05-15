@@ -79,10 +79,17 @@ func runDaemon(cmd *cobra.Command, args []string) {
 func InitializeApiClient() core.Session {
 	var api core.Session
 	if g_hostName == "" && g_apiKey == "" {
-		var err error
-		g_hostName, g_apiKey, g_debug, g_allowInsecure, err = getUrlAndApiKeyFromConfig(g_configFileName, g_configNickname)
+		host, key, config, err := getUrlAndApiKeyFromConfig(g_configFileName, g_configNickname)
 		if err != nil {
 			log.Fatal(fmt.Errorf("Failed to parse config: %v", err))
+		}
+		g_hostName = host
+		g_apiKey = key
+		if _, exists := config["debug"]; exists {
+			g_debug = core.IsValueTrue(config, "debug")
+		}
+		if _, exists := config["allow_insecure"]; exists {
+			g_allowInsecure = core.IsValueTrue(config, "allow_insecure")
 		}
 	}
 	if USE_DAEMON {
@@ -108,7 +115,7 @@ func InitializeApiClient() core.Session {
 	return api
 }
 
-func getUrlAndApiKeyFromConfig(fileName, nickname string) (string, string, bool, bool, error) {
+func getUrlAndApiKeyFromConfig(fileName, nickname string) (string, string, map[string]interface{}, error) {
 	var data []byte
 	var err error
 
@@ -124,22 +131,22 @@ func getUrlAndApiKeyFromConfig(fileName, nickname string) (string, string, bool,
 	}
 
 	if err != nil {
-		return "", "", false, false, err
+		return "", "", nil, err
 	}
 
 	var obj interface{}
 	if err = json.Unmarshal(data, &obj); err != nil {
-		return "", "", false, false, fmt.Errorf("\"%s\": %v", fileName, err)
+		return "", "", nil, fmt.Errorf("\"%s\": %v", fileName, err)
 	}
 
 	jsonObj, ok := obj.(map[string]interface{})
 	if !ok {
-		return "", "", false, false, fmt.Errorf("Config was not a JSON object \"%s\"", fileName)
+		return "", "", nil, fmt.Errorf("Config was not a JSON object \"%s\"", fileName)
 	}
 
 	hosts, err := getMapFromMapAny(jsonObj, "hosts", fileName)
 	if err != nil {
-		return "", "", false, false, err
+		return "", "", nil, err
 	}
 
 	if nickname == "" {
@@ -149,29 +156,26 @@ func getUrlAndApiKeyFromConfig(fileName, nickname string) (string, string, bool,
 			}
 		}
 		if nickname == "" {
-			return "", "", false, false, fmt.Errorf("Could not find any hosts in config \"%s\"", fileName)
+			return "", "", nil, fmt.Errorf("Could not find any hosts in config \"%s\"", fileName)
 		}
 	}
 
 	config, err := getMapFromMapAny(hosts, nickname, fileName)
 	if err != nil {
-		return "", "", false, false, err
+		return "", "", nil, err
 	}
 
 	apiKey, err := getNonEmptyStringFromMapAny(config, "api_key", fileName)
 	if err != nil {
-		return "", "", false, false, err
+		return "", "", nil, err
 	}
 
 	u, err := getNonEmptyStringFromMapAny(config, "url", fileName)
 	if err != nil {
-		return "", "", false, false, err
+		return "", "", nil, err
 	}
 
-	isDebug := core.IsValueTrue(config, "debug")
-	allowInsecure := core.IsValueTrue(config, "allow_insecure")
-
-	return u, apiKey, isDebug, allowInsecure, nil
+	return u, apiKey, config, nil
 }
 
 func getDefaultConfigPath() string {
