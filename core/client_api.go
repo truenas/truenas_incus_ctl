@@ -92,7 +92,7 @@ func (s *ClientSession) CallRaw(method string, timeoutSeconds int64, params inte
 	}
 
 	request, _ := http.NewRequest("POST", "http://unix/tnc-daemon", bytes.NewReader(paramsData))
-	request.Header.Set("TNC-Host-Url", s.GetHostName())
+	request.Header.Set("TNC-Host-Url", s.GetUrl())
 	request.Header.Set("TNC-Api-Key", s.ApiKey)
 	request.Header.Set("TNC-Call-Method", method)
 	if timeoutSeconds > 0 {
