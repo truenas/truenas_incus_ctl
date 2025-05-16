@@ -137,6 +137,7 @@ func init() {
 		cmd.Flags().BoolP("create-parents", "p", false, "Creates all the non-existing parent datasets")
 		cmd.Flags().StringP("user-props", "u", "", "Sets the specified properties")
 		cmd.Flags().StringP("option", "o", "", "Specify property=value,...")
+		cmd.Flags().Bool("allow-shrinking", false, "By default, shrinking a volume to a smaller size is not permitted. This flag disables this check.")
 		cmd.Flags().StringP("volsize", "V", "0", "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size.")
 		cmd.Flags().StringP("volblocksize", "b", "512", "Volume block size "+
 			AddFlagsEnum(&g_datasetCreateUpdateEnums, "volblocksize", []string{"512", "1K", "2K", "4K", "8K", "16K", "32K", "64K", "128K"}))
