@@ -136,7 +136,7 @@ func showConfig(cmd *cobra.Command, api core.Session, args []string) error {
 // addHost implements the non-interactive version of adding a connection to the config
 func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 	// Note: 'api' parameter will be nil for this command, which is expected
-	options, _ := GetCobraFlags(cmd, false, nil)
+	options, _ := GetCobraFlags(cmd, true, nil)
 	nickname := args[0]
 	hostname := options.allFlags["host"]
 	apiKey := options.allFlags["api_key"]
@@ -191,7 +191,7 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 
 func setConfig(cmd *cobra.Command, api core.Session, args []string) error {
 	// Note: 'api' parameter will be nil for this command, which is expected
-	options, _ := GetCobraFlags(cmd, false, nil)
+	options, _ := GetCobraFlags(cmd, true, nil)
 	nickname := args[0]
 	hostname := options.allFlags["host"]
 	apiKey := options.allFlags["api_key"]
