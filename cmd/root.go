@@ -78,8 +78,8 @@ func runDaemon(cmd *cobra.Command, args []string) {
 
 func InitializeApiClient() core.Session {
 	var api core.Session
-	if g_hostName == "" && g_apiKey == "" {
-		host, key, config, err := getUrlAndApiKeyFromConfig(g_configFileName, g_configNickname)
+	if g_hostName == "" || g_apiKey == "" {
+		host, key, config, err := findCredsFromConfig(g_configFileName, g_configNickname, g_hostName, g_apiKey)
 		if err != nil {
 			log.Fatal(fmt.Errorf("Failed to parse config: %v", err))
 		}
@@ -115,7 +115,10 @@ func InitializeApiClient() core.Session {
 	return api
 }
 
-func getUrlAndApiKeyFromConfig(fileName, nickname string) (string, string, map[string]interface{}, error) {
+// This method is called assuming that we're missing either a hostname or api key.
+// Additionally, we might not know the config path (in which case we use the default),
+// or the nickname (in which case we just pick the first config in the list)
+func findCredsFromConfig(fileName, nickname, existingHost, existingApiKey string) (string, string, map[string]interface{}, error) {
 	var data []byte
 	var err error
 
@@ -150,13 +153,36 @@ func getUrlAndApiKeyFromConfig(fileName, nickname string) (string, string, map[s
 	}
 
 	if nickname == "" {
-		for key, _ := range hosts {
-			if nickname == "" || key < nickname {
-				nickname = key
+		if existingHost != "" {
+			existingHostCondensed := core.GetHostNameFromApiUrl(existingHost)
+			for key, value := range hosts {
+				if valueMap, ok := value.(map[string]interface{}); ok {
+					url, _ := valueMap["url"].(string)
+					if url != "" && core.GetHostNameFromApiUrl(url) == existingHostCondensed {
+						nickname = key
+						break
+					}
+				}
+			}
+		} else if existingApiKey != "" {
+			for key, value := range hosts {
+				if valueMap, ok := value.(map[string]interface{}); ok {
+					apiKey, _ := valueMap["api_key"].(string)
+					if apiKey == existingApiKey {
+						nickname = key
+						break
+					}
+				}
+			}
+		} else {
+			for key, _ := range hosts {
+				if nickname == "" || key < nickname {
+					nickname = key
+				}
 			}
 		}
 		if nickname == "" {
-			return "", "", nil, fmt.Errorf("Could not find any hosts in config \"%s\"", fileName)
+			return "", "", nil, fmt.Errorf("Could not find any matching hosts in config \"%s\"", fileName)
 		}
 	}
 
