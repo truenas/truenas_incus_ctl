@@ -33,13 +33,14 @@ type TruenasSession struct {
 }
 
 type DaemonContext struct {
-	timeoutValue time.Duration
-	timeoutTimer *time.Timer
-	mapMtx       *sync.Mutex
-	sessionMap_  map[string]*Future[*TruenasSession]
+	timeoutValue  time.Duration
+	timeoutTimer  *time.Timer
+	mapMtx        *sync.Mutex
+	sessionMap_   map[string]*Future[*TruenasSession]
+	allowInsecure bool
 }
 
-func RunDaemon(serverSockAddr string, globalTimeoutStr string) {
+func RunDaemon(serverSockAddr string, globalTimeoutStr string, allowInsecure bool) {
 	var err error
 	var daemonTimeout time.Duration
 	if globalTimeoutStr != "" {
@@ -69,6 +70,7 @@ func RunDaemon(serverSockAddr string, globalTimeoutStr string) {
 		timeoutTimer: timer,
 		mapMtx: &sync.Mutex{},
 		sessionMap_: make(map[string]*Future[*TruenasSession]),
+		allowInsecure: allowInsecure,
 	}
 
 	doneCh := make(chan os.Signal)
@@ -226,7 +228,7 @@ func (d *DaemonContext) createSession(truenasServerUrl string, loginMethod strin
 	// Configure WebSocket connection with insecure TLS to accept self-signed certs
 	dialer := &websocket.Dialer{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: d.allowInsecure,
 		},
 		Proxy: http.ProxyFromEnvironment,
 	}

@@ -20,19 +20,15 @@ var rootCmd = &cobra.Command{
 var daemonCmd = &cobra.Command{
 	Use:  "daemon",
 	Args: cobra.MinimumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		var globalTimeoutStr string
-		f := cmd.Flags().Lookup("timeout")
-		if f != nil {
-			globalTimeoutStr = f.Value.String()
-		}
-		serverSockAddr := args[0]
-		if serverSockAddr == "" {
-			log.Fatal("Error: path to server socket was not provided")
-		}
-		core.RunDaemon(serverSockAddr, globalTimeoutStr)
-	},
+	Run:  runDaemon,
 }
+
+var g_debug bool
+var g_allowInsecure bool
+var g_configFileName string
+var g_configName string
+var g_hostName string
+var g_apiKey string
 
 func Execute() {
 	err := rootCmd.Execute()
@@ -41,21 +37,12 @@ func Execute() {
 	}
 }
 
-var g_useMock bool
-var g_debug bool
-var g_async bool
-var g_configFileName string
-var g_configHost string
-var g_url string
-var g_apiKey string
-
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&g_debug, "debug", false, "Enable debug logs")
-	rootCmd.PersistentFlags().BoolVar(&g_useMock, "mock", false, "Use the mock API instead of a TrueNAS server")
-	rootCmd.PersistentFlags().BoolVar(&g_async, "nowait", false, "Disable waiting until every job completes")
-	rootCmd.PersistentFlags().StringVar(&g_configFileName, "config", "", "Override config filename (~/.truenas_incus_ctl/config.json)")
-	rootCmd.PersistentFlags().StringVar(&g_configHost, "host", "", "Name of config to look up in config.json, defaults to first entry")
-	rootCmd.PersistentFlags().StringVarP(&g_url, "url", "U", "", "Server URL")
+	rootCmd.PersistentFlags().BoolVar(&g_allowInsecure, "allow-insecure", false, "Allow self-signed or non-trusted SSL certificates")
+	rootCmd.PersistentFlags().StringVarP(&g_configFileName, "config-file", "F", "", "Override config filename (~/.truenas_incus_ctl/config.json)")
+	rootCmd.PersistentFlags().StringVarP(&g_configName, "config", "C", "", "Name of config to look up in config.json, defaults to first entry")
+	rootCmd.PersistentFlags().StringVarP(&g_hostName, "host", "H", "", "Server hostname or URL")
 	rootCmd.PersistentFlags().StringVarP(&g_apiKey, "api-key", "K", "", "API key")
 
 	daemonCmd.Flags().StringP("timeout", "t", "", "Exit the daemon if no communication occurs after this duration")
@@ -64,62 +51,71 @@ func init() {
 }
 
 func RemoveGlobalFlags(flags map[string]string) {
-	delete(flags, "debug")
-	delete(flags, "mock")
-	delete(flags, "nowait")
-	delete(flags, "config")
-	delete(flags, "host")
-	delete(flags, "url")
-	delete(flags, "api-key")
-	delete(flags, "api_key")
+	core.DeleteSnakeKebab(flags, "debug")
+	core.DeleteSnakeKebab(flags, "mock")
+	core.DeleteSnakeKebab(flags, "allow-insecure")
+	core.DeleteSnakeKebab(flags, "config-file")
+	core.DeleteSnakeKebab(flags, "config")
+	core.DeleteSnakeKebab(flags, "host")
+	core.DeleteSnakeKebab(flags, "api-key")
+}
+
+func runDaemon(cmd *cobra.Command, args []string) {
+	var globalTimeoutStr string
+	f := cmd.Flags().Lookup("timeout")
+	if f != nil {
+		globalTimeoutStr = f.Value.String()
+	}
+	serverSockAddr := args[0]
+	if serverSockAddr == "" {
+		log.Fatal("Error: path to server socket was not provided")
+	}
+	core.RunDaemon(serverSockAddr, globalTimeoutStr, g_allowInsecure)
 }
 
 func InitializeApiClient() core.Session {
 	var api core.Session
-	if g_useMock {
-		api = &core.MockSession{
-			DatasetSource: &core.FileRawa{FileName: "datasets.tsv"},
+	if g_hostName == "" || g_apiKey == "" {
+		host, key, config, err := findCredsFromConfig(g_configFileName, g_configName, g_hostName, g_apiKey)
+		if err != nil {
+			log.Fatal(fmt.Errorf("Failed to parse config: %v", err))
 		}
-	} else {
-		if g_url == "" && g_apiKey == "" {
-			var err error
-			g_url, g_apiKey, err = loadConfig(g_configFileName, g_configHost)
-			if err != nil {
-				log.Fatal(fmt.Errorf("Failed to parse config: %v", err))
-			}
+		g_hostName = host
+		g_apiKey = key
+		if _, exists := config["debug"]; exists {
+			g_debug = core.IsValueTrue(config, "debug")
 		}
-		if USE_DAEMON {
-			p, err := os.UserHomeDir()
-			if err != nil {
-				log.Fatal(err)
-			}
-			api = &core.ClientSession{
-				HostUrl:    g_url,
-				ApiKey:     g_apiKey,
-				SocketPath: path.Join(p, "tncdaemon.sock"),
-			}
-		} else {
-			api = &core.RealSession{
-				HostUrl:    g_url,
-				ApiKey:     g_apiKey,
-				ShouldWait: !g_async,
-				IsDebug:    g_debug,
-			}
+		if _, exists := config["allow_insecure"]; exists {
+			g_allowInsecure = core.IsValueTrue(config, "allow_insecure")
 		}
 	}
-
-	/*
-		err := api.Login()
+	if USE_DAEMON {
+		p, err := os.UserHomeDir()
 		if err != nil {
-			api.Close(err)
 			log.Fatal(err)
 		}
-	*/
+		api = &core.ClientSession{
+			HostName:      g_hostName,
+			ApiKey:        g_apiKey,
+			SocketPath:    path.Join(p, "tncdaemon.sock"),
+			AllowInsecure: g_allowInsecure,
+		}
+	} else {
+		api = &core.RealSession{
+			HostName:      g_hostName,
+			ApiKey:        g_apiKey,
+			IsDebug:       g_debug,
+			AllowInsecure: g_allowInsecure,
+		}
+	}
 
 	return api
 }
 
-func loadConfig(fileName, hostName string) (string, string, error) {
+// This method is called assuming that we're missing either a hostname or api key.
+// Additionally, we might not know the config path (in which case we use the default),
+// or the name (in which case we just pick the first config in the list)
+func findCredsFromConfig(fileName, name, existingHost, existingApiKey string) (string, string, map[string]interface{}, error) {
 	var data []byte
 	var err error
 
@@ -135,51 +131,74 @@ func loadConfig(fileName, hostName string) (string, string, error) {
 	}
 
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 
 	var obj interface{}
 	if err = json.Unmarshal(data, &obj); err != nil {
-		return "", "", fmt.Errorf("\"%s\": %v", fileName, err)
+		return "", "", nil, fmt.Errorf("\"%s\": %v", fileName, err)
 	}
 
-	config, ok := obj.(map[string]interface{})
+	jsonObj, ok := obj.(map[string]interface{})
 	if !ok {
-		return "", "", fmt.Errorf("Config was not a JSON object \"%s\"", fileName)
+		return "", "", nil, fmt.Errorf("Config was not a JSON object \"%s\"", fileName)
 	}
 
-	hosts, err := getMapFromMapAny(config, "hosts", fileName)
+	hosts, err := getMapFromMapAny(jsonObj, "hosts", fileName)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 
-	if hostName == "" {
-		for key, _ := range hosts {
-			if hostName == "" || key < hostName {
-				hostName = key
+	if name == "" {
+		if existingHost != "" {
+			existingHostCondensed := core.GetHostNameFromApiUrl(existingHost)
+			for key, value := range hosts {
+				if valueMap, ok := value.(map[string]interface{}); ok {
+					url, _ := valueMap["url"].(string)
+					if url != "" && core.GetHostNameFromApiUrl(url) == existingHostCondensed {
+						name = key
+						break
+					}
+				}
+			}
+		} else if existingApiKey != "" {
+			for key, value := range hosts {
+				if valueMap, ok := value.(map[string]interface{}); ok {
+					apiKey, _ := valueMap["api_key"].(string)
+					if apiKey == existingApiKey {
+						name = key
+						break
+					}
+				}
+			}
+		} else {
+			for key, _ := range hosts {
+				if name == "" || key < name {
+					name = key
+				}
 			}
 		}
-		if hostName == "" {
-			return "", "", fmt.Errorf("Could not find any hosts in config \"%s\"", fileName)
+		if name == "" {
+			return "", "", nil, fmt.Errorf("Could not find any matching hosts in config \"%s\"", fileName)
 		}
 	}
 
-	host, err := getMapFromMapAny(hosts, hostName, fileName)
+	config, err := getMapFromMapAny(hosts, name, fileName)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 
-	apiKey, err := getNonEmptyStringFromMapAny(host, "api_key", fileName)
+	apiKey, err := getNonEmptyStringFromMapAny(config, "api_key", fileName)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 
-	url, err := getNonEmptyStringFromMapAny(host, "url", fileName)
+	u, err := getNonEmptyStringFromMapAny(config, "url", fileName)
 	if err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 
-	return url, apiKey, nil
+	return u, apiKey, config, nil
 }
 
 func getDefaultConfigPath() string {
