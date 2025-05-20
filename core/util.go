@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"os/exec"
 	"slices"
@@ -14,6 +15,45 @@ import (
 	"strings"
 	"syscall"
 )
+
+func DeleteSnakeKebab(dict map[string]string, key string) {
+	delete(dict, key)
+	delete(dict, strings.ReplaceAll(key, "-", "_"))
+	delete(dict, strings.ReplaceAll(key, "_", "-"))
+}
+
+func GetHostNameFromApiUrl(urlString string) string {
+	hostname := urlString
+	if strings.Contains(urlString, "://") {
+		parsed, err := url.Parse(urlString)
+		if err == nil {
+			hostname = parsed.Hostname()
+			port := parsed.Port()
+			if port != "" {
+				hostname = hostname + ":" + port
+			}
+		}
+	}
+	return hostname
+}
+
+func GetApiUrlFromHostName(hostname string) string {
+	if strings.Contains(hostname, "://") {
+		parsed, err := url.Parse(hostname)
+		if err == nil {
+			return parsed.String()
+		}
+	}
+	return "wss://" + hostname + "/api/current"
+}
+
+func StripPort(hostname string) string {
+	parts := strings.Split(hostname, ":")
+	if len(parts) == 1 {
+		return hostname
+	}
+	return strings.Join(parts[0:len(parts)-1], ":")
+}
 
 func IdentifyObject(obj string) (string, string) {
 	if obj == "" {

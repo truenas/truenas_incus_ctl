@@ -36,7 +36,7 @@ func ResetAuxCobraFlags(cmd *cobra.Command) {
 	}
 }
 
-func GetCobraFlags(cmd *cobra.Command, cmdEnums map[string][]string) (FlagMap, error) {
+func GetCobraFlags(cmd *cobra.Command, keepGlobals bool, cmdEnums map[string][]string) (FlagMap, error) {
 	fm := FlagMap{}
 	fm.usedFlags = make(map[string]string)
 	cmd.Flags().Visit(func(flag *pflag.Flag) {
@@ -81,9 +81,11 @@ func GetCobraFlags(cmd *cobra.Command, cmdEnums map[string][]string) (FlagMap, e
 		}
 	}
 
-	RemoveGlobalFlags(fm.usedFlags)
-	RemoveGlobalFlags(fm.allFlags)
-	RemoveGlobalFlags(fm.allTypes)
+	if !keepGlobals {
+		RemoveGlobalFlags(fm.usedFlags)
+		RemoveGlobalFlags(fm.allFlags)
+		RemoveGlobalFlags(fm.allTypes)
+	}
 
 	if err := ValidateFlagEnums(&fm.usedFlags, cmdEnums); err != nil {
 		return FlagMap{}, err
@@ -188,17 +190,17 @@ func AddFlagsEnum(enumMap *map[string][]string, flagName string, newEnum []strin
 
 func WrapCommandFunc(cmdFunc func(*cobra.Command,core.Session,[]string)error) func(*cobra.Command,[]string)error {
 	return func(cmd *cobra.Command, args []string) error {
-		// Special case for config commands that shouldn't try to initialize an API client
-		if cmd.Use == "login" || cmd.Use == "add <nickname> <hostname> <apikey>" {
-			// For these commands, we'll pass nil as the session since we don't need an existing connection
-			return cmdFunc(cmd, nil, args)
-		}
-		
 		api := InitializeApiClient()
 		if api == nil {
 			return nil
 		}
 		err := cmdFunc(cmd, api, args)
 		return api.Close(err)
+	}
+}
+
+func WrapCommandFuncWithoutApi(cmdFunc func(*cobra.Command,core.Session,[]string)error) func(*cobra.Command,[]string)error {
+	return func(cmd *cobra.Command, args []string) error {
+		return cmdFunc(cmd, nil, args)
 	}
 }

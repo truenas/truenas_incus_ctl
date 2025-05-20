@@ -122,9 +122,20 @@ func ExtractJsonArrayOfMaps(obj map[string]interface{}, key string) ([]map[strin
 	return nil, "did not contain a list"
 }
 
-func IsValueTrue(dict map[string]string, key string) bool {
+func IsStringTrue(dict map[string]string, key string) bool {
 	if valueStr, exists := dict[key]; exists {
 		return valueStr == "true"
+	}
+	return false
+}
+
+func IsValueTrue(dict map[string]interface{}, key string) bool {
+	if valueObj, exists := dict[key]; exists {
+		if valueBool, ok := valueObj.(bool); ok {
+			return valueBool
+		} else if valueStr, ok := valueObj.(string); ok {
+			return strings.ToLower(valueStr) == "true"
+		}
 	}
 	return false
 }

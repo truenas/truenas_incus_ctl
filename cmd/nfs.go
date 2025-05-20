@@ -76,12 +76,12 @@ func init() {
 		cmd.Flags().Bool("enabled", false, "")
 	}
 
-	nfsUpdateCmd.Flags().BoolP("create", "c", false, "If a share doesn't exist, create it. Off by default.")
+	nfsUpdateCmd.Flags().Bool("create", false, "If a share doesn't exist, create it. Off by default.")
 
 	g_nfsCreateUpdateEnums["security"] = []string{"sys", "krb5", "krb5i", "krb5p"}
 
 	nfsListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
-	nfsListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
+	nfsListCmd.Flags().BoolP("no-headers", "c", false, "Equivalent to --format=compact. More easily parsed by scripts")
 	nfsListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
 		AddFlagsEnum(&g_nfsListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	nfsListCmd.Flags().StringP("output", "o", "", "Output property list")
@@ -119,7 +119,7 @@ func createNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	options, _ := GetCobraFlags(cmd, nil)
+	options, _ := GetCobraFlags(cmd, false, nil)
 
 	options.usedFlags["path"] = paths[0]
 	options.allTypes["path"] = "string"
@@ -149,8 +149,8 @@ func updateNfs(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	options, _ := GetCobraFlags(cmd, nil)
-	flagCreate := core.IsValueTrue(options.allFlags, "create")
+	options, _ := GetCobraFlags(cmd, false, nil)
+	flagCreate := core.IsStringTrue(options.allFlags, "create")
 
 	// now that we know whether to create or not, let's not pass this flag on to the API
 	delete(options.usedFlags, "create")
@@ -391,7 +391,7 @@ func getIdAndPathLists(args []string) (typeNfsSpecs, error) {
 }
 
 func listNfs(cmd *cobra.Command, api core.Session, args []string) error {
-	options, err := GetCobraFlags(cmd, g_nfsListEnums)
+	options, err := GetCobraFlags(cmd, false, g_nfsListEnums)
 	if err != nil {
 		return err
 	}
@@ -410,10 +410,10 @@ func listNfs(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	extras := typeQueryParams{
-		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parsable")),
-		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
+		valueOrder:         BuildValueOrder(core.IsStringTrue(options.allFlags, "parsable")),
+		shouldGetAllProps:  core.IsStringTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
-		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+		shouldRecurse:      len(args) == 0 || core.IsStringTrue(options.allFlags, "recursive"),
 	}
 
 	response, err := QueryApi(api, "sharing.nfs", args, idTypes, properties, extras)

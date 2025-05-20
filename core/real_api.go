@@ -19,14 +19,15 @@ type ApiJobResult struct {
 }
 
 type RealSession struct {
-	HostUrl string
+	HostName string
 	ApiKey string
-	ShouldWait bool
 	IsDebug bool
+	AllowInsecure bool
 	client *truenas_api.Client
 	subscribedToJobs bool
 	resultsQueue *SimpleQueue[ApiJobResult]
 	jobsList []int64
+	mapSkipWaitOnClose map[int64]bool
 }
 
 func (s *RealSession) IsLoggedIn() bool {
@@ -44,8 +45,8 @@ func (s *RealSession) Login() error {
 		_ = s.Close(nil)
 	}
 
-	if s.HostUrl == "" || s.ApiKey == "" {
-		return errors.New("--url and --api-key were not provided")
+	if s.HostName == "" || s.ApiKey == "" {
+		return errors.New("Hostname and API key were not provided")
 	}
 
 	if s.resultsQueue == nil {
@@ -53,8 +54,8 @@ func (s *RealSession) Login() error {
 	}
 
 	client, err := truenas_api.NewClientWithCallback(
-		s.HostUrl,
-		false, // Always disable SSL verification to allow self-signed certificates
+		GetApiUrlFromHostName(s.HostName),
+		s.AllowInsecure,
 		func(waitingJobId int64, innerJobId int64, params map[string]interface{}) {
 			s.HandleJobUpdate(waitingJobId, innerJobId, params)
 		},
@@ -77,8 +78,11 @@ func (s *RealSession) Login() error {
 	return nil
 }
 
-func (s *RealSession) GetHostUrl() string {
-	return s.HostUrl
+func (s *RealSession) GetHostName() string {
+	return GetHostNameFromApiUrl(s.HostName)
+}
+func (s *RealSession) GetUrl() string {
+	return GetApiUrlFromHostName(s.HostName)
 }
 
 func (s *RealSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
@@ -93,10 +97,8 @@ func (s *RealSession) CallRaw(method string, timeoutSeconds int64, params interf
 	return out, err
 }
 
-func (s *RealSession) CallAsyncRaw(method string, params interface{}, awaitThisJob bool) (int64, error) {
-	awaitThisJob = awaitThisJob || s.ShouldWait
-
-	if awaitThisJob && !s.subscribedToJobs {
+func (s *RealSession) CallAsyncRaw(method string, params interface{}) (int64, error) {
+	if !s.subscribedToJobs {
 		// For every async call that we call "core.job_wait" on, we'll be notified whenever the original call is updated or completes.
 		// In order to get those notifications, we have to subscribe to "core.get_jobs".
 		if err := s.client.SubscribeToJobs(); err != nil {
@@ -111,18 +113,16 @@ func (s *RealSession) CallAsyncRaw(method string, params interface{}, awaitThisJ
 		return mainJob.ID, err
 	}
 
-	if awaitThisJob {
-		// This is to ensure we get notified when mainJob completes.
-		_, err := s.client.CallWithJob("core.job_wait", []interface{}{mainJob.ID}, nil)
-		if err != nil {
-			return mainJob.ID, err
-		}
-
-		if s.jobsList == nil {
-			s.jobsList = make([]int64, 0)
-		}
-		s.jobsList = append(s.jobsList, mainJob.ID)
+	// This is to ensure we get notified when mainJob completes.
+	_, err = s.client.CallWithJob("core.job_wait", []interface{}{mainJob.ID}, nil)
+	if err != nil {
+		return mainJob.ID, err
 	}
+
+	if s.jobsList == nil {
+		s.jobsList = make([]int64, 0)
+	}
+	s.jobsList = append(s.jobsList, mainJob.ID)
 
 	return mainJob.ID, nil
 }
@@ -171,6 +171,10 @@ func (s *RealSession) WaitForJob(jobId int64) (json.RawMessage, error) {
 	return data, err
 }
 
+func (s *RealSession) SkipWaitingJobOnClose(jobId int64) {
+	s.mapSkipWaitOnClose[jobId] = true
+}
+
 func (s *RealSession) Close(internalError error) error {
 	if s.client == nil {
 		return internalError
@@ -181,19 +185,25 @@ func (s *RealSession) Close(internalError error) error {
 		errorList = append(errorList, internalError)
 	}
 
-	if s.ShouldWait {
-		for len(s.jobsList) > 0 {
-			jr := s.resultsQueue.Take()
-			//jr.Print()
-			for i := 0; i < len(s.jobsList); i++ {
-				if s.jobsList[i] == jr.JobID {
-					if err := jr.GetError(); err != nil {
-						errorList = append(errorList, err)
-					}
-					// remove it
-					s.jobsList[i] = s.jobsList[len(s.jobsList)-1]
-					s.jobsList = s.jobsList[:len(s.jobsList)-1]
+	for i := 0; i < len(s.jobsList); i++ {
+		if shouldSkip, _ := s.mapSkipWaitOnClose[s.jobsList[i]]; shouldSkip {
+			// remove it
+			s.jobsList[i] = s.jobsList[len(s.jobsList)-1]
+			s.jobsList = s.jobsList[:len(s.jobsList)-1]
+		}
+	}
+
+	for len(s.jobsList) > 0 {
+		jr := s.resultsQueue.Take()
+		//jr.Print()
+		for i := 0; i < len(s.jobsList); i++ {
+			if s.jobsList[i] == jr.JobID {
+				if err := jr.GetError(); err != nil {
+					errorList = append(errorList, err)
 				}
+				// remove it
+				s.jobsList[i] = s.jobsList[len(s.jobsList)-1]
+				s.jobsList = s.jobsList[:len(s.jobsList)-1]
 			}
 		}
 	}

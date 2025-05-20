@@ -81,7 +81,7 @@ func init() {
 	snapshotListCmd.Flags().BoolP("recursive", "r", false, "")
 	snapshotListCmd.Flags().BoolP("user-properties", "u", false, "Include user-properties")
 	snapshotListCmd.Flags().BoolP("json", "j", false, "Equivalent to --format=json")
-	snapshotListCmd.Flags().BoolP("no-headers", "H", false, "Equivalent to --format=compact. More easily parsed by scripts")
+	snapshotListCmd.Flags().BoolP("no-headers", "c", false, "Equivalent to --format=compact. More easily parsed by scripts")
 	snapshotListCmd.Flags().String("format", "table", "Output table format. Defaults to \"table\" "+
 		AddFlagsEnum(&g_snapshotListEnums, "format", []string{"csv", "json", "table", "compact"}))
 	snapshotListCmd.Flags().StringP("output", "o", "", "Output property list")
@@ -124,7 +124,7 @@ func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 }
 
 func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
-	options, _ := GetCobraFlags(cmd, nil)
+	options, _ := GetCobraFlags(cmd, false, nil)
 	datasetList := make([]string, len(args), len(args))
 	nameList := make([]string, len(args), len(args))
 
@@ -167,7 +167,7 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 
 	cmd.SilenceUsage = true
 
-	if core.IsValueTrue(options.allFlags, "delete") {
+	if core.IsStringTrue(options.allFlags, "delete") {
 		delMap := make(map[string]interface{})
 		delMap["recursive"] = true
 		delObjRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
@@ -198,7 +198,7 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 		}
 	}
 
-	options, _ := GetCobraFlags(cmd, nil)
+	options, _ := GetCobraFlags(cmd, false, nil)
 	params := BuildNameStrAndPropertiesJson(options, snapshots[0])
 
 	cmd.SilenceUsage = true
@@ -236,7 +236,7 @@ func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 }
 
 func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
-	options, err := GetCobraFlags(cmd, g_snapshotListEnums)
+	options, err := GetCobraFlags(cmd, false, g_snapshotListEnums)
 	if err != nil {
 		return err
 	}
@@ -256,10 +256,10 @@ func listSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 
 	// `zfs list` will "recurse" if no names are specified.
 	extras := typeQueryParams{
-		valueOrder:         BuildValueOrder(core.IsValueTrue(options.allFlags, "parsable")),
-		shouldGetAllProps:  core.IsValueTrue(options.allFlags, "all"),
+		valueOrder:         BuildValueOrder(core.IsStringTrue(options.allFlags, "parsable")),
+		shouldGetAllProps:  core.IsStringTrue(options.allFlags, "all"),
 		shouldGetUserProps: false,
-		shouldRecurse:      len(args) == 0 || core.IsValueTrue(options.allFlags, "recursive"),
+		shouldRecurse:      len(args) == 0 || core.IsStringTrue(options.allFlags, "recursive"),
 	}
 
 	response, err := QueryApi(api, "zfs.snapshot", args, idTypes, properties, extras)
