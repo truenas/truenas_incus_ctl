@@ -21,11 +21,11 @@ var configCmd = &cobra.Command{
 	
 Available Commands:
   login                             - Interactively add a new connection
-  add <nickname> [parameters...]    - Non-interactively add a new connection
-  set <nickname> [parameters...]    - Update parameters in config file
+  add <name> [parameters...]    - Non-interactively add a new connection
+  set <name> [parameters...]    - Update parameters in config file
   list                              - Lists all saved connections
   show                              - Display the raw contents of the configuration file
-  remove <nickname>                 - Remove a saved connection by nickname`,
+  remove <name>                 - Remove a saved connection by name`,
 	Example: `  # Add a new connection interactively
   truenas_incus_ctl config login
 
@@ -58,27 +58,31 @@ var configShowCmd = &cobra.Command{
 }
 
 var configListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all saved connection nicknames",
-	Args:  cobra.NoArgs,
+	Use:     "list",
+	Short:   "List all saved connection names",
+	Args:    cobra.NoArgs,
+	Aliases: []string{"ls"},
 }
 
 var configRemoveCmd = &cobra.Command{
-	Use:   "remove <nickname>",
-	Short: "Remove a saved connection by nickname",
-	Args:  cobra.ExactArgs(1),
+	Use:     "remove <name>",
+	Short:   "Remove a saved connection by name",
+	Args:    cobra.ExactArgs(1),
+	Aliases: []string{"delete", "del", "rm"},
 }
 
 var configAddCmd = &cobra.Command{
-	Use:   "add <nickname> [parameters...]",
-	Short: "Non-interactively add a new connection to the configuration",
-	Args:  cobra.ExactArgs(1),
+	Use:     "add <name> [parameters...]",
+	Short:   "Non-interactively add a new connection to the configuration",
+	Args:    cobra.ExactArgs(1),
+	Aliases: []string{"create"},
 }
 
 var configSetCmd = &cobra.Command{
-	Use:   "set <nickname> [parameters...]",
-	Short: "Edit the configuration of the given connection",
-	Args:  cobra.ExactArgs(1),
+	Use:     "set <name> [parameters...]",
+	Short:   "Edit the configuration of the given connection",
+	Args:    cobra.ExactArgs(1),
+	Aliases: []string{"update"},
 }
 
 func init() {
@@ -137,7 +141,7 @@ func showConfig(cmd *cobra.Command, api core.Session, args []string) error {
 func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 	// Note: 'api' parameter will be nil for this command, which is expected
 	options, _ := GetCobraFlags(cmd, true, nil)
-	nickname := args[0]
+	name := args[0]
 	hostname := options.allFlags["host"]
 	apiKey := options.allFlags["api_key"]
 	objDebug, passedDebug := options.usedFlags["debug"]
@@ -165,7 +169,7 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 	configs, err := loadConfig(configPath)
 
 	// Add or update host entry with URL including API endpoint
-	// Store the complete URL with /api/current path under the nickname
+	// Store the complete URL with /api/current path under the name
 	hostConfig := map[string]interface{}{
 		"url":     hostname,
 		"api_key": apiKey,
@@ -178,21 +182,21 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	hosts, _ := configs["hosts"].(map[string]interface{})
-	hosts[nickname] = hostConfig
+	hosts[name] = hostConfig
 	configs["hosts"] = hosts
 
 	if err = saveConfig(configPath, configs); err != nil {
 		return err
 	}
 
-	fmt.Printf("Configuration for '%s' (connecting to %s) saved to %s\n", nickname, hostname, configPath)
+	fmt.Printf("Configuration for '%s' (connecting to %s) saved to %s\n", name, hostname, configPath)
 	return nil
 }
 
 func setConfig(cmd *cobra.Command, api core.Session, args []string) error {
 	// Note: 'api' parameter will be nil for this command, which is expected
 	options, _ := GetCobraFlags(cmd, true, nil)
-	nickname := args[0]
+	name := args[0]
 	hostname := options.allFlags["host"]
 	apiKey := options.allFlags["api_key"]
 	objDebug, passedDebug := options.usedFlags["debug"]
@@ -210,9 +214,9 @@ func setConfig(cmd *cobra.Command, api core.Session, args []string) error {
 	if len(hosts) == 0 {
 		return fmt.Errorf("Could not find hosts in config file")
 	}
-	profile, _ := hosts[nickname].(map[string]interface{})
+	profile, _ := hosts[name].(map[string]interface{})
 	if len(profile) == 0 {
-		return fmt.Errorf("Could not find host \"%s\" in config file", nickname)
+		return fmt.Errorf("Could not find host \"%s\" in config file", name)
 	}
 
 	if hostname == "" {
@@ -246,18 +250,18 @@ func setConfig(cmd *cobra.Command, api core.Session, args []string) error {
 		profile["allow_insecure"] = fmt.Sprint(objInsecure) == "true"
 	}
 
-	hosts[nickname] = profile
+	hosts[name] = profile
 	configs["hosts"] = hosts
 
 	if err = saveConfig(configPath, configs); err != nil {
 		return err
 	}
 
-	fmt.Printf("Configuration for '%s' (connecting to %s) saved to %s\n", nickname, hostname, configPath)
+	fmt.Printf("Configuration for '%s' (connecting to %s) saved to %s\n", name, hostname, configPath)
 	return nil
 }
 
-// listConfigs lists all connection nicknames in the config
+// listConfigs lists all connection names in the config
 func listConfigs(cmd *cobra.Command, api core.Session, args []string) error {
 	// Get the config file path
 	configPath := g_configFileName
@@ -281,24 +285,24 @@ func listConfigs(cmd *cobra.Command, api core.Session, args []string) error {
 		return fmt.Errorf("Failed to parse config file %s: %v", configPath, err)
 	}
 
-	// Extract and print the nicknames
+	// Extract and print the names
 	hosts, ok := config["hosts"].(map[string]interface{})
 	if !ok || len(hosts) == 0 {
 		fmt.Println("No connections configured")
 		return nil
 	}
 
-	fmt.Println("Available connection nicknames:")
-	for nickname := range hosts {
-		fmt.Printf("  %s\n", nickname)
+	fmt.Println("Available connection names:")
+	for name := range hosts {
+		fmt.Printf("  %s\n", name)
 	}
 	
 	return nil
 }
 
-// removeConfig removes a connection from the config by nickname
+// removeConfig removes a connection from the config by name
 func removeConfig(cmd *cobra.Command, api core.Session, args []string) error {
-	nickname := args[0]
+	name := args[0]
 
 	// Get the config file path
 	configPath := g_configFileName
@@ -327,20 +331,20 @@ func removeConfig(cmd *cobra.Command, api core.Session, args []string) error {
 		return fmt.Errorf("No connections configured in %s", configPath)
 	}
 
-	// Check if the nickname exists
-	if _, exists := hosts[nickname]; !exists {
-		return fmt.Errorf("Connection with nickname '%s' not found", nickname)
+	// Check if the name exists
+	if _, exists := hosts[name]; !exists {
+		return fmt.Errorf("Connection with name '%s' not found", name)
 	}
 
 	// Remove the connection
-	delete(hosts, nickname)
+	delete(hosts, name)
 	configs["hosts"] = hosts
 
 	if err = saveConfig(configPath, configs); err != nil {
 		return err
 	}
 
-	fmt.Printf("Connection '%s' has been removed from the configuration\n", nickname)
+	fmt.Printf("Connection '%s' has been removed from the configuration\n", name)
 	return nil
 }
 
@@ -423,7 +427,7 @@ func verifyHost(hostname, apiKey string) error {
 func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
 	// Note: 'api' parameter will be nil for this command, which is expected
 
-	// Get the config file path to check for existing nicknames
+	// Get the config file path to check for existing names
 	configPath := g_configFileName
 	if configPath == "" {
 		configPath = getDefaultConfigPath()
@@ -454,17 +458,17 @@ func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
 		config["hosts"] = hosts
 	}
 
-	// Prompt for nickname and validate it doesn't exist
-	var nickname string
+	// Prompt for name and validate it doesn't exist
+	var name string
 	for {
-		fmt.Print("Enter a nickname for this connection: ")
-		fmt.Scanln(&nickname)
-		if nickname == "" {
-			fmt.Println("Nickname cannot be empty. Please try again.")
+		fmt.Print("Enter a name for this connection: ")
+		fmt.Scanln(&name)
+		if name == "" {
+			fmt.Println("name cannot be empty. Please try again.")
 			continue
 		}
-		if _, exists := hosts[nickname]; exists {
-			fmt.Printf("Error: A connection with nickname '%s' already exists. Please choose a different nickname.\n", nickname)
+		if _, exists := hosts[name]; exists {
+			fmt.Printf("Error: A connection with name '%s' already exists. Please choose a different name.\n", name)
 			continue
 		}
 		break
@@ -636,12 +640,12 @@ func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	// Add or update host entry with URL including API endpoint
-	// Store the complete URL with /api/current path under the nickname
+	// Store the complete URL with /api/current path under the name
 	hostConfig := map[string]interface{}{
 		"url":     url, // Using the same URL with /api/current path
 		"api_key": apiKey,
 	}
-	hosts[nickname] = hostConfig
+	hosts[name] = hostConfig
 
 	// Write the updated config back to file
 	updatedData, err := json.MarshalIndent(config, "", "  ")
@@ -653,6 +657,6 @@ func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
 		return fmt.Errorf("Failed to write config to %s: %v", configPath, err)
 	}
 
-	fmt.Printf("Configuration for '%s' (connecting to %s) saved to %s\n", nickname, hostname, configPath)
+	fmt.Printf("Configuration for '%s' (connecting to %s) saved to %s\n", name, hostname, configPath)
 	return nil
 }

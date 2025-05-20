@@ -16,6 +16,12 @@ import (
 	"syscall"
 )
 
+func DeleteSnakeKebab(dict map[string]string, key string) {
+	delete(dict, key)
+	delete(dict, strings.ReplaceAll(key, "-", "_"))
+	delete(dict, strings.ReplaceAll(key, "_", "-"))
+}
+
 func GetHostNameFromApiUrl(urlString string) string {
 	hostname := urlString
 	if strings.Contains(urlString, "://") {

@@ -26,7 +26,7 @@ var daemonCmd = &cobra.Command{
 var g_debug bool
 var g_allowInsecure bool
 var g_configFileName string
-var g_configNickname string
+var g_configName string
 var g_hostName string
 var g_apiKey string
 
@@ -41,7 +41,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&g_debug, "debug", false, "Enable debug logs")
 	rootCmd.PersistentFlags().BoolVar(&g_allowInsecure, "allow-insecure", false, "Allow self-signed or non-trusted SSL certificates")
 	rootCmd.PersistentFlags().StringVarP(&g_configFileName, "config-file", "F", "", "Override config filename (~/.truenas_incus_ctl/config.json)")
-	rootCmd.PersistentFlags().StringVarP(&g_configNickname, "config", "C", "", "Name of config to look up in config.json, defaults to first entry")
+	rootCmd.PersistentFlags().StringVarP(&g_configName, "config", "C", "", "Name of config to look up in config.json, defaults to first entry")
 	rootCmd.PersistentFlags().StringVarP(&g_hostName, "host", "H", "", "Server hostname or URL")
 	rootCmd.PersistentFlags().StringVarP(&g_apiKey, "api-key", "K", "", "API key")
 
@@ -51,16 +51,13 @@ func init() {
 }
 
 func RemoveGlobalFlags(flags map[string]string) {
-	delete(flags, "debug")
-	delete(flags, "mock")
-	delete(flags, "allow-insecure")
-	delete(flags, "allow_insecure")
-	delete(flags, "config-file")
-	delete(flags, "config_file")
-	delete(flags, "config")
-	delete(flags, "host")
-	delete(flags, "api-key")
-	delete(flags, "api_key")
+	core.DeleteSnakeKebab(flags, "debug")
+	core.DeleteSnakeKebab(flags, "mock")
+	core.DeleteSnakeKebab(flags, "allow-insecure")
+	core.DeleteSnakeKebab(flags, "config-file")
+	core.DeleteSnakeKebab(flags, "config")
+	core.DeleteSnakeKebab(flags, "host")
+	core.DeleteSnakeKebab(flags, "api-key")
 }
 
 func runDaemon(cmd *cobra.Command, args []string) {
@@ -79,7 +76,7 @@ func runDaemon(cmd *cobra.Command, args []string) {
 func InitializeApiClient() core.Session {
 	var api core.Session
 	if g_hostName == "" || g_apiKey == "" {
-		host, key, config, err := findCredsFromConfig(g_configFileName, g_configNickname, g_hostName, g_apiKey)
+		host, key, config, err := findCredsFromConfig(g_configFileName, g_configName, g_hostName, g_apiKey)
 		if err != nil {
 			log.Fatal(fmt.Errorf("Failed to parse config: %v", err))
 		}
@@ -117,8 +114,8 @@ func InitializeApiClient() core.Session {
 
 // This method is called assuming that we're missing either a hostname or api key.
 // Additionally, we might not know the config path (in which case we use the default),
-// or the nickname (in which case we just pick the first config in the list)
-func findCredsFromConfig(fileName, nickname, existingHost, existingApiKey string) (string, string, map[string]interface{}, error) {
+// or the name (in which case we just pick the first config in the list)
+func findCredsFromConfig(fileName, name, existingHost, existingApiKey string) (string, string, map[string]interface{}, error) {
 	var data []byte
 	var err error
 
@@ -152,14 +149,14 @@ func findCredsFromConfig(fileName, nickname, existingHost, existingApiKey string
 		return "", "", nil, err
 	}
 
-	if nickname == "" {
+	if name == "" {
 		if existingHost != "" {
 			existingHostCondensed := core.GetHostNameFromApiUrl(existingHost)
 			for key, value := range hosts {
 				if valueMap, ok := value.(map[string]interface{}); ok {
 					url, _ := valueMap["url"].(string)
 					if url != "" && core.GetHostNameFromApiUrl(url) == existingHostCondensed {
-						nickname = key
+						name = key
 						break
 					}
 				}
@@ -169,24 +166,24 @@ func findCredsFromConfig(fileName, nickname, existingHost, existingApiKey string
 				if valueMap, ok := value.(map[string]interface{}); ok {
 					apiKey, _ := valueMap["api_key"].(string)
 					if apiKey == existingApiKey {
-						nickname = key
+						name = key
 						break
 					}
 				}
 			}
 		} else {
 			for key, _ := range hosts {
-				if nickname == "" || key < nickname {
-					nickname = key
+				if name == "" || key < name {
+					name = key
 				}
 			}
 		}
-		if nickname == "" {
+		if name == "" {
 			return "", "", nil, fmt.Errorf("Could not find any matching hosts in config \"%s\"", fileName)
 		}
 	}
 
-	config, err := getMapFromMapAny(hosts, nickname, fileName)
+	config, err := getMapFromMapAny(hosts, name, fileName)
 	if err != nil {
 		return "", "", nil, err
 	}
