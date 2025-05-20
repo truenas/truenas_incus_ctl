@@ -73,7 +73,7 @@ func init() {
 	iscsiLocateCmd.Flags().Bool("activate", false, "Activate any shares that could not be located")
 	iscsiLocateCmd.Flags().Bool("create", false, "Create any shares that could not be activated or located, then activate them")
 	iscsiLocateCmd.Flags().Bool("deactivate", false, "Deactivate any shares that could be located")
-	iscsiLocateCmd.Flags().Bool("delete", false, "Before deleting the shares that could be located, deactivate them first")
+	iscsiLocateCmd.Flags().Bool("delete", false, "Deactivate and delete any shares that could be located")
 	iscsiLocateCmd.Flags().Bool("readonly", false, "If a share is to be created, ensure that its extent is read-only. Ignored for snapshots.")
 
 	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
