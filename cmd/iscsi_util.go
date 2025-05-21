@@ -146,9 +146,7 @@ func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeM
 			DebugString(strings.Join(logoutParams, " "))
 			_, err := RunIscsiAdminTool(logoutParams)
 
-			if isMinimal && err == nil {
-				fmt.Println(iqnTargetName)
-			} else if err == nil {
+			if err == nil {
 				fmt.Println("deactivated\t", iqnTargetName)
 			} else if !isMinimal {
 				fmt.Println("failed\t", iqnTargetName)

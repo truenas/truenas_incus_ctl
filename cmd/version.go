@@ -30,8 +30,9 @@ import (
 0.5.2 Add a connection daemon, allowing for logins to be cached, more flexibility in handling jobs, etc
 0.5.3 `share iscsi locate --activate/--deactivate`
 0.6.0 added config command, changed definition of global flags
+0.6.1 `share iscsi locate --create/--delete`
 */
-const VERSION = "0.6.0"
+const VERSION = "0.6.1"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
