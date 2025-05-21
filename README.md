@@ -81,7 +81,9 @@ index 5dc1780fd8..76c57b554c 100644
              self.logger.error('Failed to rename dataset', exc_info=True)
 ```
 
-Depending on how many API calls are made in a 60 second period, it may be necessary to increase `max_calls` from 20 to 100. This will be resolved with a connection-cache in future
+Although a connection-cache is used to limit the number of connections generated per IP, in some scenarios, eg automated containerized testing, it is possible to exceed the number of API calls allowed per IP in a finite period. This will result in persistant timeouts when it occurs. 
+
+The maximum nummber of API calls allowed can be increased by modifiying the middleware's `max_calls` value, eg from 20 to 100.
 
 ```diff
 diff --git a/src/middlewared/middlewared/utils/rate_limit/cache.py b/src/middlewared/middlewared/utils/rate_limit/cache.py
@@ -100,5 +102,4 @@ index b04ecc1ec1..40797b71a7 100644
 
 ```
 
-The rootfs read-only protection can be removed by running the `/usr/local/libexec/disable-rootfs-protection` command, which will also mark the current boot environement as
-unsuported.
+The rootfs read-only protection can be removed by the following command: `zfs set readonly=off <BOOT-POOL>/ROOT/<TRUENAS-BOOT-ENV>/usr`, where \<TRUENAS-BOOT-ENV> is the name of the active TrueNAS Boot Environment, eg: "25.10.0", or "25.10.0-MASTER-20250519-015438, and \<BOOT-POOL> is the name of the boot pool, eg: "boot-pool". You can use `cat /proc/mounts | grep /usr` to see the name of the active /usr dataset
