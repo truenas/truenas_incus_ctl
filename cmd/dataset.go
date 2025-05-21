@@ -337,9 +337,11 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	options, _ := GetCobraFlags(cmd, false, nil)
-	timeout := int64(30)
+	timeout := int64(20)
 
-	if !core.IsStringTrue(options.allFlags, "no_smart_timeout") {
+	if core.IsStringTrue(options.allFlags, "no_smart_timeout") {
+		RemoveFlag(options, "no_smart_timeout")
+	} else if core.IsStringTrue(options.allFlags, "recursive") {
 		extras := typeQueryParams{
 			valueOrder:         BuildValueOrder(true),
 			shouldGetAllProps:  false,
@@ -351,8 +353,6 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 			return err
 		}
 		timeout = int64(10 + 10 * len(response.resultsMap))
-	} else {
-		RemoveFlag(options, "no_smart_timeout")
 	}
 
 	params := BuildNameStrAndPropertiesJson(options, args[0])
