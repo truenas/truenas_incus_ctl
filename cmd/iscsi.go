@@ -612,8 +612,10 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			}
 			remainingTargets = append(remainingTargets, t)
 		}
-		if err = doIscsiActivate(remainingTargets, ipPortalAddr, isMinimal); err != nil {
-			return err
+		if len(remainingTargets) > 0 {
+			if err = doIscsiActivate(remainingTargets, ipPortalAddr, isMinimal); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -729,7 +731,7 @@ func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool
 	}
 
 	if len(outerMap) == 0 {
-		if isMinimal {
+		if !isMinimal {
 			return fmt.Errorf("No matching iscsi shares were found")
 		}
 	}
