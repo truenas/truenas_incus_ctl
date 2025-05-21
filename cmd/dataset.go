@@ -154,6 +154,7 @@ func init() {
 	datasetDeleteCmd.Flags().BoolP("recursive", "r", false, "Also delete/destroy all children datasets. When the root dataset is specified,\n"+
 		"it will destroy all the children of the root dataset present leaving root dataset intact")
 	datasetDeleteCmd.Flags().BoolP("force", "f", false, "Force delete busy datasets")
+	datasetDeleteCmd.Flags().Bool("no-smart-timeout", false, "Disable performing a recursive list on the dataset to determine a suitable deletion timeout")
 
 	datasetListCmd.Flags().BoolP("recursive", "r", false, "Retrieves properties for children")
 	datasetListCmd.Flags().BoolP("user-properties", "u", false, "Include user-properties")
@@ -336,13 +337,28 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
 	options, _ := GetCobraFlags(cmd, false, nil)
+	timeout := int64(30)
+
+	if !core.IsStringTrue(options.allFlags, "no_smart_timeout") {
+		extras := typeQueryParams{
+			valueOrder:         BuildValueOrder(true),
+			shouldGetAllProps:  false,
+			shouldGetUserProps: false,
+			shouldRecurse:      true,
+		}
+		response, err := QueryApi(api, "pool.dataset", args, core.StringRepeated("name", len(args)), []string{}, extras)
+		if err != nil {
+			return err
+		}
+		timeout = int64(10 + 10 * len(response.resultsMap))
+	} else {
+		RemoveFlag(options, "no_smart_timeout")
+	}
+
 	params := BuildNameStrAndPropertiesJson(options, args[0])
 
 	objRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
-	// it can take 5s to remove a dataset which has an iscsi share, we experience timeouts even
-	// with 30s when deleting multiple incus pools.
-	// TODO: profile middleware to determine if this can be improved.
-	out, _, err := MaybeBulkApiCall(api, "pool.dataset.delete", 30, params, objRemap, false)
+	out, _, err := MaybeBulkApiCall(api, "pool.dataset.delete", timeout, params, objRemap, false)
 	if err != nil {
 		return err
 	}

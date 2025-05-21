@@ -104,6 +104,12 @@ func InsertNonCobraFlag(fm FlagMap, flagType, flagName, flagValue string) {
 	fm.allTypes[key] = flagType
 }
 
+func RemoveFlag(fm FlagMap, key string) {
+	core.DeleteSnakeKebab(fm.usedFlags, key)
+	core.DeleteSnakeKebab(fm.allFlags, key)
+	core.DeleteSnakeKebab(fm.allTypes, key)
+}
+
 func ValidateFlagEnums(flags *map[string]string, cmdEnums map[string][]string) error {
 	var builder strings.Builder
 	for key, value := range *flags {

@@ -152,7 +152,7 @@ func TestDatasetDelete(t *testing.T) {
 		t,
 		datasetDeleteCmd,
 		deleteDataset,
-		map[string]interface{}{},
+		map[string]interface{}{"no-smart-timeout":true},
 		[]string{"dozer/testing/test"},
 		"[\"dozer/testing/test\",{}]",
 	))
@@ -163,7 +163,7 @@ func TestDatasetDeleteRecursive(t *testing.T) {
 		t,
 		datasetDeleteCmd,
 		deleteDataset,
-		map[string]interface{}{"recursive":true},
+		map[string]interface{}{"recursive":true,"no-smart-timeout":true},
 		[]string{"dozer/testing/test"},
 		"[\"dozer/testing/test\",{\"recursive\":true}]",
 	))
@@ -174,7 +174,7 @@ func TestDatasetDeleteForce(t *testing.T) {
 		t,
 		datasetDeleteCmd,
 		deleteDataset,
-		map[string]interface{}{"force":true},
+		map[string]interface{}{"force":true,"no-smart-timeout":true},
 		[]string{"dozer/testing/test"},
 		"[\"dozer/testing/test\",{\"force\":true}]",
 	))
@@ -185,7 +185,7 @@ func TestDatasetDeleteRecursiveForce(t *testing.T) {
 		t,
 		datasetDeleteCmd,
 		deleteDataset,
-		map[string]interface{}{"recursive":true,"force":true},
+		map[string]interface{}{"recursive":true,"force":true,"no-smart-timeout":true},
 		[]string{"dozer/testing/test"},
 		"[\"dozer/testing/test\",{\"force\":true,\"recursive\":true}]",
 	))
