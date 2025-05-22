@@ -61,9 +61,6 @@ func QueryApi(api core.Session, category string, entries, entryTypes, propsList 
 		return response, err
 	}
 
-	//os.Stdout.WriteString(string(data))
-	//fmt.Println("\n")
-
 	var jsonResponse interface{}
 	if err = json.Unmarshal(data, &jsonResponse); err != nil {
 		return response, fmt.Errorf("response error: %v", err)
@@ -218,23 +215,30 @@ func GetMapFromQueryResponseKeyedOn(response *typeQueryResponse, key string) map
 	return outMap
 }
 
-func GetIdsOrderedByArgsFromResponse(response typeQueryResponse, key string, valueList []string, valueMap map[string]int) []interface{} {
+func GetIdsOrderedByArgsFromResponse(response typeQueryResponse, key string, valueList []string, valueMap map[string]int, isMinimal bool) ([]interface{}, []string) {
 	ids := make([]interface{}, len(valueList))
+	names := make([]string, len(valueList))
 	for _, v := range response.resultsMap {
 		inner, _ := v[key]
-		if idx, exists := valueMap[fmt.Sprint(inner)]; exists {
+		innerStr := fmt.Sprint(inner)
+		if idx, exists := valueMap[innerStr]; exists {
 			ids[idx], _ = v["id"]
+			names[idx] = innerStr
 		}
 	}
 	outIds := make([]interface{}, 0)
+	outNames := make([]string, 0)
 	for i, id := range ids {
 		if id == nil {
-			fmt.Println("Could not find", valueList[i])
+			if !isMinimal {
+				fmt.Println("Could not find", valueList[i])
+			}
 		} else {
 			outIds = append(outIds, id)
+			outNames = append(outNames, names[i])
 		}
 	}
-	return outIds
+	return outIds, outNames
 }
 
 func makeQueryFilter(entries, entryTypes []string, params typeQueryParams) ([]interface{}, error) {

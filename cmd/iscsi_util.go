@@ -131,7 +131,8 @@ func IterateActivatedIscsiShares(optIpPortalAddr string, callback func(root stri
 	}
 }
 
-func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeMap map[string]string, isMinimal, shouldRemove bool) {
+func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeMap map[string]string, isMinimal bool, shouldPrintStatus bool) []string {
+	deactivatedList := make([]string, 0)
 	IterateActivatedIscsiShares(optIpPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
 		if _, exists := maybeHashedToVolumeMap[targetOnlyName]; exists {
 			logoutParams := []string{
@@ -146,21 +147,27 @@ func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeM
 			DebugString(strings.Join(logoutParams, " "))
 			_, err := RunIscsiAdminTool(logoutParams)
 
-			if err == nil {
-				fmt.Println("deactivated\t", iqnTargetName)
-			} else if !isMinimal {
-				fmt.Println("failed\t", iqnTargetName)
+			if !isMinimal {
+				if err == nil {
+					fmt.Println("deactivated\t", iqnTargetName)
+				} else if err != nil {
+					fmt.Println("failed\t", iqnTargetName)
+					fmt.Println(err)
+				}
+			} else if err == nil {
+				if shouldPrintStatus {
+					fmt.Println("deactivated\t", iqnTargetName)
+				} else {
+					fmt.Println(iqnTargetName)
+				}
 			}
 
-			if shouldRemove && maybeHashedToVolumeMap != nil {
-				// Remove this entry from the map, so that it will contain all iSCSI volumes that we tried to log out but failed to.
-				// Not necessary, but it clarifies console output.
-				delete(maybeHashedToVolumeMap, targetOnlyName)
-			}
+			deactivatedList = append(deactivatedList, targetOnlyName)
 		} else if !isMinimal {
-			fmt.Println("\"" + targetOnlyName + "\" was not in", maybeHashedToVolumeMap)
+			fmt.Println("not-found\t" + targetOnlyName)
 		}
 	})
+	return deactivatedList
 }
 
 func GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap map[string]string, portalAddr string) ([]typeIscsiLoginSpec, error) {
@@ -253,8 +260,6 @@ func CheckIscsiAdminToolExists() error {
 	return err
 }
 
-// TODO: Wait for daemon to ACTUALLY finish launching.
-// running an iscsiadm command immediately after launching the daemon results in an error for some reason.
 func MaybeLaunchIscsiDaemon() error {
 	// assuming a stable internet connection, iscsid as a command does not block.
 	// it instead starts the actual daemon before returning immediately, without any console output.

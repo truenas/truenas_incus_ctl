@@ -80,10 +80,6 @@ func init() {
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "", "label to prefix the created target")
 		c.Flags().IntP("iscsi-port", "p", 3260, "iSCSI portal port")
-	}
-
-	_iscsiAdminCmds := []*cobra.Command {iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd}
-	for _, c := range _iscsiAdminCmds {
 		c.Flags().Bool("parsable", false, "Parsable (ie. minimal) output")
 	}
 
@@ -445,8 +441,14 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	changes = make([]typeApiCallRecord, 0)
 
-	for volName, _ := range targets {
-		fmt.Println("created\t" + volName)
+	if strings.HasPrefix(cmd.Use, "locate") || !core.IsStringTrue(options.allFlags, "parsable") {
+		for volName, _ := range targets {
+			fmt.Println("created\t" + volName)
+		}
+	} else {
+		for volName, _ := range targets {
+			fmt.Println(volName)
+		}
 	}
 
 	return nil
@@ -613,7 +615,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			remainingTargets = append(remainingTargets, t)
 		}
 		if len(remainingTargets) > 0 {
-			if err = doIscsiActivate(remainingTargets, ipPortalAddr, isMinimal); err != nil {
+			if err = doIscsiActivate(remainingTargets, ipPortalAddr, isMinimal, true); err != nil {
 				return err
 			}
 		}
@@ -699,16 +701,18 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		})
 	}
 
-	return doIscsiActivate(targets, ipAddr, isMinimal)
+	return doIscsiActivate(targets, ipAddr, isMinimal, false)
 }
 
-func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool) error {
+func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool, shouldPrintStatus bool) error {
 	outerMap := make(map[string]bool)
 
 	for _, t := range targets {
 		iqnTarget := t.iqn + ":" + t.target
 		if t.remoteIp != ipAddr {
-			fmt.Println("IP MISMATCH:", t.remoteIp, "!=", ipAddr)
+			if !isMinimal {
+				fmt.Println("IP MISMATCH:", t.remoteIp, "!=", ipAddr)
+			}
 			continue
 		}
 		loginParams := []string{
@@ -722,11 +726,13 @@ func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool
 		}
 		DebugString(strings.Join(loginParams, " "))
 		_, err := RunIscsiAdminTool(loginParams)
-		if err != nil {
-			fmt.Println("failed\t", iqnTarget)
-			fmt.Println(err)
-		} else {
+		if err == nil {
 			outerMap[iqnTarget] = true
+		} else if !isMinimal || shouldPrintStatus {
+			fmt.Println("failed\t", iqnTarget)
+			if !isMinimal {
+				fmt.Println(err)
+			}
 		}
 	}
 
@@ -764,14 +770,22 @@ func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool
 		select {
 			case names := <- shareCh:
 				if _, exists := outerMap[names.iqnTargetName]; exists {
-					fmt.Println("activated\t" + names.fullPath)
+					if !isMinimal || shouldPrintStatus {
+						fmt.Println("activated\t" + names.fullPath)
+					} else {
+						fmt.Println(names.fullPath)
+					}
 					delete(outerMap, names.iqnTargetName)
 				}
 			case <- time.After(time.Duration(1000) * time.Millisecond):
 				IterateActivatedIscsiShares(ipAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
 					if _, exists := outerMap[iqnTargetName]; exists {
 						fullPath := path.Join(root, fullName)
-						fmt.Println("activated\t" + fullPath)
+						if !isMinimal || shouldPrintStatus {
+							fmt.Println("activated\t" + fullPath)
+						} else {
+							fmt.Println(fullPath)
+						}
 						delete(outerMap, iqnTargetName)
 					}
 				})
@@ -822,9 +836,12 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["iscsi_port"]
 	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
 
-	DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, isMinimal, true)
+	deactivatedList := DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, isMinimal, false)
 
 	if !isMinimal {
+		for _, vol := range deactivatedList {
+			delete(maybeHashedToVolumeMap, vol)
+		}
 		for _, vol := range maybeHashedToVolumeMap {
 			fmt.Println("not-found\t" + vol)
 		}
@@ -879,7 +896,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["iscsi_port"]
 
-	DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, true, false)
+	_ = DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, true, true)
 
 	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(true),
@@ -893,19 +910,41 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	targetIds := GetIdsOrderedByArgsFromResponse(responseTarget, "alias", args, argsMapIndex)
+	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
+	targetIds, targetNames := GetIdsOrderedByArgsFromResponse(responseTarget, "alias", args, argsMapIndex, isMinimal)
+
+	if len(targetIds) == 0 {
+		if !isMinimal {
+			fmt.Println("Could not find any shares to delete")
+		}
+		return nil
+	}
 
 	targetIdsDelete := make([]interface{}, len(targetIds))
 	for i, t := range targetIds {
 		targetIdsDelete[i] = []interface{} {t, true, true} // id, force, delete_extents
 	}
 
-	if len(targetIdsDelete) > 0 {
-		timeout := 15 * len(targetIdsDelete)
-		_, _, err = MaybeBulkApiCallArray(api, "iscsi.target.delete", int64(timeout), targetIdsDelete, true)
-		if err != nil {
-			return err
-		}
+	timeout := int64(10 + 10 * len(targetIdsDelete))
+
+	extras = typeQueryParams{
+		valueOrder:         BuildValueOrder(true),
+		shouldGetAllProps:  false,
+		shouldGetUserProps: false,
+		shouldRecurse:      true,
+	}
+	responseDatasets, err := QueryApi(api, "pool.dataset", args, core.StringRepeated("name", len(args)), []string{}, extras)
+	if err == nil {
+		timeout = int64(10 + 10 * len(responseDatasets.resultsMap))
+	}
+
+	_, _, err = MaybeBulkApiCallArray(api, "iscsi.target.delete", int64(timeout), targetIdsDelete, true)
+	if err != nil {
+		return err
+	}
+
+	for _, name := range targetNames {
+		fmt.Println("deleted\t" + name)
 	}
 
 	return nil
