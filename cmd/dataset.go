@@ -204,8 +204,11 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 	}
 
 	flagCreate := core.IsStringTrue(options.allFlags, "create")
-	delete(options.allFlags, "create")
-	delete(options.usedFlags, "create")
+	RemoveFlag(options, "create")
+
+	allowShrinking := core.IsStringTrue(options.allFlags, "allow_shrinking")
+	allowShrinking = allowShrinking
+	RemoveFlag(options, "allow_shrinking")
 
 	outMap := make(map[string]interface{})
 
