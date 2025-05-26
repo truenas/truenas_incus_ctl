@@ -219,14 +219,13 @@ func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	source := args[0]
 	dest := args[1]
 
-	outMap := make(map[string]interface{})
-	outMap["new_name"] = dest
+	//outMap := make(map[string]interface{})
+	//outMap["new_name"] = dest
 
-	params := []interface{}{source, outMap}
+	params := []interface{}{source, dest}
 	DebugJson(params)
 
-	// For now, snapshot rename uses the same API as dataset rename. This may change in the future.
-	out, err := core.ApiCall(api, "zfs.dataset.rename", 10, params)
+	out, err := core.ApiCall(api, "zfs.snapshot.rename", 10, params)
 	if err != nil {
 		return err
 	}
