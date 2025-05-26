@@ -224,7 +224,7 @@ func TestSnapshotRename(t *testing.T) {
 		renameSnapshot,
 		map[string]interface{}{},
 		[]string{"dozer/testing/test@readonly", "dozer/testing/test3@readonly"},
-		"[\"dozer/testing/test@readonly\",{\"new_name\":\"dozer/testing/test3@readonly\"}]",
+		"[\"dozer/testing/test@readonly\",\"dozer/testing/test3@readonly\"]",
 	))
 }
 
