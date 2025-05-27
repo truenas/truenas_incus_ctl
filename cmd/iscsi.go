@@ -90,6 +90,8 @@ func init() {
 	iscsiCmd.AddCommand(iscsiDeactivateCmd)
 	iscsiCmd.AddCommand(iscsiDeleteCmd)
 
+	AddIscsiCrudCommands(iscsiCmd)
+
 	shareCmd.AddCommand(iscsiCmd)
 }
 
