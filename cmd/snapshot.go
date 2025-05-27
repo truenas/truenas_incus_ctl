@@ -216,17 +216,27 @@ func deleteOrRollbackSnapshot(cmd *cobra.Command, api core.Session, args []strin
 func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
-	source := args[0]
-	dest := args[1]
+	srcType, source := core.IdentifyObject(args[0])
+	dstType, dest := core.IdentifyObject(args[1])
 
-	outMap := make(map[string]interface{})
-	outMap["new_name"] = dest
+	if srcType != "snapshot" {
+		return errors.New("\"" + source + "\" is not a snapshot")
+	}
 
-	params := []interface{}{source, outMap}
+	dsName := source[0 : strings.Index(source, "@")]
+
+	if dstType != "snapshot" {
+		dest = dsName + "@" + dest
+	} else if !strings.HasPrefix(dest, dsName + "@") {
+		return errors.New(
+			"The destination snapshot does not share the same dataset as the source.\n" +
+			"Try leaving out the dataset name in the destination.")
+	}
+
+	params := []interface{}{source, dest}
 	DebugJson(params)
 
-	// For now, snapshot rename uses the same API as dataset rename. This may change in the future.
-	out, err := core.ApiCall(api, "zfs.dataset.rename", 10, params)
+	out, err := core.ApiCall(api, "zfs.snapshot.rename", 10, params)
 	if err != nil {
 		return err
 	}

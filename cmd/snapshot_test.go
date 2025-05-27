@@ -217,14 +217,37 @@ func TestSnapshotListWithProperties(t *testing.T) {
 	))
 }
 
-func TestSnapshotRename(t *testing.T) {
+func TestSnapshotRenameFail(t *testing.T) {
 	FailIf(t, DoSimpleTest(
 		t,
 		snapshotRenameCmd,
 		renameSnapshot,
 		map[string]interface{}{},
 		[]string{"dozer/testing/test@readonly", "dozer/testing/test3@readonly"},
-		"[\"dozer/testing/test@readonly\",{\"new_name\":\"dozer/testing/test3@readonly\"}]",
+		"The destination snapshot does not share the same dataset as the source.\n" +
+			"Try leaving out the dataset name in the destination.",
+	))
+}
+
+func TestSnapshotRename(t *testing.T) {
+	FailIf(t, DoSimpleTest(
+		t,
+		snapshotRenameCmd,
+		renameSnapshot,
+		map[string]interface{}{},
+		[]string{"dozer/testing/test@readonly", "dozer/testing/test@renamed-readonly"},
+		"[\"dozer/testing/test@readonly\",\"dozer/testing/test@renamed-readonly\"]",
+	))
+}
+
+func TestSnapshotRenameShorthand(t *testing.T) {
+	FailIf(t, DoSimpleTest(
+		t,
+		snapshotRenameCmd,
+		renameSnapshot,
+		map[string]interface{}{},
+		[]string{"dozer/testing/test@readonly", "renamed-readonly"},
+		"[\"dozer/testing/test@readonly\",\"dozer/testing/test@renamed-readonly\"]",
 	))
 }
 

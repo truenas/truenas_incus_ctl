@@ -31,8 +31,9 @@ import (
 0.5.3 `share iscsi locate --activate/--deactivate`
 0.6.0 added config command, changed definition of global flags
 0.6.1 `share iscsi locate --create/--delete`
+0.6.2 `snapshot rename` now calls zfs.snapshot.rename end-point
 */
-const VERSION = "0.6.1"
+const VERSION = "0.6.2"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
