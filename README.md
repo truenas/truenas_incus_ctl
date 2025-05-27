@@ -102,4 +102,4 @@ index b04ecc1ec1..40797b71a7 100644
 
 ```
 
-The rootfs read-only protection can be removed by the following command: `zfs set readonly=off <BOOT-POOL>/ROOT/<TRUENAS-BOOT-ENV>/usr`, where \<TRUENAS-BOOT-ENV> is the name of the active TrueNAS Boot Environment, eg: "25.10.0", or "25.10.0-MASTER-20250519-015438, and \<BOOT-POOL> is the name of the boot pool, eg: "boot-pool". You can use `cat /proc/mounts | grep /usr` to see the name of the active /usr dataset
+The rootfs read-only protection can be removed by the following command: `zfs set readonly=off <BOOT-POOL>/ROOT/<TRUENAS-BOOT-ENV>/usr`, where `<TRUENAS-BOOT-ENV>` is the name of the active TrueNAS Boot Environment, eg: "25.10.0", or "25.10.0-MASTER-20250519-015438, and `<BOOT-POOL>` is the name of the boot pool, eg: "boot-pool". You can use `cat /proc/mounts | grep /usr` to see the name of the active /usr dataset
