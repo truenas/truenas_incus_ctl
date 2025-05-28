@@ -728,11 +728,8 @@ func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool
 		_, err := RunIscsiAdminTool(loginParams)
 		if err == nil {
 			outerMap[iqnTarget] = true
-		} else if !isMinimal || shouldPrintStatus {
-			fmt.Println("failed\t", iqnTarget)
-			if !isMinimal {
-				fmt.Println(err)
-			}
+		} else {
+			return fmt.Errorf("failed\t%s\t%v", iqnTarget, err)
 		}
 	}
 
@@ -740,6 +737,7 @@ func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool
 		if !isMinimal {
 			return fmt.Errorf("No matching iscsi shares were found")
 		}
+		return nil
 	}
 
 	innerMap := make(map[string]bool)
