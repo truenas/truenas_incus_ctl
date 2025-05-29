@@ -1,13 +1,11 @@
 package cmd
 
 import (
-	//"encoding/json"
+	"encoding/json"
 	"fmt"
 	"log"
-	//"path"
 	"strconv"
 	"strings"
-	//"time"
 	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
@@ -30,12 +28,48 @@ var iscsiCrudIdentifierMap = map[string][]string {
 	"auth": []string {"id", "user"},
 }
 
+var iscsiCrudRequiredAttrMap = map[string][]string {
+	"target": []string {"name", "alias"},
+	"extent": []string {"name", "disk"},
+	"targetextent": []string {"target", "extent"},
+	"initiator": []string {},
+	"portal": []string {"listen"},
+	"auth": []string {"tag", "user", "secret"},
+}
+
+var iscsiTargetUpdateCreateEnums map[string][]string
+var iscsiExtentUpdateCreateEnums map[string][]string
+var iscsiAuthUpdateCreateEnums map[string][]string
+
 var iscsiCrudFeatureMap = map[string]map[string]iscsiCrudFeature {
 	"target": map[string]iscsiCrudFeature {
-		"alias": iscsiCrudFeature { kind: "String", defValue: "", description: "Path of attached extent" },
+		"name": iscsiCrudFeature { kind: "String", defValue: "", description: "Target name" },
+		"alias": iscsiCrudFeature { kind: "String", defValue: "", description: "Alias (path of attached extent by convention)" },
+		"mode": iscsiCrudFeature { kind: "String", defValue: "iscsi", description: ""+
+			AddFlagsEnum(&iscsiTargetUpdateCreateEnums, "mode", []string{"iscsi", "fc", "both"}) },
+		"groups": iscsiCrudFeature { kind: "StringArray", defValue: "", description: "Array of groups" },
+		"auth-networks": iscsiCrudFeature { kind: "StringArray", defValue: "", description: "Array of authorized networks" },
+        "iscsi-parameters": iscsiCrudFeature { kind: "StringArray", defValue: "", description: "JSON object of additional parameters" },
 	},
 	"extent": map[string]iscsiCrudFeature {
-		"disk": iscsiCrudFeature { kind: "String", defValue: "", description: "Path to zvol" },
+		"name": iscsiCrudFeature { kind: "String", defValue: "", description: "Extent name" },
+		"disk": iscsiCrudFeature { kind: "String", defValue: "", description: "Zvol disk (incompatible with path)" },
+		"type": iscsiCrudFeature { kind: "String", defValue: "disk", description: ""+
+			AddFlagsEnum(&iscsiExtentUpdateCreateEnums, "type", []string {"disk", "file"}) },
+		"serial": iscsiCrudFeature { kind: "String", defValue: "", description: "Serial number" },
+		"path": iscsiCrudFeature { kind: "String", defValue: "", description: "Mount path (incompatible with disk)" },
+		"filesize": iscsiCrudFeature { kind: "String", defValue: "", description: "File size" },
+		"blocksize": iscsiCrudFeature { kind: "String", defValue: "512", description: ""+
+			AddFlagsEnum(&iscsiExtentUpdateCreateEnums, "blocksize", []string {"512", "1024", "2048", "4096"}) },
+		"pblocksize": iscsiCrudFeature { kind: "Bool", defValue: false, description: "?" },
+		"avail-threshold": iscsiCrudFeature { kind: "Int", defValue: 0, description: "Available threshold" },
+		"comment": iscsiCrudFeature { kind: "String", defValue: "", description: "Comment" },
+		"insecure-tpc": iscsiCrudFeature { kind: "Bool", defValue: true, description: "?" },
+		"xen": iscsiCrudFeature { kind: "Bool", defValue: false, description: "Xen processor" },
+		"rpm": iscsiCrudFeature { kind: "String", defValue: "ssd", description: ""+
+			AddFlagsEnum(&iscsiExtentUpdateCreateEnums, "rpm", []string {"unknown", "ssd", "5400", "7200", "10000", "15000"}) },
+		"ro": iscsiCrudFeature { kind: "Bool", defValue: false, description: "Read-only mode" },
+		"enabled": iscsiCrudFeature { kind: "Bool", defValue: true, description: "Enabled" },
 	},
 	"targetextent": map[string]iscsiCrudFeature {
 		"target": iscsiCrudFeature { kind: "String", defValue: "", description: "ID or name of target" },
@@ -48,11 +82,16 @@ var iscsiCrudFeatureMap = map[string]map[string]iscsiCrudFeature {
 	},
 	"portal": map[string]iscsiCrudFeature {
 		"listen":  iscsiCrudFeature { kind: "StringArray", defValue: "", description: "Remote IP:port" },
-		"tag":     iscsiCrudFeature { kind: "Int64", defValue: 0, description: "Portal tag" },
 		"comment": iscsiCrudFeature { kind: "String", defValue: "", description: "Portal description/comment" },
 	},
 	"auth": map[string]iscsiCrudFeature {
+		"tag": iscsiCrudFeature { kind: "Int64", defValue: 0, description: "Authorization tag" },
 		"user": iscsiCrudFeature { kind: "String", defValue: "", description: "User name" },
+		"secret": iscsiCrudFeature { kind: "String", defValue: "", description: "Password" },
+		"peeruser": iscsiCrudFeature { kind: "String", defValue: "", description: "Peer user name" },
+		"peersecret": iscsiCrudFeature { kind: "String", defValue: "", description: "Peer password" },
+		"discovery-auth": iscsiCrudFeature { kind: "String", defValue: "none", description: ""+
+			AddFlagsEnum(&iscsiAuthUpdateCreateEnums, "discovery-auth", []string{"none", "chap", "chap_mutual"}) },
 	},
 }
 
@@ -67,12 +106,27 @@ func WrapIscsiCrudFunc(cmdFunc func(*cobra.Command,string,core.Session,[]string)
 	}
 }
 
+func WrapIscsiCrudFuncNoArgs(cmdFunc func(*cobra.Command,string,core.Session)error, category string) func(*cobra.Command,[]string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		api := InitializeApiClient()
+		if api == nil {
+			return nil
+		}
+		err := cmdFunc(cmd, category, api)
+		return api.Close(err)
+	}
+}
+
 func AddIscsiCrudCommandFlag(cmd *cobra.Command, name string, feature iscsiCrudFeature) {
 	switch feature.kind {
+		case "Bool":
+			cmd.Flags().Bool(name, feature.defValue.(bool), feature.description)
 		case "String":
 			cmd.Flags().String(name, feature.defValue.(string), feature.description)
 		case "StringArray":
 			cmd.Flags().String(name, feature.defValue.(string), feature.description)
+		case "Int":
+			fallthrough
 		case "Int64":
 			if intValue, ok := feature.defValue.(int); ok {
 				cmd.Flags().Int(name, intValue, feature.description)
@@ -85,15 +139,14 @@ func AddIscsiCrudCommandFlag(cmd *cobra.Command, name string, feature iscsiCrudF
 }
 
 var iscsiCrudListEnums map[string][]string
-var iscsiCrudUpdateCreateEnums map[string][]string
 
 func AddIscsiCrudCommands(parentCmd *cobra.Command) {
 	listFormatDesc := AddFlagsEnum(&iscsiCrudListEnums, "format", []string{"csv", "json", "table", "compact"})
 
 	for _, category := range iscsiCrudCategories {
 		cmdList := &cobra.Command { Use: "list", RunE: WrapIscsiCrudFunc(iscsiCrudList, category) }
-		cmdCreate := &cobra.Command { Use: "create", RunE: WrapIscsiCrudFunc(iscsiCrudUpdateCreate, category) }
-		cmdUpdate := &cobra.Command { Use: "update", RunE: WrapIscsiCrudFunc(iscsiCrudUpdateCreate, category) }
+		cmdCreate := &cobra.Command { Use: "create", Args: cobra.ExactArgs(0), RunE: WrapIscsiCrudFuncNoArgs(iscsiCrudUpdateCreate, category) }
+		cmdUpdate := &cobra.Command { Use: "update", Args: cobra.ExactArgs(0), RunE: WrapIscsiCrudFuncNoArgs(iscsiCrudUpdateCreate, category) }
 		cmdDelete := &cobra.Command { Use: "delete", RunE: WrapIscsiCrudFunc(iscsiCrudDelete, category) }
 
 		features := iscsiCrudFeatureMap[category]
@@ -303,66 +356,7 @@ func iscsiCrudList(cmd *cobra.Command, category string, api core.Session, args [
 	return err
 }
 
-func iscsiResolveTargets(args, attrs, values []string) {
-	for i, arg := range args {
-		colonPos := strings.Index(arg, ":")
-		slashPos := strings.Index(arg, "/")
-		isDisk := true
-		if slashPos >= 0 && colonPos >= 0 {
-			isDisk = slashPos < colonPos
-		} else if slashPos == -1 {
-			isDisk = false
-		}
-		if isDisk {
-			attrs[i] = "alias"
-		} else {
-			attrs[i] = "name"
-		}
-		values[i] = arg
-	}
-}
-
-func iscsiResolveExtents(args, attrs, values []string) {
-	for i, arg := range args {
-		colonPos := strings.Index(arg, ":")
-		slashPos := strings.Index(arg, "/")
-		isDisk := true
-		if slashPos >= 0 && colonPos >= 0 {
-			isDisk = slashPos < colonPos
-		} else if slashPos == -1 {
-			isDisk = false
-		}
-		if isDisk {
-			attrs[i] = "disk"
-			if strings.HasPrefix(arg, "zvol/") {
-				values[i] = arg
-			} else {
-				values[i] = "zvol/" + arg
-			}
-		} else {
-			attrs[i] = "name"
-			values[i] = arg
-		}
-	}
-}
-
-func iscsiResolveTargetExtents(args, attrs, values []string) {
-	log.Fatal("creating/updating iscsi targetextents is currently not supported")
-}
-
-func iscsiResolveInitiators(args, attrs, values []string) {
-	log.Fatal("creating/updating iscsi initiators is currently not supported")
-}
-
-func iscsiResolvePortals(args, attrs, values []string) {
-	log.Fatal("creating/updating iscsi portals is currently not supported")
-}
-
-func iscsiResolveAuths(args, attrs, values []string) {
-	log.Fatal("creating/updating iscsi auths is currently not supported")
-}
-
-func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session, args []string) error {
+func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session) error {
 	isUpdate := false
 	isCreate := false
 	if strings.HasPrefix(cmd.Use, "update") {
@@ -373,7 +367,17 @@ func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session
 		log.Fatal("iscsiCrudUpdateCreate was called from a command that was neither update nor create")
 	}
 
-	options, _ := GetCobraFlags(cmd, false, iscsiCrudUpdateCreateEnums)
+	var updateCreateEnums map[string][]string
+	switch category {
+	case "target":
+		updateCreateEnums = iscsiTargetUpdateCreateEnums
+	case "extent":
+		updateCreateEnums = iscsiExtentUpdateCreateEnums
+	case "auth":
+		updateCreateEnums = iscsiAuthUpdateCreateEnums
+	}
+
+	options, _ := GetCobraFlags(cmd, false, updateCreateEnums)
 	if isUpdate {
 		isCreate = core.IsStringTrue(options.allFlags, "create")
 		RemoveFlag(options, "create")
@@ -386,14 +390,14 @@ func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session
 		switch propName {
 		case "option":
 			kvArray := ConvertParamsStringToKvArray(valueStr)
-			if err := WriteKvArrayToMap(outMap, kvArray, iscsiCrudUpdateCreateEnums); err != nil {
+			if err := WriteKvArrayToMap(outMap, kvArray, updateCreateEnums); err != nil {
 				return err
 			}
 		default:
 			isProp = true
 		}
 		if isProp {
-			value, err := ParseStringAndValidate(propName, valueStr, iscsiCrudUpdateCreateEnums)
+			value, err := ParseStringAndValidate(propName, valueStr, updateCreateEnums)
 			if err != nil {
 				return err
 			}
@@ -401,99 +405,73 @@ func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session
 		}
 	}
 
-	attrs := make([]string, len(args))
-	values := make([]string, len(args))
-	switch category {
-	case "target":
-		iscsiResolveTargets(args, attrs, values)
-	case "extent":
-		iscsiResolveExtents(args, attrs, values)
-	case "targetextent":
-		iscsiResolveTargetExtents(args, attrs, values)
-	case "initiator":
-		iscsiResolveInitiators(args, attrs, values)
-	case "portal":
-		iscsiResolvePortals(args, attrs, values)
-	case "auth":
-		iscsiResolveAuths(args, attrs, values)
+	required := iscsiCrudRequiredAttrMap[category]
+	missingAttrs := make([]string, 0)
+	queryFilter := make([]interface{}, 0)
+	for _, key := range required {
+		if value, exists := outMap[key]; exists {
+			queryFilter = append(queryFilter, []interface{} {
+				key,
+				"=",
+				value,
+			})
+		} else {
+			missingAttrs = append(missingAttrs, key)
+		}
+	}
+	if len(missingAttrs) > 0 {
+		return fmt.Errorf("iSCSI " + category + " also requires these attributes to be set:", missingAttrs) 
 	}
 
 	if isUpdate {
-		extras := typeQueryParams{
-			valueOrder:         BuildValueOrder(true),
-			shouldGetAllProps:  false,
-			shouldGetUserProps: false,
-			shouldRecurse:      false,
+		queryParams := []interface{} {
+			[]interface{} { queryFilter },
+			make(map[string]interface{}),
 		}
-		idsResponse, err := QueryApi(api, "iscsi." + category, values, attrs, nil, extras)
+		out, err := core.ApiCall(api, "iscsi." + category + ".query", 20, queryParams)
 		if err != nil {
 			return err
 		}
 
-		orderedIds := make([]interface{}, len(values))
-		for _, record := range idsResponse.resultsMap {
-			for i := 0; i < len(values); i++ {
-				if orderedIds[i] != nil {
-					continue
-				}
-				if value, ok := record[attrs[i]]; ok {
-					if fmt.Sprint(value) == values[i] {
-						orderedIds[i], _ = record["id"]
-						break
-					}
-				}
-			}
+		var jsonResponse interface{}
+		if err = json.Unmarshal(out, &jsonResponse); err != nil {
+			return fmt.Errorf("response error: %v", err)
 		}
 
-		listToCreate := make([]interface{}, 0)
-		listToUpdate := make([]interface{}, 0)
-
-		for i, id := range orderedIds {
-			if id != nil {
-				listToUpdate = append(listToUpdate, []interface{} { id, core.DeepCopy(outMap) })
-			} else {
-				obj := core.DeepCopy(outMap).(map[string]interface{})
-				obj[attrs[i]] = values[i]
-				listToCreate = append(listToCreate, []interface{} { obj })
-			}
+		responseMap, ok := jsonResponse.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("API response was not a JSON object")
 		}
 
-		if !isCreate && len(listToCreate) > 0 {
-			var combinedAttrValues strings.Builder
-			for i := 0; i < len(values); i++ {
-				if i > 0 {
-					combinedAttrValues.WriteString(",")
-				}
-				combinedAttrValues.WriteString(attrs[i])
-				combinedAttrValues.WriteString(":")
-				combinedAttrValues.WriteString(values[i])
-			}
-			return fmt.Errorf("Some %ss could not be found (%v)\nTry passing --create to create any missing %ss with the given settings", category, combinedAttrValues.String(), category)
+		resultsList, errMsg := core.ExtractJsonArrayOfMaps(responseMap, "result")
+		if errMsg != "" {
+			return fmt.Errorf("API response results: " + errMsg)
 		}
 
-		if len(listToUpdate) > 0 {
-			out, _, err := MaybeBulkApiCallArray(api, "iscsi." + category + ".update", int64(10 + 10 * len(listToUpdate)), listToUpdate, len(listToCreate) == 0)
+		var existingId interface{}
+		if len(resultsList) > 0 {
+			existingId, _ = resultsList[0]["id"]
+		}
+
+		if !isCreate && existingId == nil {
+			return fmt.Errorf("%s with params [%v] could not be found\nTry passing --create to create any missing %ss with the given settings", category, queryFilter, category)
+		}
+
+		if isCreate {
+			out, err := core.ApiCall(api, "iscsi." + category + ".create", 20, []interface{} {outMap})
 			if err != nil {
 				return err
 			}
-			if out != nil {
-				DebugString(string(out))
-			}
-		}
-		if len(listToCreate) > 0 {
-			_, _, err := MaybeBulkApiCallArray(api, "iscsi." + category + ".create", int64(10 + 10 * len(listToCreate)), listToCreate, false)
+			DebugString(string(out))
+		} else {
+			out, err := core.ApiCall(api, "iscsi." + category + ".update", 20, []interface{} {existingId, outMap})
 			if err != nil {
 				return err
 			}
+			DebugString(string(out))
 		}
 	} else {
-		listToCreate := make([]interface{}, 0)
-		for i := 0; i < len(values); i++ {
-			obj := core.DeepCopy(outMap).(map[string]interface{})
-			obj[attrs[i]] = values[i]
-			listToCreate = append(listToCreate, []interface{} { obj })
-		}
-		out, _, err := MaybeBulkApiCallArray(api, "iscsi." + category + ".create", int64(10 + 10 * len(listToCreate)), listToCreate, true)
+		out, err := core.ApiCall(api, "iscsi." + category + ".create", 20, []interface{} {outMap})
 		if err != nil {
 			return err
 		}
