@@ -651,7 +651,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			DebugString(strings.Join(logoutParams, " "))
 			_, err := RunIscsiAdminTool(logoutParams)
 			if err != nil {
-				fmt.Println("failed\t" + t)
+				fmt.Printf("failed\t%s\t%v\n", t, err)
 			} else {
 				fmt.Println("deactivated\t" + t)
 			}
