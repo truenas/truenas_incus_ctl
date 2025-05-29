@@ -174,6 +174,80 @@ func iscsiCrudQuery(api core.Session, object string, values []string, properties
 	return combined
 }
 
+func iscsiQueryTargetExtentWithJoin(api core.Session, values []string, properties []string, extras typeQueryParams) typeQueryResponse {
+	response := iscsiCrudQuery(api, "targetextent", nil, properties, extras)
+
+	oldShouldGetAll := extras.shouldGetAllProps
+	extras.shouldGetAllProps = false
+
+	targetResponse := iscsiCrudQuery(api, "target", values, nil, extras)
+	extentResponse := iscsiCrudQuery(api, "extent", values, nil, extras)
+
+	missingTargets := make(map[string]string)
+	missingExtents := make(map[string]string)
+	listToRemove := make([]string, 0)
+	for k, _ := range response.resultsMap {
+		found := false
+		missingTarget := ""
+		missingExtent := ""
+		if targetId, ok := response.resultsMap[k]["target"]; ok {
+			idStr := fmt.Sprint(targetId)
+			if target, ok := targetResponse.resultsMap[idStr]; ok {
+				response.resultsMap[k]["target_name"], _ = target["name"]
+				found = true
+			} else {
+				missingTarget = idStr
+			}
+		}
+		if extentId, ok := response.resultsMap[k]["extent"]; ok {
+			idStr := fmt.Sprint(extentId)
+			if extent, ok := extentResponse.resultsMap[idStr]; ok {
+				response.resultsMap[k]["extent_name"], _ = extent["name"]
+				found = true
+			} else {
+				missingExtent = idStr
+			}
+		}
+		if !found {
+			listToRemove = append(listToRemove, k)
+		} else if missingTarget != "" {
+			missingTargets[missingTarget] = k
+		} else if missingExtent != "" {
+			missingExtents[missingExtent] = k
+		}
+	}
+
+	DeleteResponseEntries(&response, listToRemove)
+
+	listMissingTargets := make([]string, 0)
+	for k, _ := range missingTargets {
+		listMissingTargets = append(listMissingTargets, k)
+	}
+	listMissingExtents := make([]string, 0)
+	for k, _ := range missingExtents {
+		listMissingExtents = append(listMissingExtents, k)
+	}
+
+	if len(listMissingTargets) > 0 {
+		subRes, _ := QueryApi(api, "iscsi.target", listMissingTargets, core.StringRepeated("id", len(listMissingTargets)), nil, extras)
+		for targetId, obj := range subRes.resultsMap {
+			if teId, ok := missingTargets[targetId]; ok {
+				response.resultsMap[teId]["target_name"], _ = obj["name"]
+			}
+		}
+	}
+	if len(listMissingExtents) > 0 {
+		subRes, _ := QueryApi(api, "iscsi.extent", listMissingExtents, core.StringRepeated("id", len(listMissingExtents)), nil, extras)
+		for extentId, obj := range subRes.resultsMap {
+			if teId, ok := missingExtents[extentId]; ok {
+				response.resultsMap[teId]["extent_name"], _ = obj["name"]
+			}
+		}
+	}
+	extras.shouldGetAllProps = oldShouldGetAll
+	return response
+}
+
 func iscsiCrudList(cmd *cobra.Command, object string, api core.Session, args []string) error {
 	options, err := GetCobraFlags(cmd, false, iscsiCrudListEnums)
 	if err != nil {
@@ -193,80 +267,13 @@ func iscsiCrudList(cmd *cobra.Command, object string, api core.Session, args []s
 		valueOrder:         BuildValueOrder(core.IsStringTrue(options.allFlags, "parsable")),
 		shouldGetAllProps:  core.IsStringTrue(options.allFlags, "all") || (object == "targetextent" && len(properties) == 0),
 		shouldGetUserProps: false,
-		shouldRecurse:      len(args) == 0 || core.IsStringTrue(options.allFlags, "recursive"),
+		shouldRecurse:      false,
 	}
 
 	var response typeQueryResponse
 
 	if object == "targetextent" {
-		oldShouldGetAll := extras.shouldGetAllProps
-		response = iscsiCrudQuery(api, "targetextent", nil, properties, extras)
-		extras.shouldGetAllProps = false
-		targetResponse := iscsiCrudQuery(api, "target", args, nil, extras)
-		extentResponse := iscsiCrudQuery(api, "extent", args, nil, extras)
-
-		missingTargets := make(map[string]string)
-		missingExtents := make(map[string]string)
-		listToRemove := make([]string, 0)
-		for k, _ := range response.resultsMap {
-			found := false
-			missingTarget := ""
-			missingExtent := ""
-			if targetId, ok := response.resultsMap[k]["target"]; ok {
-				idStr := fmt.Sprint(targetId)
-				if target, ok := targetResponse.resultsMap[idStr]; ok {
-					response.resultsMap[k]["target_name"], _ = target["name"]
-					found = true
-				} else {
-					missingTarget = idStr
-				}
-			}
-			if extentId, ok := response.resultsMap[k]["extent"]; ok {
-				idStr := fmt.Sprint(extentId)
-				if extent, ok := extentResponse.resultsMap[idStr]; ok {
-					response.resultsMap[k]["extent_name"], _ = extent["name"]
-					found = true
-				} else {
-					missingExtent = idStr
-				}
-			}
-			if !found {
-				listToRemove = append(listToRemove, k)
-			} else if missingTarget != "" {
-				missingTargets[missingTarget] = k
-			} else if missingExtent != "" {
-				missingExtents[missingExtent] = k
-			}
-		}
-
-		DeleteResponseEntries(&response, listToRemove)
-
-		listMissingTargets := make([]string, 0)
-		for k, _ := range missingTargets {
-			listMissingTargets = append(listMissingTargets, k)
-		}
-		listMissingExtents := make([]string, 0)
-		for k, _ := range missingExtents {
-			listMissingExtents = append(listMissingExtents, k)
-		}
-
-		if len(listMissingTargets) > 0 {
-			subRes, _ := QueryApi(api, "iscsi.target", listMissingTargets, core.StringRepeated("id", len(listMissingTargets)), nil, extras)
-			for targetId, obj := range subRes.resultsMap {
-				if teId, ok := missingTargets[targetId]; ok {
-					response.resultsMap[teId]["target_name"], _ = obj["name"]
-				}
-			}
-		}
-		if len(listMissingExtents) > 0 {
-			subRes, _ := QueryApi(api, "iscsi.extent", listMissingExtents, core.StringRepeated("id", len(listMissingExtents)), nil, extras)
-			for extentId, obj := range subRes.resultsMap {
-				if teId, ok := missingExtents[extentId]; ok {
-					response.resultsMap[teId]["extent_name"], _ = obj["name"]
-				}
-			}
-		}
-		extras.shouldGetAllProps = oldShouldGetAll
+		response = iscsiQueryTargetExtentWithJoin(api, args, properties, extras)
 	} else {
 		response = iscsiCrudQuery(api, object, args, properties, extras)
 	}
@@ -297,5 +304,31 @@ func iscsiCrudUpdateCreate(cmd *cobra.Command, object string, api core.Session, 
 }
 
 func iscsiCrudDelete(cmd *cobra.Command, object string, api core.Session, args []string) error {
+	options, _ := GetCobraFlags(cmd, false, nil)
+	options = options
+
+	cmd.SilenceUsage = true
+
+	extras := typeQueryParams{
+		valueOrder:         BuildValueOrder(true),
+		shouldGetAllProps:  false,
+		shouldGetUserProps: false,
+		shouldRecurse:      false,
+	}
+
+	response := iscsiCrudQuery(api, object, args, nil, extras)
+
+	idsToDelete := make([]interface{}, 0)
+	for k, _ := range response.resultsMap {
+		if n, errNotNumber := strconv.Atoi(k); errNotNumber == nil {
+			idsToDelete = append(idsToDelete, []interface{}{n})
+		} else {
+			idsToDelete = append(idsToDelete, []interface{}{k})
+		}
+	}
+	if len(idsToDelete) > 0 {
+		_, _, err := MaybeBulkApiCallArray(api, "iscsi." + object + ".delete", int64(10 * len(idsToDelete)), idsToDelete, true)
+		return err
+	}
 	return nil
 }
