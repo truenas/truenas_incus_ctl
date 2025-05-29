@@ -508,9 +508,17 @@ func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, ar
 
 	portalAddr := hostname + ":" + options.allFlags["iscsi_port"]
 
-	var targets []typeIscsiLoginSpec
-	sessionTargets, _ := GetIscsiTargetsFromSession(maybeHashedToVolumeMap)
-	discoveryTargets, _ := GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap, portalAddr)
+	sessionTargets, err := GetIscsiTargetsFromSession(maybeHashedToVolumeMap)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	discoveryTargets, err := GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap, portalAddr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	targets := make([]typeIscsiLoginSpec, 0)
 	targets = append(targets, sessionTargets...)
 	targets = append(targets, discoveryTargets...)
 
