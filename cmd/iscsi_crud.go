@@ -2,11 +2,11 @@ package cmd
 
 import (
 	//"encoding/json"
-	//"fmt"
+	"fmt"
 	"log"
 	//"path"
-	//"strconv"
-	//"strings"
+	"strconv"
+	"strings"
 	//"time"
 	"truenas/truenas_incus_ctl/core"
 
@@ -14,40 +14,45 @@ import (
 )
 
 type iscsiCrudFeature struct {
-	name string
 	kind string
 	defValue interface{}
 	description string
 }
 
-var iscsiCrudObjects = []string { "target", "extent", "targetextent", "initiator", "auth" }
+var iscsiCrudObjects = []string { "target", "extent", "targetextent", "initiator", "portal", "auth" }
 
 var iscsiCrudIdentifierMap = map[string][]string {
 	"target": []string {"id", "name", "alias"},
 	"extent": []string {"id", "name", "disk"},
 	"targetextent": []string {"id", "target", "extent"},
 	"initiator": []string {"id", "comment"},
+	"portal": []string {"id", "listen", "tag", "comment"},
 	"auth": []string {"id", "user"},
 }
 
-var iscsiCrudFeatureMap = map[string][]iscsiCrudFeature {
-	"target": []iscsiCrudFeature {
-		iscsiCrudFeature { name: "alias", kind: "String", defValue: "", description: "Path of attached extent" },
+var iscsiCrudFeatureMap = map[string]map[string]iscsiCrudFeature {
+	"target": map[string]iscsiCrudFeature {
+		"alias": iscsiCrudFeature { kind: "String", defValue: "", description: "Path of attached extent" },
 	},
-	"extent": []iscsiCrudFeature {
-		iscsiCrudFeature { name: "disk", kind: "String", defValue: "", description: "Path to zvol" },
+	"extent": map[string]iscsiCrudFeature {
+		"disk": iscsiCrudFeature { kind: "String", defValue: "", description: "Path to zvol" },
 	},
-	"targetextent": []iscsiCrudFeature {
-		iscsiCrudFeature { name: "target", kind: "String", defValue: "", description: "ID or name of target" },
-		iscsiCrudFeature { name: "lunid", kind: "Int64", defValue: 0, description: "LUN ID" },
-		iscsiCrudFeature { name: "extent", kind: "String", defValue: "", description: "ID or name of extent" },
+	"targetextent": map[string]iscsiCrudFeature {
+		"target": iscsiCrudFeature { kind: "String", defValue: "", description: "ID or name of target" },
+		"lunid":  iscsiCrudFeature { kind: "Int64", defValue: 0, description: "LUN ID" },
+		"extent": iscsiCrudFeature { kind: "String", defValue: "", description: "ID or name of extent" },
 	},
-	"initiator": []iscsiCrudFeature {
-		iscsiCrudFeature { name: "initiators", kind: "String", defValue: "", description: "List of initiators in this group" },
-		iscsiCrudFeature { name: "comment", kind: "String", defValue: "", description: "Initiator group description/comment" },
+	"initiator": map[string]iscsiCrudFeature {
+		"initiators": iscsiCrudFeature { kind: "String", defValue: "", description: "List of initiators in this group" },
+		"comment":    iscsiCrudFeature { kind: "String", defValue: "", description: "Initiator group description/comment" },
 	},
-	"auth": []iscsiCrudFeature {
-		iscsiCrudFeature { name: "user", kind: "String", defValue: "", description: "User name" },
+	"portal": map[string]iscsiCrudFeature {
+		"listen":  iscsiCrudFeature { kind: "StringArray", defValue: "", description: "Remote IP:port" },
+		"tag":     iscsiCrudFeature { kind: "Int64", defValue: 0, description: "Portal tag" },
+		"comment": iscsiCrudFeature { kind: "String", defValue: "", description: "Portal description/comment" },
+	},
+	"auth": map[string]iscsiCrudFeature {
+		"user": iscsiCrudFeature { kind: "String", defValue: "", description: "User name" },
 	},
 }
 
@@ -62,15 +67,17 @@ func WrapIscsiCrudFunc(cmdFunc func(*cobra.Command,string,core.Session,[]string)
 	}
 }
 
-func AddIscsiCrudCommandFlag(cmd *cobra.Command, feature iscsiCrudFeature) {
+func AddIscsiCrudCommandFlag(cmd *cobra.Command, name string, feature iscsiCrudFeature) {
 	switch feature.kind {
 		case "String":
-			cmd.Flags().String(feature.name, feature.defValue.(string), feature.description)
+			cmd.Flags().String(name, feature.defValue.(string), feature.description)
+		case "StringArray":
+			cmd.Flags().String(name, feature.defValue.(string), feature.description)
 		case "Int64":
 			if intValue, ok := feature.defValue.(int); ok {
-				cmd.Flags().Int(feature.name, intValue, feature.description)
+				cmd.Flags().Int(name, intValue, feature.description)
 			} else if int64Value, ok := feature.defValue.(int64); ok {
-				cmd.Flags().Int64(feature.name, int64Value, feature.description)
+				cmd.Flags().Int64(name, int64Value, feature.description)
 			}
 		default:
 			log.Fatal("Flag type \"" + feature.kind + "\" is currently not supported by AddIscsiCrudCommandFlag()")
@@ -89,9 +96,9 @@ func AddIscsiCrudCommands(parentCmd *cobra.Command) {
 		cmdDelete := &cobra.Command { Use: "delete", RunE: WrapIscsiCrudFunc(iscsiCrudDelete, object) }
 
 		features := iscsiCrudFeatureMap[object]
-		for _, f := range features {
-			AddIscsiCrudCommandFlag(cmdCreate, f)
-			AddIscsiCrudCommandFlag(cmdUpdate, f)
+		for name, f := range features {
+			AddIscsiCrudCommandFlag(cmdCreate, name, f)
+			AddIscsiCrudCommandFlag(cmdUpdate, name, f)
 		}
 
 		cmdList.Flags().BoolP("recursive", "r", false, "")
@@ -112,19 +119,59 @@ func AddIscsiCrudCommands(parentCmd *cobra.Command) {
 	}
 }
 
-func addIscsiQuery(api core.Session, object string, results []map[string]interface{}, values []string, properties []string, extras typeQueryParams) []map[string]interface{} {
+func iscsiCrudQuery(api core.Session, object string, values []string, properties []string, extras typeQueryParams) typeQueryResponse {
+	if len(values) == 0 {
+		response, _ := QueryApi(api, "iscsi." + object, nil, nil, properties, extras)
+		return response
+	}
+	combined := typeQueryResponse {
+		resultsMap: make(map[string]map[string]interface{}),
+		intKeys: make([]int, 0),
+		strKeys: make([]string, 0),
+	}
+
+	idValues := make([]string, 0)
+	for _, v := range values {
+		if _, errNotNumber := strconv.Atoi(v); errNotNumber == nil {
+			idValues = append(idValues, v)
+		}
+	}
+	if len(idValues) > 0 {
+		response, err := QueryApi(api, "iscsi." + object, idValues, core.StringRepeated("id", len(idValues)), properties, extras)
+		if err == nil {
+			MergeResponseInto(&combined, &response)
+		}
+	}
+
 	params := iscsiCrudIdentifierMap[object]
-	for _, kind := range params {
-		response, err := QueryApi(api, "iscsi." + object, values, core.StringRepeated(kind, len(values)), properties, extras)
+	for _, attr := range params {
+		queryValues := values
+		if attr == "disk" {
+			queryValues = make([]string, len(values))
+			for i := 0; i < len(values); i++ {
+				if strings.HasPrefix(values[i], "zvol/") {
+					queryValues[i] = values[i]
+				} else {
+					queryValues[i] = "zvol/" + values[i]
+				}
+			}
+		} else if iscsiCrudFeatureMap[object][attr].kind == "StringArray" {
+			queryValues = make([]string, len(values))
+			for i := 0; i < len(values); i++ {
+				if strings.HasPrefix(values[i], "[") {
+					queryValues[i] = values[i]
+				} else {
+					queryValues[i] = "[" + values[i] + "]"
+				}
+			}
+		}
+		response, err := QueryApi(api, "iscsi." + object, queryValues, core.StringRepeated(attr, len(queryValues)), properties, extras)
 		if err != nil {
 			continue
 		}
-		subResults := GetListFromQueryResponse(&response)
-		if len(subResults) > 0 {
-			results = append(results, subResults...)
-		}
+		MergeResponseInto(&combined, &response)
 	}
-	return results
+	return combined
 }
 
 func iscsiCrudList(cmd *cobra.Command, object string, api core.Session, args []string) error {
@@ -140,26 +187,97 @@ func iscsiCrudList(cmd *cobra.Command, object string, api core.Session, args []s
 
 	cmd.SilenceUsage = true
 
+	properties := EnumerateOutputProperties(options.allFlags)
+
 	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(core.IsStringTrue(options.allFlags, "parsable")),
-		shouldGetAllProps:  core.IsStringTrue(options.allFlags, "all"),
+		shouldGetAllProps:  core.IsStringTrue(options.allFlags, "all") || (object == "targetextent" && len(properties) == 0),
 		shouldGetUserProps: false,
 		shouldRecurse:      len(args) == 0 || core.IsStringTrue(options.allFlags, "recursive"),
 	}
 
-	var properties []string
-	results := make([]map[string]interface{}, 0)
+	var response typeQueryResponse
 
 	if object == "targetextent" {
-		results = addIscsiQuery(api, "targetextent", results, args, properties, extras)
-		results = addIscsiQuery(api, "target", results, args, properties, extras)
-		results = addIscsiQuery(api, "extent", results, args, properties, extras)
+		oldShouldGetAll := extras.shouldGetAllProps
+		response = iscsiCrudQuery(api, "targetextent", nil, properties, extras)
+		extras.shouldGetAllProps = false
+		targetResponse := iscsiCrudQuery(api, "target", args, nil, extras)
+		extentResponse := iscsiCrudQuery(api, "extent", args, nil, extras)
+
+		missingTargets := make(map[string]string)
+		missingExtents := make(map[string]string)
+		listToRemove := make([]string, 0)
+		for k, _ := range response.resultsMap {
+			found := false
+			missingTarget := ""
+			missingExtent := ""
+			if targetId, ok := response.resultsMap[k]["target"]; ok {
+				idStr := fmt.Sprint(targetId)
+				if target, ok := targetResponse.resultsMap[idStr]; ok {
+					response.resultsMap[k]["target_name"], _ = target["name"]
+					found = true
+				} else {
+					missingTarget = idStr
+				}
+			}
+			if extentId, ok := response.resultsMap[k]["extent"]; ok {
+				idStr := fmt.Sprint(extentId)
+				if extent, ok := extentResponse.resultsMap[idStr]; ok {
+					response.resultsMap[k]["extent_name"], _ = extent["name"]
+					found = true
+				} else {
+					missingExtent = idStr
+				}
+			}
+			if !found {
+				listToRemove = append(listToRemove, k)
+			} else if missingTarget != "" {
+				missingTargets[missingTarget] = k
+			} else if missingExtent != "" {
+				missingExtents[missingExtent] = k
+			}
+		}
+
+		DeleteResponseEntries(&response, listToRemove)
+
+		listMissingTargets := make([]string, 0)
+		for k, _ := range missingTargets {
+			listMissingTargets = append(listMissingTargets, k)
+		}
+		listMissingExtents := make([]string, 0)
+		for k, _ := range missingExtents {
+			listMissingExtents = append(listMissingExtents, k)
+		}
+
+		if len(listMissingTargets) > 0 {
+			subRes, _ := QueryApi(api, "iscsi.target", listMissingTargets, core.StringRepeated("id", len(listMissingTargets)), nil, extras)
+			for targetId, obj := range subRes.resultsMap {
+				if teId, ok := missingTargets[targetId]; ok {
+					response.resultsMap[teId]["target_name"], _ = obj["name"]
+				}
+			}
+		}
+		if len(listMissingExtents) > 0 {
+			subRes, _ := QueryApi(api, "iscsi.extent", listMissingExtents, core.StringRepeated("id", len(listMissingExtents)), nil, extras)
+			for extentId, obj := range subRes.resultsMap {
+				if teId, ok := missingExtents[extentId]; ok {
+					response.resultsMap[teId]["extent_name"], _ = obj["name"]
+				}
+			}
+		}
+		extras.shouldGetAllProps = oldShouldGetAll
 	} else {
-		properties = EnumerateOutputProperties(options.allFlags)
-		results = addIscsiQuery(api, object, results, args, properties, extras)
+		response = iscsiCrudQuery(api, object, args, properties, extras)
 	}
 
-	required := []string{"name"}
+	results := GetListFromQueryResponse(&response)
+
+	required := []string{"id"}
+	if object == "target" || object == "extent" {
+		required = append(required, "name")
+	}
+
 	var columnsList []string
 	if extras.shouldGetAllProps {
 		columnsList = GetUsedPropertyColumns(results, required)
