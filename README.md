@@ -94,7 +94,7 @@ boot-pool/ROOT/25.10.0-MASTER-20250525-015443/usr                               
 
 ### zfs.snapshot.rename backport
 
-The ability to rename a ZFS snapshot via the TrueNAS api is needed for full functionality of the Incus driver. Currently this support is not included in the middleware, but can be added relatively easily.
+The ability to rename a ZFS snapshot via the TrueNAS api is needed for full functionality of the Incus driver, and is present in 25.10 Goldeye nightlies, but can be added to previous versions relatively easily.
 
 Firstly, [remove the /usr readonly protection](#removing-usr-read-only-protection), then edit the snapshot_actions.py file
 
