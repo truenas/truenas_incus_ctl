@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const DEFAULT_ISCSI_PORT = 3260
+
 type iscsiCrudFeature struct {
 	kind string
 	defValue interface{}
@@ -58,7 +60,7 @@ var iscsiCrudFeatureMap = map[string]map[string]iscsiCrudFeature {
 			AddFlagsEnum(&iscsiExtentUpdateCreateEnums, "type", []string {"disk", "file"}) },
 		"serial": iscsiCrudFeature { kind: "String", defValue: "", description: "Serial number" },
 		"path": iscsiCrudFeature { kind: "String", defValue: "", description: "Mount path (incompatible with disk)" },
-		"filesize": iscsiCrudFeature { kind: "String", defValue: "", description: "File size" },
+		"filesize": iscsiCrudFeature { kind: "SizeString", defValue: "", description: "File size" },
 		"blocksize": iscsiCrudFeature { kind: "String", defValue: "512", description: ""+
 			AddFlagsEnum(&iscsiExtentUpdateCreateEnums, "blocksize", []string {"512", "1024", "2048", "4096"}) },
 		"pblocksize": iscsiCrudFeature { kind: "Bool", defValue: false, description: "?" },
@@ -81,6 +83,7 @@ var iscsiCrudFeatureMap = map[string]map[string]iscsiCrudFeature {
 		"comment":    iscsiCrudFeature { kind: "String", defValue: "", description: "Initiator group description/comment" },
 	},
 	"portal": map[string]iscsiCrudFeature {
+		"match-host": iscsiCrudFeature { kind: "Bool", defValue: false, description: "Set remote IP to match the host on port " + fmt.Sprint(DEFAULT_ISCSI_PORT)},
 		"listen":  iscsiCrudFeature { kind: "StringArray", defValue: "", description: "Remote IP:port" },
 		"comment": iscsiCrudFeature { kind: "String", defValue: "", description: "Portal description/comment" },
 	},
@@ -121,9 +124,11 @@ func AddIscsiCrudCommandFlag(cmd *cobra.Command, name string, feature iscsiCrudF
 	switch feature.kind {
 		case "Bool":
 			cmd.Flags().Bool(name, feature.defValue.(bool), feature.description)
-		case "String":
-			cmd.Flags().String(name, feature.defValue.(string), feature.description)
 		case "StringArray":
+			cmd.Flags().String(name, feature.defValue.(string), feature.description)
+		case "SizeString":
+			fallthrough
+		case "String":
 			cmd.Flags().String(name, feature.defValue.(string), feature.description)
 		case "Int":
 			fallthrough
@@ -144,17 +149,37 @@ func AddIscsiCrudCommands(parentCmd *cobra.Command) {
 	listFormatDesc := AddFlagsEnum(&iscsiCrudListEnums, "format", []string{"csv", "json", "table", "compact"})
 
 	for _, category := range iscsiCrudCategories {
-		cmdList := &cobra.Command { Use: "list", RunE: WrapIscsiCrudFunc(iscsiCrudList, category) }
-		cmdCreate := &cobra.Command { Use: "create", Args: cobra.ExactArgs(0), RunE: WrapIscsiCrudFuncNoArgs(iscsiCrudUpdateCreate, category) }
-		cmdUpdate := &cobra.Command { Use: "update", Args: cobra.ExactArgs(0), RunE: WrapIscsiCrudFuncNoArgs(iscsiCrudUpdateCreate, category) }
-		cmdDelete := &cobra.Command { Use: "delete", RunE: WrapIscsiCrudFunc(iscsiCrudDelete, category) }
+		cmdList := &cobra.Command {
+			Use: "list [terms...]",
+			Short: "List " + category + "s. Each parameter is a search term for a distinct entry.",
+			Aliases: []string{"ls"},
+			RunE: WrapIscsiCrudFunc(iscsiCrudList, category),
+		}
+		cmdCreate := &cobra.Command {
+			Use: "create",
+			Short: "Create a " + category + ". Flags are passed to specify the new entry.",
+			Args: cobra.ExactArgs(0),
+			RunE: WrapIscsiCrudFuncNoArgs(iscsiCrudUpdateCreate, category),
+		}
+		cmdUpdate := &cobra.Command {
+			Use: "update",
+			Short: "Update a " + category + ", optionally with an id. Flags are passed to specify the new entry.",
+			Args: cobra.ExactArgs(0),
+			RunE: WrapIscsiCrudFuncNoArgs(iscsiCrudUpdateCreate, category),
+		}
+		cmdDelete := &cobra.Command {
+			Use: "delete [ids...]",
+			Short: "Delete one or more " + category + "s by id.",
+			Aliases: []string{"rm"},
+			RunE: WrapIscsiCrudFunc(iscsiCrudDelete, category),
+		}
 
 		features := iscsiCrudFeatureMap[category]
 		for name, f := range features {
 			AddIscsiCrudCommandFlag(cmdCreate, name, f)
 			AddIscsiCrudCommandFlag(cmdUpdate, name, f)
 		}
-		cmdUpdate.Flags().Bool("create", false, "If the iscsi category doesn't exist, create it with the given properties")
+		cmdUpdate.Flags().String("id", "", "id of object to update, if not set the object is searched for with the given properties")
 
 		cmdList.Flags().BoolP("recursive", "r", false, "")
 		cmdList.Flags().BoolP("user-properties", "u", false, "Include user-properties")
@@ -174,71 +199,68 @@ func AddIscsiCrudCommands(parentCmd *cobra.Command) {
 	}
 }
 
-func iscsiCrudQuery(api core.Session, category string, values []string, properties []string, extras typeQueryParams) typeQueryResponse {
+func iscsiCrudQuery(api core.Session, category string, values []string, properties []string, extras typeQueryParams) (typeQueryResponse, error) {
 	if len(values) == 0 {
-		response, _ := QueryApi(api, "iscsi." + category, nil, nil, properties, extras)
-		return response
-	}
-	combined := typeQueryResponse {
-		resultsMap: make(map[string]map[string]interface{}),
-		intKeys: make([]int, 0),
-		strKeys: make([]string, 0),
-	}
-
-	idValues := make([]string, 0)
-	for _, v := range values {
-		if _, errNotNumber := strconv.Atoi(v); errNotNumber == nil {
-			idValues = append(idValues, v)
-		}
-	}
-	if len(idValues) > 0 {
-		response, err := QueryApi(api, "iscsi." + category, idValues, core.StringRepeated("id", len(idValues)), properties, extras)
-		if err == nil {
-			MergeResponseInto(&combined, &response)
-		}
+		return QueryApi(api, "iscsi." + category, nil, nil, properties, extras)
 	}
 
 	params := iscsiCrudIdentifierMap[category]
-	for _, attr := range params {
-		queryValues := values
+	queryValues := make([]string, len(values) * len(params))
+	queryAttrs := make([]string, len(queryValues))
+	for i, attr := range params {
+		pos := i * len(values)
 		if attr == "disk" {
-			queryValues = make([]string, len(values))
-			for i := 0; i < len(values); i++ {
-				if strings.HasPrefix(values[i], "zvol/") {
-					queryValues[i] = values[i]
+			for j := 0; j < len(values); j++ {
+				if strings.HasPrefix(values[j], "zvol/") {
+					queryValues[pos+j] = values[j]
 				} else {
-					queryValues[i] = "zvol/" + values[i]
+					queryValues[pos+j] = "zvol/" + values[j]
 				}
 			}
 		} else if attr == "listen" {
-			
+			defaultHostname := api.GetHostName()
+			for j := 0; j < len(values); j++ {
+				queryValues[pos+j] = core.IpPortToJsonString(values[j], defaultHostname, DEFAULT_ISCSI_PORT)
+			}
 		} else if iscsiCrudFeatureMap[category][attr].kind == "StringArray" {
-			queryValues = make([]string, len(values))
-			for i := 0; i < len(values); i++ {
-				if strings.HasPrefix(values[i], "[") {
-					queryValues[i] = values[i]
+			for j := 0; j < len(values); j++ {
+				if strings.HasPrefix(values[j], "[") {
+					queryValues[pos+j] = values[j]
 				} else {
-					queryValues[i] = "[" + values[i] + "]"
+					queryValues[pos+j] = "[" + values[j] + "]"
 				}
 			}
+		} else {
+			for j := 0; j < len(values); j++ {
+				queryValues[pos+j] = values[j]
+			}
 		}
-		response, err := QueryApi(api, "iscsi." + category, queryValues, core.StringRepeated(attr, len(queryValues)), properties, extras)
-		if err != nil {
-			continue
+		for j := 0; j < len(values); j++ {
+			queryAttrs[pos+j] = attr
 		}
-		MergeResponseInto(&combined, &response)
 	}
-	return combined
+	return QueryApi(api, "iscsi." + category, queryValues, queryAttrs, properties, extras)
 }
 
-func iscsiQueryTargetExtentWithJoin(api core.Session, values []string, properties []string, extras typeQueryParams) typeQueryResponse {
-	response := iscsiCrudQuery(api, "targetextent", nil, properties, extras)
+func iscsiQueryTargetExtentWithJoin(api core.Session, values []string, properties []string, extras typeQueryParams) (typeQueryResponse, error) {
+	emptyResponse := typeQueryResponse{}
+
+	response, err := iscsiCrudQuery(api, "targetextent", nil, properties, extras)
+	if err != nil {
+		return emptyResponse, err
+	}
 
 	oldShouldGetAll := extras.shouldGetAllProps
 	extras.shouldGetAllProps = false
 
-	targetResponse := iscsiCrudQuery(api, "target", values, nil, extras)
-	extentResponse := iscsiCrudQuery(api, "extent", values, nil, extras)
+	targetResponse, err := iscsiCrudQuery(api, "target", values, nil, extras)
+	if err != nil {
+		return emptyResponse, err
+	}
+	extentResponse, err := iscsiCrudQuery(api, "extent", values, nil, extras)
+	if err != nil {
+		return emptyResponse, err
+	}
 
 	missingTargets := make(map[string]string)
 	missingExtents := make(map[string]string)
@@ -302,7 +324,7 @@ func iscsiQueryTargetExtentWithJoin(api core.Session, values []string, propertie
 		}
 	}
 	extras.shouldGetAllProps = oldShouldGetAll
-	return response
+	return response, nil
 }
 
 func iscsiCrudList(cmd *cobra.Command, category string, api core.Session, args []string) error {
@@ -330,9 +352,13 @@ func iscsiCrudList(cmd *cobra.Command, category string, api core.Session, args [
 	var response typeQueryResponse
 
 	if category == "targetextent" {
-		response = iscsiQueryTargetExtentWithJoin(api, args, properties, extras)
+		response, err = iscsiQueryTargetExtentWithJoin(api, args, properties, extras)
 	} else {
-		response = iscsiCrudQuery(api, category, args, properties, extras)
+		response, err = iscsiCrudQuery(api, category, args, properties, extras)
+	}
+
+	if err != nil {
+		return err
 	}
 
 	results := GetListFromQueryResponse(&response)
@@ -358,11 +384,10 @@ func iscsiCrudList(cmd *cobra.Command, category string, api core.Session, args [
 
 func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session) error {
 	isUpdate := false
-	isCreate := false
 	if strings.HasPrefix(cmd.Use, "update") {
 		isUpdate = true
 	} else if strings.HasPrefix(cmd.Use, "create") {
-		isCreate = true
+		isUpdate = false
 	} else {
 		log.Fatal("iscsiCrudUpdateCreate was called from a command that was neither update nor create")
 	}
@@ -378,10 +403,14 @@ func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session
 	}
 
 	options, _ := GetCobraFlags(cmd, false, updateCreateEnums)
-	if isUpdate {
-		isCreate = core.IsStringTrue(options.allFlags, "create")
-		RemoveFlag(options, "create")
+
+	givenIdStr, _ := options.usedFlags["id"]
+	if !isUpdate && givenIdStr != "" {
+		return fmt.Errorf("--id is incompatible with create")
 	}
+
+	shouldMatchHost := core.IsStringTrue(options.allFlags, "match_host")
+	RemoveFlag(options, "match_host")
 
 	outMap := make(map[string]interface{})
 
@@ -405,25 +434,53 @@ func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session
 		}
 	}
 
-	required := iscsiCrudRequiredAttrMap[category]
-	missingAttrs := make([]string, 0)
-	queryFilter := make([]interface{}, 0)
-	for _, key := range required {
-		if value, exists := outMap[key]; exists {
-			queryFilter = append(queryFilter, []interface{} {
-				key,
-				"=",
-				value,
-			})
-		} else {
-			missingAttrs = append(missingAttrs, key)
+	if category == "portal" {
+		if shouldMatchHost {
+			outMap["listen"] = ":"
+		}
+		if value, exists := outMap["listen"]; exists {
+			valueStr, _ := value.(string)
+			outMap["listen"] = core.IpPortToJsonString(valueStr, api.GetHostName(), DEFAULT_ISCSI_PORT)
 		}
 	}
-	if len(missingAttrs) > 0 {
-		return fmt.Errorf("iSCSI " + category + " also requires these attributes to be set:", missingAttrs) 
-	}
 
-	if isUpdate {
+	method := "iscsi." + category
+	params := []interface{} {outMap}
+
+	if !isUpdate {
+		required := iscsiCrudRequiredAttrMap[category]
+		missingAttrs := make([]string, 0)
+		for _, key := range required {
+			if _, exists := outMap[key]; !exists {
+				missingAttrs = append(missingAttrs, key)
+			}
+		}
+		if len(missingAttrs) > 0 {
+			return fmt.Errorf("An iSCSI " + category + " also requires these attributes to be set on creation:", missingAttrs)
+		}
+		method += ".create"
+	} else if givenIdStr != "" {
+		var existingId interface{}
+		if idNumber, errNotNumber := strconv.Atoi(givenIdStr); errNotNumber == nil {
+			existingId = idNumber
+		} else {
+			existingId = givenIdStr
+		}
+		params = append([]interface{} {existingId}, params...)
+		method += ".update"
+	} else {
+		identifiers := iscsiCrudIdentifierMap[category]
+		queryFilter := make([]interface{}, 0)
+		for _, key := range identifiers {
+			if value, exists := outMap[key]; exists {
+				queryFilter = append(queryFilter, []interface{} {
+					key,
+					"=",
+					value,
+				})
+			}
+		}
+
 		queryParams := []interface{} {
 			[]interface{} { queryFilter },
 			make(map[string]interface{}),
@@ -448,36 +505,38 @@ func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session
 			return fmt.Errorf("API response results: " + errMsg)
 		}
 
-		var existingId interface{}
-		if len(resultsList) > 0 {
-			existingId, _ = resultsList[0]["id"]
+		if len(resultsList) != 1 {
+			if len(resultsList) == 0 {
+				return fmt.Errorf("No matches for this %s were found", category)
+			}
+			msg := fmt.Sprintf("%d matches for this %s were found:", len(resultsList), category)
+			columnsList := GetUsedPropertyColumns(resultsList, []string{"id"})
+			str, err := core.BuildTableData("compact", category + "s", columnsList, resultsList)
+			if err != nil {
+				msg += "\n" + str
+			}
+			return fmt.Errorf(msg)
 		}
 
-		if !isCreate && existingId == nil {
-			return fmt.Errorf("%s with params [%v] could not be found\nTry passing --create to create any missing %ss with the given settings", category, queryFilter, category)
+		existingId, _ := resultsList[0]["id"]
+
+		if len(queryFilter) == len(outMap) {
+			fmt.Println("Only identifiable parameters for the " + category + " were specified,\n"+
+				"and no id was provided, therefore no change would take place.\n"+
+				"The id for this " + category + " is " + fmt.Sprint(existingId) +
+				"\nExiting.")
+			return nil
 		}
 
-		if isCreate {
-			out, err := core.ApiCall(api, "iscsi." + category + ".create", 20, []interface{} {outMap})
-			if err != nil {
-				return err
-			}
-			DebugString(string(out))
-		} else {
-			out, err := core.ApiCall(api, "iscsi." + category + ".update", 20, []interface{} {existingId, outMap})
-			if err != nil {
-				return err
-			}
-			DebugString(string(out))
-		}
-	} else {
-		out, err := core.ApiCall(api, "iscsi." + category + ".create", 20, []interface{} {outMap})
-		if err != nil {
-			return err
-		}
-		DebugString(string(out))
+		params = append([]interface{} {existingId}, params...)
+		method += ".update"
 	}
 
+	out, err := core.ApiCall(api, method, 20, params)
+	if err != nil {
+		return err
+	}
+	DebugString(string(out))
 	return nil
 }
 
@@ -494,19 +553,26 @@ func iscsiCrudDelete(cmd *cobra.Command, category string, api core.Session, args
 		shouldRecurse:      false,
 	}
 
-	response := iscsiCrudQuery(api, category, args, nil, extras)
+	response, err := iscsiCrudQuery(api, category, args, nil, extras)
+	if err != nil {
+		return err
+	}
 
 	idsToDelete := make([]interface{}, 0)
-	for k, _ := range response.resultsMap {
-		if n, errNotNumber := strconv.Atoi(k); errNotNumber == nil {
+	for idKey, _ := range response.resultsMap {
+		if n, errNotNumber := strconv.Atoi(idKey); errNotNumber == nil {
 			idsToDelete = append(idsToDelete, []interface{}{n})
 		} else {
-			idsToDelete = append(idsToDelete, []interface{}{k})
+			idsToDelete = append(idsToDelete, []interface{}{idKey})
 		}
 	}
 	if len(idsToDelete) > 0 {
-		_, _, err := MaybeBulkApiCallArray(api, "iscsi." + category + ".delete", int64(10 + 10 * len(idsToDelete)), idsToDelete, false)
-		return err
+		out, _, err := MaybeBulkApiCallArray(api, "iscsi." + category + ".delete", int64(10 + 10 * len(idsToDelete)), idsToDelete, true)
+		if err != nil {
+			return err
+		}
+		DebugString(string(out))
 	}
+	fmt.Printf("Deleted %d %ss\n", len(idsToDelete), category)
 	return nil
 }

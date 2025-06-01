@@ -140,6 +140,31 @@ func IsValueTrue(dict map[string]interface{}, key string) bool {
 	return false
 }
 
+func IpPortToJsonString(str string, defaultHostname string, defaultPort int) string {
+	if str == "" || str[0] == '[' || str[0] == '{' {
+		return str
+	}
+
+	pos := strings.Index(str, ":")
+	hostname := defaultHostname
+	port := defaultPort
+	if pos < 0 {
+		hostname = str
+	} else {
+		if pos > 0 {
+			hostname = str[0:pos]
+		}
+		if pos < len(str) - 1 {
+			if n, errNotNumber := strconv.Atoi(str[pos+1:]); errNotNumber == nil {
+				port = n
+			}
+		}
+	}
+
+	resolved := ResolvedIpv4OrVerbatim(hostname)
+	return "[{\"ip\":\"" + resolved + "\",\"port\":" + fmt.Sprint(port) + "}]"
+}
+
 func GetIdFromObject(obj interface{}) interface{} {
 	if obj == nil {
 		return nil
