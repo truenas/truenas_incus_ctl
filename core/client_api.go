@@ -62,7 +62,7 @@ func (s *ClientSession) Login() error {
 
 	st, err := os.Stat(s.SocketPath)
 	if err != nil {
-		if err = launchDaemonAndAwaitSocket(s.SocketPath, s.timeout, s.AllowInsecure, nil); err != nil {
+		if err = launchDaemonAndAwaitSocket(s.SocketPath, s.timeout, nil); err != nil {
 			return fmt.Errorf("launchDaemonAndAwaitSocket: %v", err)
 		}
 		st, err = os.Stat(s.SocketPath)
@@ -96,6 +96,7 @@ func (s *ClientSession) CallRaw(method string, timeoutSeconds int64, params inte
 	request, _ := http.NewRequest("POST", "http://unix/tnc-daemon", bytes.NewReader(paramsData))
 	request.Header.Set("TNC-Host-Url", s.GetUrl())
 	request.Header.Set("TNC-Api-Key", s.ApiKey)
+	request.Header.Set("TNC-Allow-Insecure", fmt.Sprint(s.AllowInsecure))
 	request.Header.Set("TNC-Call-Method", method)
 	if timeoutSeconds > 0 {
 		request.Header.Set("TNC-Timeout", fmt.Sprintf("%ds", timeoutSeconds))
@@ -180,7 +181,7 @@ func (s *ClientSession) Close(internalError error) error {
 	return MakeErrorFromList(errorList)
 }
 
-func launchDaemonAndAwaitSocket(socketPath string, daemonTimeout time.Duration, allowInsecure bool, optWarningBuilder *strings.Builder) error {
+func launchDaemonAndAwaitSocket(socketPath string, daemonTimeout time.Duration, optWarningBuilder *strings.Builder) error {
 	thisExec, err := os.Executable()
 	if err != nil {
 		return err
@@ -204,9 +205,6 @@ func launchDaemonAndAwaitSocket(socketPath string, daemonTimeout time.Duration, 
 	}()
 
 	cmd := []string { "daemon" }
-	if allowInsecure {
-		cmd = append(cmd, "--allow-insecure")
-	}
 	if daemonTimeout >= time.Second {
 		cmd = append(cmd, "-t", daemonTimeout.String())
 	}

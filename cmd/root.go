@@ -25,6 +25,7 @@ var daemonCmd = &cobra.Command{
 
 var g_debug bool
 var g_allowInsecure bool
+var g_daemonSocketOverride string
 var g_configFileName string
 var g_configName string
 var g_hostName string
@@ -40,6 +41,7 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&g_debug, "debug", false, "Enable debug logs")
 	rootCmd.PersistentFlags().BoolVar(&g_allowInsecure, "allow-insecure", false, "Allow self-signed or non-trusted SSL certificates")
+	rootCmd.PersistentFlags().StringVar(&g_daemonSocketOverride, "daemon-socket", "", "Override the default daemon socket path (~/tncdaemon.sock)")
 	rootCmd.PersistentFlags().StringVarP(&g_configFileName, "config-file", "F", "", "Override config filename (~/.truenas_incus_ctl/config.json)")
 	rootCmd.PersistentFlags().StringVarP(&g_configName, "config", "C", "", "Name of config to look up in config.json, defaults to first entry")
 	rootCmd.PersistentFlags().StringVarP(&g_hostName, "host", "H", "", "Server hostname or URL")
@@ -70,7 +72,7 @@ func runDaemon(cmd *cobra.Command, args []string) {
 	if serverSockAddr == "" {
 		log.Fatal("Error: path to server socket was not provided")
 	}
-	core.RunDaemon(serverSockAddr, globalTimeoutStr, g_allowInsecure)
+	core.RunDaemon(serverSockAddr, globalTimeoutStr)
 }
 
 func InitializeApiClient() core.Session {
@@ -88,16 +90,23 @@ func InitializeApiClient() core.Session {
 		if _, exists := config["allow_insecure"]; exists {
 			g_allowInsecure = core.IsValueTrue(config, "allow_insecure")
 		}
+		if obj, exists := config["daemon_socket"]; exists {
+			g_daemonSocketOverride, _ = obj.(string)
+		}
 	}
 	if USE_DAEMON {
 		p, err := os.UserHomeDir()
 		if err != nil {
 			log.Fatal(err)
 		}
+		socketPath := g_daemonSocketOverride
+		if socketPath == "" {
+			socketPath = path.Join(p, "tncdaemon.sock")
+		}
 		api = &core.ClientSession{
 			HostName:      g_hostName,
 			ApiKey:        g_apiKey,
-			SocketPath:    path.Join(p, "tncdaemon.sock"),
+			SocketPath:    socketPath,
 			AllowInsecure: g_allowInsecure,
 		}
 	} else {

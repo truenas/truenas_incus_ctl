@@ -37,10 +37,9 @@ type DaemonContext struct {
 	timeoutTimer  *time.Timer
 	mapMtx        *sync.Mutex
 	sessionMap_   map[string]*Future[*TruenasSession]
-	allowInsecure bool
 }
 
-func RunDaemon(serverSockAddr string, globalTimeoutStr string, allowInsecure bool) {
+func RunDaemon(serverSockAddr string, globalTimeoutStr string) {
 	var err error
 	var daemonTimeout time.Duration
 	if globalTimeoutStr != "" {
@@ -70,40 +69,39 @@ func RunDaemon(serverSockAddr string, globalTimeoutStr string, allowInsecure boo
 		timeoutTimer: timer,
 		mapMtx: &sync.Mutex{},
 		sessionMap_: make(map[string]*Future[*TruenasSession]),
-		allowInsecure: allowInsecure,
 	}
 
 	doneCh := make(chan os.Signal)
-    signal.Notify(doneCh, syscall.SIGINT, syscall.SIGTERM)
-    go func() {
-    	if daemon.timeoutTimer != nil {
-    		select {
-    		case <-daemon.timeoutTimer.C:
-    			fmt.Println("tncdaemon timed out (" + daemonTimeout.String() + " elapsed)")
-    			break
+	signal.Notify(doneCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		if daemon.timeoutTimer != nil {
+			select {
+			case <-daemon.timeoutTimer.C:
+				log.Println("tncdaemon timed out (" + daemonTimeout.String() + " elapsed)")
+				break
 			case <-doneCh:
-				fmt.Println("tncdaemon exiting")
+				log.Println("tncdaemon exiting")
 				break
 			}
-    	} else {
-    		<-doneCh
-    	}
-        _ = ls.Close()
-        sessions := make([]*Future[*TruenasSession], 0)
-        daemon.mapMtx.Lock()
-        for _, future := range daemon.sessionMap_ {
-        	sessions = append(sessions, future)
-        }
-        daemon.mapMtx.Unlock()
-        for _, future := range sessions {
-        	_, s, _ := future.Peek()
-        	if s != nil {
-        		s.conn.Close()
-        	}
-        }
-        os.Remove(serverSockAddr)
-        os.Exit(0)
-    }()
+		} else {
+			<-doneCh
+		}
+		_ = ls.Close()
+		sessions := make([]*Future[*TruenasSession], 0)
+		daemon.mapMtx.Lock()
+		for _, future := range daemon.sessionMap_ {
+			sessions = append(sessions, future)
+		}
+		daemon.mapMtx.Unlock()
+		for _, future := range sessions {
+			_, s, _ := future.Peek()
+			if s != nil {
+				s.conn.Close()
+			}
+		}
+		os.Remove(serverSockAddr)
+		os.Exit(0)
+	}()
 
 	http.Serve(ls, daemon)
 
@@ -117,14 +115,14 @@ func (d *DaemonContext) UpdateCountdown() {
 }
 
 func (d *DaemonContext) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Received request at", r.URL.String())
+	log.Println("Received request at", r.URL.String())
 	out, err := d.serveImpl(r)
 	if err != nil {
-		//fmt.Println(err)
+		//log.Println(err)
 		w.WriteHeader(500)
 		io.WriteString(w, err.Error())
 	} else {
-		//fmt.Println(string(out))
+		//log.Println(string(out))
 		w.WriteHeader(200)
 		w.Write(out)
 	}
@@ -137,6 +135,10 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 	pass := r.Header.Get("TNC-Password")
 	method := r.Header.Get("TNC-Call-Method")
 	timeoutStr := r.Header.Get("TNC-Timeout")
+	allowInsecure := false
+	if str := r.Header.Get("TNC-Allow-Insecure"); str != "" {
+		allowInsecure = strings.ToLower(str) == "true"
+	}
 
 	if host == "" {
 		return nil, fmt.Errorf("TNC-Host-Url was not provided")
@@ -158,6 +160,7 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 		sessionKey = host + key
 		withApiKey = true
 	}
+	sessionKey += fmt.Sprint(allowInsecure)
 
 	shouldCreate := false
 
@@ -170,16 +173,14 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 	}
 	d.mapMtx.Unlock()
 
-	//fmt.Println("Checking session: shouldCreate =", shouldCreate)
-
 	var s *TruenasSession
 	var err error
 
 	if shouldCreate {
 		if withApiKey {
-			s, err = d.createSession(host, "auth.login_with_api_key", []interface{}{key})
+			s, err = d.createSession(allowInsecure, host, "auth.login_with_api_key", []interface{}{key})
 		} else {
-			s, err = d.createSession(host, "auth.login", []interface{}{user, pass})
+			s, err = d.createSession(allowInsecure, host, "auth.login", []interface{}{user, pass})
 		}
 		if err != nil {
 			future.Fail(err)
@@ -193,7 +194,7 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 		s, err = future.Get()
 	}
 
-	//fmt.Println("Done waiting for session")
+	//log.Println("Done waiting for session")
 
 	if s == nil {
 		if err == nil {
@@ -207,28 +208,30 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 		return nil, err
 	}
 
-	//fmt.Println("Reading request body")
+	//log.Println("Reading request body")
 
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	//fmt.Println("Calling method", method)
+	//log.Println("Calling method", method)
 
 	return s.call(method, timeoutStr, data)
 }
 
-func (d *DaemonContext) createSession(truenasServerUrl string, loginMethod string, loginParams []interface{}) (*TruenasSession, error) {
+func (d *DaemonContext) createSession(allowInsecure bool, truenasServerUrl string, loginMethod string, loginParams []interface{}) (*TruenasSession, error) {
 	u, err := url.Parse(truenasServerUrl)
 	if err != nil {
 		return nil, fmt.Errorf("Invalid URL: %w", err)
 	}
 
+	log.Println("Daemon: creating connection with allowInsecure=" + fmt.Sprint(allowInsecure))
+
 	// Configure WebSocket connection with insecure TLS to accept self-signed certs
 	dialer := &websocket.Dialer{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: d.allowInsecure,
+			InsecureSkipVerify: allowInsecure,
 		},
 		Proxy: http.ProxyFromEnvironment,
 	}
@@ -302,7 +305,7 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request inte
 	reqMsg["params"] = requestParams
 	reqMsg["id"] = callId
 
-	//fmt.Println("Writing JSON request with callId:", callId, reqMsg)
+	//log.Println("Writing JSON request with callId:", callId, reqMsg)
 
 	if err := s.conn.WriteJSON(reqMsg); err != nil {
 		return nil, err
@@ -355,17 +358,15 @@ func (s *TruenasSession) listen() {
 		s.ctx.mapMtx.Lock()
 		delete(s.ctx.sessionMap_, s.sessionKey)
 		s.ctx.mapMtx.Unlock()
-		fmt.Println("listen exiting")
+		log.Println("listen exiting")
 	}()
 	for true {
 		var message json.RawMessage
 		_, message, err = s.conn.ReadMessage()
 		if err != nil {
-			fmt.Println("listen s.conn.ReadMessage:", err)
+			log.Println("listen s.conn.ReadMessage:", err)
 			return
 		}
-
-		//fmt.Println("listen ", string(message))
 
 		var response interface{}
 		if err = json.Unmarshal(message, &response); err != nil {
