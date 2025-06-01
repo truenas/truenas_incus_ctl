@@ -144,8 +144,11 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 	name := args[0]
 	hostname := options.allFlags["host"]
 	apiKey := options.allFlags["api_key"]
-	objDebug, passedDebug := options.usedFlags["debug"]
-	objInsecure, passedInsecure := options.usedFlags["allow_insecure"]
+	strDebug, passedDebug := options.usedFlags["debug"]
+	strInsecure, passedInsecure := options.usedFlags["allow_insecure"]
+	sockPath, passedSockPath := options.usedFlags["daemon_socket"]
+
+	isInsecure := passedInsecure && strInsecure == "true"
 
 	if hostname == "" {
 		return fmt.Errorf("Hostname cannot be empty")
@@ -155,7 +158,7 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	if !core.IsStringTrue(options.allFlags, "no_verify") {
-		if err := verifyHost(hostname, apiKey); err != nil {
+		if err := verifyHost(hostname, apiKey, isInsecure); err != nil {
 			return err
 		}
 	}
@@ -175,10 +178,13 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 		"api_key": apiKey,
 	}
 	if passedDebug {
-		hostConfig["debug"] = fmt.Sprint(objDebug) == "true"
+		hostConfig["debug"] = strDebug == "true"
 	}
 	if passedInsecure {
-		hostConfig["allow_insecure"] = fmt.Sprint(objInsecure) == "true"
+		hostConfig["allow_insecure"] = isInsecure
+	}
+	if passedSockPath {
+		hostConfig["daemon_socket"] = sockPath
 	}
 
 	hosts, _ := configs["hosts"].(map[string]interface{})
@@ -199,8 +205,9 @@ func setConfig(cmd *cobra.Command, api core.Session, args []string) error {
 	name := args[0]
 	hostname := options.allFlags["host"]
 	apiKey := options.allFlags["api_key"]
-	objDebug, passedDebug := options.usedFlags["debug"]
-	objInsecure, passedInsecure := options.usedFlags["allow_insecure"]
+	strDebug, passedDebug := options.usedFlags["debug"]
+	strInsecure, passedInsecure := options.usedFlags["allow_insecure"]
+	sockPath, passedSockPath := options.usedFlags["daemon_socket"]
 
 	// Get the config file path
 	configPath := g_configFileName
@@ -237,17 +244,27 @@ func setConfig(cmd *cobra.Command, api core.Session, args []string) error {
 		profile["api_key"] = apiKey
 	}
 
+	isInsecure := false
+	if passedInsecure {
+		isInsecure = strInsecure == "true"
+	} else {
+		isInsecure, _ = profile["allow_insecure"].(bool)
+	}
+
 	if !core.IsStringTrue(options.allFlags, "no_verify") {
-		if err := verifyHost(hostname, apiKey); err != nil {
+		if err := verifyHost(hostname, apiKey, isInsecure); err != nil {
 			return err
 		}
 	}
 
 	if passedDebug {
-		profile["debug"] = fmt.Sprint(objDebug) == "true"
+		profile["debug"] = strDebug == "true"
 	}
 	if passedInsecure {
-		profile["allow_insecure"] = fmt.Sprint(objInsecure) == "true"
+		profile["allow_insecure"] = strInsecure == "true"
+	}
+	if passedSockPath {
+		profile["daemon_socket"] = sockPath
 	}
 
 	hosts[name] = profile
@@ -390,14 +407,12 @@ func loadConfig(configPath string) (map[string]interface{}, error) {
 	return configs, nil
 }
 
-func verifyHost(hostname, apiKey string) error {
+func verifyHost(hostname, apiKey string, allowInsecure bool) error {
 	// Construct the WebSocket URL with API endpoint
 	url := core.GetApiUrlFromHostName(hostname)
 	fmt.Printf("Testing connection to %s...\n", url)
 
-	// Test the connection by creating a temporary client
-	// Pass false to disable SSL verification and allow self-signed certificates
-	client, err := truenas_api.NewClient(url, false)
+	client, err := truenas_api.NewClient(url, allowInsecure)
 	if err != nil {
 		return fmt.Errorf("Failed to create connection to %s: %v", url, err)
 	}
