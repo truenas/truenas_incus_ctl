@@ -508,9 +508,17 @@ func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, ar
 
 	portalAddr := hostname + ":" + options.allFlags["iscsi_port"]
 
-	var targets []typeIscsiLoginSpec
-	sessionTargets, _ := GetIscsiTargetsFromSession(maybeHashedToVolumeMap)
-	discoveryTargets, _ := GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap, portalAddr)
+	sessionTargets, err := GetIscsiTargetsFromSession(maybeHashedToVolumeMap)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	discoveryTargets, err := GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap, portalAddr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	targets := make([]typeIscsiLoginSpec, 0)
 	targets = append(targets, sessionTargets...)
 	targets = append(targets, discoveryTargets...)
 
@@ -643,7 +651,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			DebugString(strings.Join(logoutParams, " "))
 			_, err := RunIscsiAdminTool(logoutParams)
 			if err != nil {
-				fmt.Println("failed\t" + t)
+				fmt.Printf("failed\t%s\t%v\n", t, err)
 			} else {
 				fmt.Println("deactivated\t" + t)
 			}
@@ -728,11 +736,8 @@ func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool
 		_, err := RunIscsiAdminTool(loginParams)
 		if err == nil {
 			outerMap[iqnTarget] = true
-		} else if !isMinimal || shouldPrintStatus {
-			fmt.Println("failed\t", iqnTarget)
-			if !isMinimal {
-				fmt.Println(err)
-			}
+		} else {
+			return fmt.Errorf("failed\t%s\t%v", iqnTarget, err)
 		}
 	}
 
@@ -740,6 +745,7 @@ func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool
 		if !isMinimal {
 			return fmt.Errorf("No matching iscsi shares were found")
 		}
+		return nil
 	}
 
 	innerMap := make(map[string]bool)
