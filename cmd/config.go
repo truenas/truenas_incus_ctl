@@ -144,8 +144,9 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 	name := args[0]
 	hostname := options.allFlags["host"]
 	apiKey := options.allFlags["api_key"]
-	objDebug, passedDebug := options.usedFlags["debug"]
-	objInsecure, passedInsecure := options.usedFlags["allow_insecure"]
+	strDebug, passedDebug := options.usedFlags["debug"]
+	strInsecure, passedInsecure := options.usedFlags["allow_insecure"]
+	sockPath, passedSockPath := options.usedFlags["daemon_socket"]
 
 	if hostname == "" {
 		return fmt.Errorf("Hostname cannot be empty")
@@ -175,10 +176,13 @@ func addHost(cmd *cobra.Command, api core.Session, args []string) error {
 		"api_key": apiKey,
 	}
 	if passedDebug {
-		hostConfig["debug"] = fmt.Sprint(objDebug) == "true"
+		hostConfig["debug"] = strDebug == "true"
 	}
 	if passedInsecure {
-		hostConfig["allow_insecure"] = fmt.Sprint(objInsecure) == "true"
+		hostConfig["allow_insecure"] = strInsecure == "true"
+	}
+	if passedSockPath {
+		hostConfig["daemon_socket"] = sockPath
 	}
 
 	hosts, _ := configs["hosts"].(map[string]interface{})
@@ -199,8 +203,9 @@ func setConfig(cmd *cobra.Command, api core.Session, args []string) error {
 	name := args[0]
 	hostname := options.allFlags["host"]
 	apiKey := options.allFlags["api_key"]
-	objDebug, passedDebug := options.usedFlags["debug"]
-	objInsecure, passedInsecure := options.usedFlags["allow_insecure"]
+	strDebug, passedDebug := options.usedFlags["debug"]
+	strInsecure, passedInsecure := options.usedFlags["allow_insecure"]
+	sockPath, passedSockPath := options.usedFlags["daemon_socket"]
 
 	// Get the config file path
 	configPath := g_configFileName
@@ -244,10 +249,13 @@ func setConfig(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	if passedDebug {
-		profile["debug"] = fmt.Sprint(objDebug) == "true"
+		profile["debug"] = strDebug == "true"
 	}
 	if passedInsecure {
-		profile["allow_insecure"] = fmt.Sprint(objInsecure) == "true"
+		profile["allow_insecure"] = strInsecure == "true"
+	}
+	if passedSockPath {
+		profile["daemon_socket"] = sockPath
 	}
 
 	hosts[name] = profile
