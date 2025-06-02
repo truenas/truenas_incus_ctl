@@ -47,7 +47,7 @@ After a host has been added to the config-file, it can be specified with `--conf
 
 `truenas_incus_ctl <command>`
 
-`truenas_incus_ctl --url <websocket server> --api-key <api key> <command>`
+`truenas_incus_ctl --host <truenas host> --api-key <truenas api key> <command>`
 
 ### Commands
 
