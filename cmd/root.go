@@ -54,8 +54,8 @@ func init() {
 
 func RemoveGlobalFlags(flags map[string]string) {
 	core.DeleteSnakeKebab(flags, "debug")
-	core.DeleteSnakeKebab(flags, "mock")
 	core.DeleteSnakeKebab(flags, "allow-insecure")
+	core.DeleteSnakeKebab(flags, "daemon-socket")
 	core.DeleteSnakeKebab(flags, "config-file")
 	core.DeleteSnakeKebab(flags, "config")
 	core.DeleteSnakeKebab(flags, "host")
