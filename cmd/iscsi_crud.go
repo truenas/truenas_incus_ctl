@@ -363,11 +363,7 @@ func iscsiCrudList(cmd *cobra.Command, category string, api core.Session, args [
 
 	results := GetListFromQueryResponse(&response)
 
-	required := []string{"id"}
-	if category == "target" || category == "extent" {
-		required = append(required, "name")
-	}
-
+	required := iscsiCrudIdentifierMap[category]
 	var columnsList []string
 	if extras.shouldGetAllProps {
 		columnsList = GetUsedPropertyColumns(results, required)
@@ -405,6 +401,7 @@ func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session
 	options, _ := GetCobraFlags(cmd, false, updateCreateEnums)
 
 	givenIdStr, _ := options.usedFlags["id"]
+	RemoveFlag(options, "id")
 	if !isUpdate && givenIdStr != "" {
 		return fmt.Errorf("--id is incompatible with create")
 	}
@@ -422,6 +419,11 @@ func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session
 			if err := WriteKvArrayToMap(outMap, kvArray, updateCreateEnums); err != nil {
 				return err
 			}
+		case "disk":
+			if !strings.HasPrefix(valueStr, "zvol/") {
+				valueStr = "zvol/" + valueStr
+			}
+			isProp = true
 		default:
 			isProp = true
 		}
@@ -444,6 +446,8 @@ func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session
 		}
 	}
 
+	cmd.SilenceUsage = true
+
 	method := "iscsi." + category
 	params := []interface{} {outMap}
 
@@ -456,7 +460,7 @@ func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session
 			}
 		}
 		if len(missingAttrs) > 0 {
-			return fmt.Errorf("An iSCSI " + category + " also requires these attributes to be set on creation:", missingAttrs)
+			return fmt.Errorf("An iSCSI " + category + " also requires these attributes to be set on creation: %v", missingAttrs)
 		}
 		method += ".create"
 	} else if givenIdStr != "" {
@@ -482,7 +486,7 @@ func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session
 		}
 
 		queryParams := []interface{} {
-			[]interface{} { queryFilter },
+			queryFilter,
 			make(map[string]interface{}),
 		}
 		out, err := core.ApiCall(api, "iscsi." + category + ".query", 20, queryParams)
@@ -531,6 +535,9 @@ func iscsiCrudUpdateCreate(cmd *cobra.Command, category string, api core.Session
 		params = append([]interface{} {existingId}, params...)
 		method += ".update"
 	}
+
+	DebugString(method)
+	DebugJson(params)
 
 	out, err := core.ApiCall(api, method, 20, params)
 	if err != nil {
