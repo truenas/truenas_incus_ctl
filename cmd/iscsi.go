@@ -69,18 +69,21 @@ func init() {
 	iscsiDeleteCmd.RunE = WrapCommandFunc(deleteIscsi)
 
 	iscsiCreateCmd.Flags().Bool("readonly", false, "Ensure the new iSCSI extent is read-only. Ignored for snapshots.")
+	iscsiCreateCmd.Flags().StringP("initiator", "i", "", "iSCSI initiator id or comment")
 
 	iscsiLocateCmd.Flags().Bool("activate", false, "Activate any shares that could not be located")
 	iscsiLocateCmd.Flags().Bool("create", false, "Create any shares that could not be activated or located, then activate them")
 	iscsiLocateCmd.Flags().Bool("deactivate", false, "Deactivate any shares that could be located")
 	iscsiLocateCmd.Flags().Bool("delete", false, "Deactivate and delete any shares that could be located")
 	iscsiLocateCmd.Flags().Bool("readonly", false, "If a share is to be created, ensure that its extent is read-only. Ignored for snapshots.")
+	iscsiLocateCmd.Flags().StringP("initiator", "i", "", "If a share is to be created, iSCSI initiator id or comment")
 
 	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "", "label to prefix the created target")
-		c.Flags().IntP("iscsi-port", "p", 3260, "iSCSI portal port")
+		c.Flags().Int("iscsi-port", 3260, "iSCSI portal port")
 		c.Flags().Bool("parsable", false, "Parsable (ie. minimal) output")
+		c.Flags().StringP("portal", "p", ":", "iSCSI portal [ip]:[port] or id, overrides --iscsi-port")
 	}
 
 	iscsiCmd.AddCommand(iscsiCreateCmd)

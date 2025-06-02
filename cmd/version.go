@@ -32,8 +32,9 @@ import (
 0.6.0 added config command, changed definition of global flags
 0.6.1 `share iscsi locate --create/--delete`
 0.6.2 `snapshot rename` now calls zfs.snapshot.rename end-point
+0.6.3 Add --daemon-socket to override path to the daemon's socket, add --portal and --initiator flags (but not functionality)
 */
-const VERSION = "0.6.2"
+const VERSION = "0.6.3"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
