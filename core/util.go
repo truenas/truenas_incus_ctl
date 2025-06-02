@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -20,6 +21,29 @@ func DeleteSnakeKebab(dict map[string]string, key string) {
 	delete(dict, key)
 	delete(dict, strings.ReplaceAll(key, "-", "_"))
 	delete(dict, strings.ReplaceAll(key, "_", "-"))
+}
+
+func IdentifyObject(obj string) (string, string) {
+	if obj == "" {
+		return "", ""
+	} else if _, errNotNumber := strconv.Atoi(obj); errNotNumber == nil {
+		return "id", obj
+	} else if obj[0] == '/' {
+		return "share", obj
+	} else if obj[0] == '@' {
+		return "snapshot_only", obj[1:]
+	} else if pos := strings.Index(obj, "@"); pos >= 1 {
+		if pos == len(obj)-1 {
+			return "error", obj
+		}
+		return "snapshot", obj
+	} else if pos := strings.LastIndex(obj, "/"); pos >= 1 {
+		if pos == len(obj)-1 {
+			return IdentifyObject(obj[0:len(obj)-1])
+		}
+		return "dataset", obj
+	}
+	return "pool", obj
 }
 
 func GetHostNameFromApiUrl(urlString string) string {
@@ -55,27 +79,31 @@ func StripPort(hostname string) string {
 	return strings.Join(parts[0:len(parts)-1], ":")
 }
 
-func IdentifyObject(obj string) (string, string) {
-	if obj == "" {
-		return "", ""
-	} else if _, errNotNumber := strconv.Atoi(obj); errNotNumber == nil {
-		return "id", obj
-	} else if obj[0] == '/' {
-		return "share", obj
-	} else if obj[0] == '@' {
-		return "snapshot_only", obj[1:]
-	} else if pos := strings.Index(obj, "@"); pos >= 1 {
-		if pos == len(obj)-1 {
-			return "error", obj
+func ResolvedIpv4OrVerbatim(hostname string) string {
+	dotCount := 0
+	digitCount := 0
+	for _, c := range hostname {
+		if c == '.' {
+			if digitCount == 0 {
+				break
+			}
+			digitCount = 0
+			dotCount++
+		} else if c >= '0' && c <= '9' {
+			digitCount++
+		} else {
+			break
 		}
-		return "snapshot", obj
-	} else if pos := strings.LastIndex(obj, "/"); pos >= 1 {
-		if pos == len(obj)-1 {
-			return IdentifyObject(obj[0:len(obj)-1])
-		}
-		return "dataset", obj
 	}
-	return "pool", obj
+	if dotCount == 3 && digitCount > 0 {
+		return hostname
+	}
+
+	ipAddrs, err := net.LookupIP(hostname)
+	if err != nil {
+		return hostname
+	}
+	return ipAddrs[0].String()
 }
 
 func StringRepeated(str string, count int) []string {

@@ -145,6 +145,51 @@ func QueryApi(api core.Session, category string, entries, entryTypes, propsList 
 	return response, nil
 }
 
+func MergeResponseInto(dst *typeQueryResponse, src *typeQueryResponse) {
+	if dst == nil || src == nil {
+		return
+	}
+
+	for k, v := range src.resultsMap {
+		if _, exists := dst.resultsMap[k]; !exists {
+			if n, errNotNumber := strconv.Atoi(k); errNotNumber == nil {
+				dst.intKeys = append(dst.intKeys, n)
+			} else {
+				dst.strKeys = append(dst.strKeys, k)
+			}
+		}
+		dst.resultsMap[k] = v
+	}
+}
+
+func DeleteResponseEntries(response *typeQueryResponse, keys []string) {
+	if response == nil || len(keys) == 0 {
+		return
+	}
+
+	anyDeletions := false
+	for _, k := range keys {
+		if _, exists := response.resultsMap[k]; exists {
+			delete(response.resultsMap, k)
+			anyDeletions = true
+		}
+	}
+
+	if anyDeletions && (len(response.intKeys) > 0 || len(response.strKeys) > 0) {
+		intKeys := make([]int, 0)
+		strKeys := make([]string, 0)
+		for k, _ := range response.resultsMap {
+			if n, errNotNumber := strconv.Atoi(k); errNotNumber == nil {
+				intKeys = append(intKeys, n)
+			} else {
+				strKeys = append(strKeys, k)
+			}
+		}
+		response.intKeys = intKeys
+		response.strKeys = strKeys
+	}
+}
+
 func GetListFromQueryResponse(response *typeQueryResponse) []map[string]interface{} {
 	if response == nil {
 		return nil
@@ -283,6 +328,8 @@ func makeIndividualFilter(key string, array []string, isRecursive bool) []interf
 	for i := 0; i < len(array); i++ {
 		if n, errNotNumber := strconv.Atoi(array[i]); errNotNumber == nil {
 			arr[i] = n
+		} else if strings.HasPrefix(array[i], "[") {
+			_ = json.Unmarshal([]byte(array[i]), &arr[i])
 		} else {
 			arr[i] = array[i]
 		}
