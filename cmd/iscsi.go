@@ -238,7 +238,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		if defaultPortal == -1 {
 			cmd.SilenceUsage = false
 			return fmt.Errorf("No iSCSI portal was found for this host. Use:\n" +
-				"<truenas_incus_ctl> share iscsi portal create --ip <IP address> --port <port number>\n" +
+				"<truenas_incus_ctl> share iscsi portal create --listen <IP address>:<port number>\n" +
 				"To create one.\n")
 		}
 	}
@@ -510,13 +510,15 @@ func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, ar
 
 	portalAddr := hostname + ":" + options.allFlags["iscsi_port"]
 
+	isCreate := core.IsStringTrue(options.allFlags, "create")
+
 	sessionTargets, err := GetIscsiTargetsFromSession(maybeHashedToVolumeMap)
-	if err != nil {
+	if !isCreate && err != nil && !strings.Contains(strings.ToLower(err.Error()), "no active sessions") {
 		return nil, nil, err
 	}
 
 	discoveryTargets, err := GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap, portalAddr)
-	if err != nil {
+	if !isCreate && err != nil {
 		return nil, nil, err
 	}
 
