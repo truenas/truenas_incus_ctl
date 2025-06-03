@@ -11,8 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const DEFAULT_ISCSI_PORT = 3260
-
 type iscsiCrudFeature struct {
 	kind string
 	defValue interface{}

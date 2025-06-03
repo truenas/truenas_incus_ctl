@@ -1,17 +1,15 @@
 package cmd
 
 import (
-	"os"
-	"os/exec"
-
-	//"errors"
+	"encoding/json"
 	"fmt"
 	"log"
-	//"strconv"
+	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 	"truenas/truenas_incus_ctl/core"
-	//"github.com/spf13/cobra"
 )
 
 type typeIscsiLoginSpec struct {
@@ -25,6 +23,190 @@ type typeApiCallRecord struct {
 	params []interface{}
 	resultList []interface{}
 	errorList []interface{}
+}
+
+func LookupPortalByObject(api core.Session, toMatch interface{}) (int, error) {
+	queryFilter := []interface{} { []interface{} {"listen","=",toMatch} }
+	queryParams := []interface{} {
+		queryFilter,
+		make(map[string]interface{}),
+	}
+	out, err := core.ApiCall(api, "iscsi.portal.query", 10, queryParams)
+	if err != nil {
+		return -1, err
+	}
+	var response map[string]interface{}
+	if err = json.Unmarshal(out, &response); err != nil {
+		return -1, err
+	}
+	results, _ := response["result"].([]interface{})
+	for i := 0; i < len(results); i++ {
+		idObj := core.GetIdFromObject(results[i])
+		if n, errNotNumber := strconv.Atoi(fmt.Sprint(idObj)); errNotNumber == nil {
+			return n, nil
+		}
+	}
+	return -1, nil
+}
+
+func LookupPortalIdOrCreate(api core.Session, defaultPort int, spec string) (int, error) {
+	if spec == "" {
+		return -1, fmt.Errorf("Portal was not specified (use ':' for the default portal)")
+	}
+	if asInt, errNotNumber := strconv.Atoi(spec); errNotNumber == nil {
+		return asInt, nil
+	}
+
+	ipPortStr := core.IpPortToJsonString(spec, api.GetHostName(), defaultPort)
+	var ipPortObj interface{}
+	if err := json.Unmarshal([]byte(ipPortStr), &ipPortObj); err != nil {
+		return -1, err
+	}
+	portalId, err := LookupPortalByObject(api, ipPortObj)
+	if err != nil {
+		return -1, err
+	}
+
+	if portalId == -1 {
+		out, err := core.ApiCall(api, "iscsi.portal.create", 10, []interface{} { map[string]interface{} { "listen": ipPortObj } })
+		if err != nil {
+			return -1, err
+		}
+		resCreate, _ := core.GetResultsAndErrorsFromApiResponseRaw(out)
+		if len(resCreate) > 0 {
+			idObj := core.GetIdFromObject(resCreate[0])
+			if n, errNotNumber := strconv.Atoi(fmt.Sprint(idObj)); errNotNumber == nil {
+				portalId = n
+			}
+		}
+		if portalId == -1 {
+			return LookupPortalByObject(api, ipPortObj)
+		}
+	}
+
+	return portalId, nil
+}
+
+func MaybeLookupIpPortFromPortal(api core.Session, defaultPort int, spec string) (string, error) {
+	if spec == "" {
+		return "", fmt.Errorf("Portal was not specified (use ':' for the default portal)")
+	}
+
+	var ipPortObjMap map[string]interface{}
+	if asInt, errNotNumber := strconv.Atoi(spec); errNotNumber == nil {
+		queryFilter := []interface{} { []interface{} {"id","=",asInt} }
+		queryParams := []interface{} {
+			queryFilter,
+			make(map[string]interface{}),
+		}
+		out, err := core.ApiCall(api, "iscsi.portal.query", 10, queryParams)
+		if err != nil {
+			return "", err
+		}
+		var response map[string]interface{}
+		if err = json.Unmarshal(out, &response); err != nil {
+			return "", err
+		}
+		results, _ := response["result"].([]interface{})
+		for i := 0; i < len(results); i++ {
+			if obj, ok := results[i].(map[string]interface{}); ok {
+				if listenArray, ok := obj["listen"].([]interface{}); ok && len(listenArray) > 0 {
+					ipPortObjMap, _ = listenArray[0].(map[string]interface{})
+					break
+				} else if listenMap, ok := obj["listen"].(map[string]interface{}); ok {
+					ipPortObjMap = listenMap
+					break
+				}
+			}
+		}
+	}
+
+	if ipPortObjMap == nil {
+		ipPortStr := core.IpPortToJsonString(spec, api.GetHostName(), defaultPort)
+		var obj interface{}
+		if err := json.Unmarshal([]byte(ipPortStr), &obj); err != nil {
+			return "", err
+		}
+		if objArray, isArray := obj.([]interface{}); isArray {
+			if len(objArray) > 0 {
+				obj = objArray[0]
+			} else {
+				return "", fmt.Errorf("listen object was empty")
+			}
+		}
+		if objMap, isMap := obj.(map[string]interface{}); isMap {
+			ipPortObjMap = objMap
+		} else {
+			return "", fmt.Errorf("listen object was not a map or array of map")
+		}
+	}
+
+	ip, exists := ipPortObjMap["ip"]
+	if !exists {
+		ip = core.ResolvedIpv4OrVerbatim(api.GetHostName())
+	}
+	port, exists := ipPortObjMap["port"]
+	if !exists {
+		port = defaultPort
+	}
+
+	return fmt.Sprintf("%v:%v", ip, port), nil
+}
+
+func LookupInitiatorByFilter(api core.Session, queryFilter []interface{}) (int, error) {
+	queryParams := []interface{} {
+		queryFilter,
+		make(map[string]interface{}),
+	}
+	out, err := core.ApiCall(api, "iscsi.initiator.query", 10, queryParams)
+	if err != nil {
+		return -1, err
+	}
+	var response map[string]interface{}
+	if err = json.Unmarshal(out, &response); err != nil {
+		return -1, err
+	}
+	results, _ := response["result"].([]interface{})
+	for i := 0; i < len(results); i++ {
+		idObj := core.GetIdFromObject(results[i])
+		if n, errNotNumber := strconv.Atoi(fmt.Sprint(idObj)); errNotNumber == nil {
+			return n, nil
+		}
+	}
+	return -1, nil
+}
+
+func LookupInitiatorOrCreateBlank(api core.Session, spec string) (int, error) {
+	if asInt, errNotNumber := strconv.Atoi(spec); errNotNumber == nil {
+		return asInt, nil
+	}
+	queryFilter := make([]interface{}, 0)
+	if spec != "" {
+		queryFilter = append(queryFilter, []interface{} {"comment","=",spec})
+	}
+	initiatorId, err := LookupInitiatorByFilter(api, queryFilter)
+	if err != nil {
+		return -1, err
+	}
+
+	if initiatorId == -1 {
+		out, err := core.ApiCall(api, "iscsi.initiator.create", 10, []interface{} { map[string]interface{} { "comment": spec } })
+		if err != nil {
+			return -1, err
+		}
+		resCreate, _ := core.GetResultsAndErrorsFromApiResponseRaw(out)
+		if len(resCreate) > 0 {
+			idObj := core.GetIdFromObject(resCreate[0])
+			if n, errNotNumber := strconv.Atoi(fmt.Sprint(idObj)); errNotNumber == nil {
+				initiatorId = n
+			}
+		}
+		if initiatorId == -1 {
+			return LookupInitiatorByFilter(api, queryFilter)
+		}
+	}
+
+	return initiatorId, nil
 }
 
 func GetIscsiTargetPrefixOrExit(options map[string]string) string {
