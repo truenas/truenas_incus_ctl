@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -451,11 +452,20 @@ func MaybeLaunchIscsiDaemon() error {
 }
 
 func RunIscsiAdminTool(args []string) (string, error) {
+	retriesLeft := 10
 begin:
 	out, err := core.RunCommand("iscsiadm", args...)
 	if err != nil && strings.HasPrefix(err.Error(), "iscsiadm: Could not scan /sys/class/iscsi_transport") {
 		time.Sleep(time.Duration(500) * time.Millisecond)
-		goto begin
+		retriesLeft--
+		if retriesLeft > 0 {
+			goto begin
+		}
+	}
+	if err != nil {
+		err = errors.New(err.Error() +
+			"\nMake sure you've started the iscsi service, eg."+
+			"\n./truenas_incus_ctl service start --enable iscsitarget")
 	}
 	return out, err
 }
