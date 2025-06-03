@@ -348,7 +348,7 @@ func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeM
 }
 
 func GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap map[string]string, portalAddr string) ([]typeIscsiLoginSpec, error) {
-	out, err := RunIscsiAdminTool([]string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"})
+	out, err := RunIscsiDiscover(portalAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -427,6 +427,10 @@ func GetIscsiTargetsFromSession(maybeHashedToVolumeMap map[string]string) ([]typ
 	}
 
 	return targets, nil
+}
+
+func RunIscsiDiscover(portalAddr string) (string, error) {
+	return RunIscsiAdminTool([]string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"})
 }
 
 func CheckIscsiAdminToolExists() error {

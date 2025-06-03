@@ -37,6 +37,11 @@ var iscsiActivateCmd = &cobra.Command{
 	Args:  cobra.MinimumNArgs(1),
 }
 
+var iscsiTestCmd = &cobra.Command{
+	Use:   "test",
+	Short: "Test an iSCSI portal connection",
+}
+
 var iscsiListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List description",
@@ -63,6 +68,7 @@ var iscsiDeleteCmd = &cobra.Command{
 func init() {
 	iscsiCreateCmd.RunE = WrapCommandFunc(createIscsi)
 	iscsiActivateCmd.RunE = WrapCommandFunc(activateIscsi)
+	iscsiTestCmd.RunE = WrapCommandFunc(testIscsi)
 	iscsiListCmd.RunE = WrapCommandFunc(listIscsi)
 	iscsiLocateCmd.RunE = WrapCommandFunc(locateIscsi)
 	iscsiDeactivateCmd.RunE = WrapCommandFunc(deactivateIscsi)
@@ -76,7 +82,7 @@ func init() {
 	iscsiLocateCmd.Flags().Bool("delete", false, "Deactivate and delete any shares that could be located")
 	iscsiLocateCmd.Flags().Bool("readonly", false, "If a share is to be created, ensure that its extent is read-only. Ignored for snapshots.")
 
-	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
+	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiTestCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "", "label to prefix the created target")
 		c.Flags().Bool("parsable", false, "Parsable (ie. minimal) output")
@@ -86,6 +92,7 @@ func init() {
 
 	iscsiCmd.AddCommand(iscsiCreateCmd)
 	iscsiCmd.AddCommand(iscsiActivateCmd)
+	iscsiCmd.AddCommand(iscsiTestCmd)
 	iscsiCmd.AddCommand(iscsiListCmd)
 	iscsiCmd.AddCommand(iscsiLocateCmd)
 	iscsiCmd.AddCommand(iscsiDeactivateCmd)
@@ -363,6 +370,26 @@ func undoIscsiCreateList(api core.Session, changes *[]typeApiCallRecord) {
 			}
 		}
 	}
+}
+
+func testIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	cmd.SilenceUsage = true
+	options, _ := GetCobraFlags(cmd, false, nil)
+
+	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
+	if err != nil {
+		return err
+	}
+
+	out, err := RunIscsiDiscover(ipPortalAddr)
+	if err != nil {
+		return err
+	}
+
+	if !core.IsStringTrue(options.allFlags, "parsable") {
+		fmt.Println(out)
+	}
+	return nil
 }
 
 func listIscsi(cmd *cobra.Command, api core.Session, args []string) error {
