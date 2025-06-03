@@ -6,7 +6,6 @@ import (
 	"net"
 	"os/user"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 	"truenas/truenas_incus_ctl/core"
@@ -79,9 +78,8 @@ func init() {
 	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "", "label to prefix the created target")
-		c.Flags().Int("iscsi-port", 3260, "iSCSI portal port")
 		c.Flags().Bool("parsable", false, "Parsable (ie. minimal) output")
-		c.Flags().StringP("portal", "p", ":", "iSCSI portal [ip]:[port] or id, overrides --iscsi-port")
+		c.Flags().StringP("portal", "p", ":", "iSCSI portal [ip]:[port] or id")
 		c.Flags().StringP("initiator", "i", "", "iSCSI initiator id or comment")
 	}
 
@@ -95,13 +93,6 @@ func init() {
 	AddIscsiCrudCommands(iscsiCmd)
 
 	shareCmd.AddCommand(iscsiCmd)
-}
-
-type typeIscsiTargetParams struct {
-	verb        string
-	id          interface{}
-	portalId    int
-	initiatorId int
 }
 
 func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
@@ -134,157 +125,48 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	toCreateMap := make(map[string]bool)
-	for _, t := range args {
-		toCreateMap[t] = true
+	portalId, err := LookupPortalIdOrCreate(api, 3260, options.allFlags["portal"])
+	if err != nil {
+		return err
 	}
 
-	//missingInitiators := make(map[string]bool)
-	targets := make(map[string]typeIscsiTargetParams)
-	shouldFindPortal := false
+	initiatorId, err := LookupInitiatorOrCreateBlank(api, options.allFlags["initiator"])
+	if err != nil {
+		return err
+	}
 
-	for targetId, target := range responseTargetQuery.resultsMap {
-		targetName, _ := target["alias"].(string)
-		if targetName == "" {
-			return fmt.Errorf("Name could not be found in iSCSI target with ID %v", targetId)
-		}
-		delete(toCreateMap, targetName)
-
-		anyGroups := false
-		if groupsObj, exists := target["groups"]; exists {
-			if groups, ok := groupsObj.([]interface{}); ok && len(groups) > 0 {
-				anyGroups = true
-				portalExists := false
-				initiatorExists := false
-				if elem, isElemMap := groups[0].(map[string]interface{}); isElemMap {
-					_, portalExists = elem["portal"].(float64)
-					_, initiatorExists = elem["initiator"].(float64)
-				}
-
-				portal := 1    // -1
-				initiator := 1 // -1
-				if portalExists {
-					portal = 1 // 0
-				} else {
-					shouldFindPortal = true
-				}
-				if initiatorExists {
-					initiator = 1 // 0
-				} else {
-					//missingInitiators[targetName] = true
-				}
-
-				targets[targetName] = typeIscsiTargetParams{
-					verb:        "update",
-					id:          targetId,
-					portalId:    portal,
-					initiatorId: initiator,
-				}
-			}
-		}
-		if !anyGroups {
-			shouldFindPortal = true
-			//missingInitiators[targetName] = true
-
-			targets[targetName] = typeIscsiTargetParams{
-				verb:        "update",
-				id:          targetId,
-				portalId:    1, // -1
-				initiatorId: 1, // -1
-			}
+	toUpdateMap := make(map[string]interface{})
+	for _, target := range responseTargetQuery.resultsMap {
+		if targetAlias, _ := target["alias"].(string); targetAlias != "" {
+			toUpdateMap[targetAlias] = core.GetIdFromObject(target)
 		}
 	}
 
-	for targetName, _ := range toCreateMap {
-		shouldFindPortal = true
-		//missingInitiators[targetName] = true
+	targetUpdates := make([]interface{}, 0)
+	targetCreates := make([]interface{}, 0)
 
-		targets[targetName] = typeIscsiTargetParams{
-			verb:        "create",
-			id:          -1,
-			portalId:    1, // -1
-			initiatorId: 1, // -1
+	for _, vol := range args {
+		group := make(map[string]interface{})
+		group["portal"] = portalId
+		group["initiator"] = initiatorId
+
+		obj := make(map[string]interface{})
+		obj["name"] = volumeToMaybeHashedMap[vol]
+		obj["alias"] = vol
+		obj["groups"] = []map[string]interface{}{group}
+
+		if idObj, exists := toUpdateMap[vol]; exists {
+			targetUpdates = append(targetUpdates, []interface{}{idObj, obj})
+		} else {
+			targetCreates = append(targetCreates, []interface{}{obj})
 		}
 	}
 
-	if len(targets) == 0 {
+	if len(targetUpdates) == 0 && len(targetCreates) == 0 {
 		if !core.IsStringTrue(options.allFlags, "parsable") {
 			fmt.Println("iSCSI targets, portal and initiator groups are up to date for", args)
 		}
 		return nil
-	}
-
-	emptyQueryParams := []interface{}{make([]interface{}, 0), make(map[string]interface{})}
-
-	defaultPortal := -1
-	if shouldFindPortal {
-		out, err := core.ApiCall(api, "iscsi.portal.query", 10, emptyQueryParams)
-		if err != nil {
-			return err
-		}
-		var response map[string]interface{}
-		if err = json.Unmarshal(out, &response); err != nil {
-			return err
-		}
-		results, _ := response["result"].([]interface{})
-		for i := 0; i < len(results); i++ {
-			if obj, ok := results[i].(map[string]interface{}); ok {
-				if idObj, exists := obj["id"]; exists {
-					if id, ok := idObj.(float64); ok {
-						defaultPortal = int(id)
-						break
-					}
-				}
-			}
-		}
-		if defaultPortal == -1 {
-			cmd.SilenceUsage = false
-			return fmt.Errorf("No iSCSI portal was found for this host. Use:\n" +
-				"<truenas_incus_ctl> share iscsi portal create --listen <IP address>:<port number>\n" +
-				"To create one.\n")
-		}
-	}
-
-	/*
-		if len(missingInitiators) > 0 {
-			//...
-		}
-	*/
-
-	targetCreates := make([]interface{}, 0)
-	targetUpdates := make([]interface{}, 0)
-	for volName, t := range targets {
-		group := make(map[string]interface{})
-		isGroupEmpty := true
-		if t.portalId != 0 {
-			pid := t.portalId
-			if pid < 0 {
-				pid = defaultPortal
-			}
-			group["portal"] = pid
-			isGroupEmpty = false
-		}
-		if t.initiatorId > 0 {
-			group["initiator"] = t.initiatorId
-			isGroupEmpty = false
-		}
-
-		obj := make(map[string]interface{})
-		obj["name"] = volumeToMaybeHashedMap[volName]
-		obj["alias"] = volName
-
-		if !isGroupEmpty {
-			obj["groups"] = []map[string]interface{}{group}
-		}
-
-		if t.verb == "create" {
-			targetCreates = append(targetCreates, []interface{}{obj})
-		} else {
-			if id, errNotNumber := strconv.Atoi(fmt.Sprint(t.id)); errNotNumber == nil {
-				t.id = id
-			}
-			targetUpdates = append(targetUpdates, []interface{}{t.id, obj})
-		}
 	}
 
 	jobIdUpdate := int64(-1)
@@ -446,12 +328,14 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	changes = make([]typeApiCallRecord, 0)
 
 	if strings.HasPrefix(cmd.Use, "locate") || !core.IsStringTrue(options.allFlags, "parsable") {
-		for volName, _ := range targets {
-			fmt.Println("created\t" + volName)
+		for _, target := range allTargets {
+			vol, _ := target["alias"].(string)
+			fmt.Println("created\t" + vol)
 		}
 	} else {
-		for volName, _ := range targets {
-			fmt.Println(volName)
+		for _, target := range allTargets {
+			vol, _ := target["alias"].(string)
+			fmt.Println(vol)
 		}
 	}
 

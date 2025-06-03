@@ -107,6 +107,7 @@ func InitializeApiClient() core.Session {
 			HostName:      g_hostName,
 			ApiKey:        g_apiKey,
 			SocketPath:    socketPath,
+			IsDebug:       g_debug,
 			AllowInsecure: g_allowInsecure,
 		}
 	} else {

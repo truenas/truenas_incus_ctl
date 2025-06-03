@@ -21,6 +21,7 @@ type ClientSession struct {
 	HostName string
 	ApiKey string
 	SocketPath string
+	IsDebug bool
 	AllowInsecure bool
 	client *http.Client
 	timeout time.Duration
@@ -40,6 +41,11 @@ func (s *ClientSession) GetUrl() string {
 }
 
 func (s *ClientSession) Login() error {
+	var t1 time.Time
+	if s.IsDebug {
+		t1 = time.Now()
+	}
+
 	if s.jobsList == nil {
 		s.jobsList = make([]int64, 0)
 	}
@@ -84,10 +90,20 @@ func (s *ClientSession) Login() error {
 			},
 		}
 	}
+
+	if s.IsDebug {
+		fmt.Println("tncdaemon connection time:", time.Now().Sub(t1).String())
+	}
+
 	return nil
 }
 
 func (s *ClientSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
+	var t1 time.Time
+	if s.IsDebug {
+		t1 = time.Now()
+	}
+
 	paramsData, err := json.Marshal(params)
 	if err != nil {
 		return nil, err
@@ -121,6 +137,10 @@ call:
 
 	data, err := io.ReadAll(response.Body)
 	response.Body.Close()
+
+	if s.IsDebug {
+		fmt.Println(method + ":", time.Now().Sub(t1).String())
+	}
 
 	if err != nil {
 		return data, err
