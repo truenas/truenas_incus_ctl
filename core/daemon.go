@@ -56,7 +56,8 @@ func RunDaemon(serverSockAddr string, globalTimeoutStr string) {
 
 	ls, err := net.Listen("unix", serverSockAddr)
 	if err != nil {
-		log.Fatal(fmt.Sprint("Error:", err))
+		fmt.Println("Listen error:", err)
+		return
 	}
 
 	var timer *time.Timer
@@ -140,11 +141,16 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 		allowInsecure = strings.ToLower(str) == "true"
 	}
 
-	if host == "" {
-		return nil, fmt.Errorf("TNC-Host-Url was not provided")
-	}
 	if method == "" {
 		return nil, fmt.Errorf("TNC-Call-Method was not provided")
+	}
+
+	if method == TNC_PREFIX_STRING + "ping" {
+		return []byte("\"pong\""), nil
+	}
+
+	if host == "" {
+		return nil, fmt.Errorf("TNC-Host-Url was not provided")
 	}
 
 	var sessionKey string

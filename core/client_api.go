@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	//"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -84,6 +85,7 @@ func (s *ClientSession) Login() error {
 			},
 		}
 	}
+
 	return nil
 }
 
@@ -102,6 +104,7 @@ func (s *ClientSession) CallRaw(method string, timeoutSeconds int64, params inte
 		request.Header.Set("TNC-Timeout", fmt.Sprintf("%ds", timeoutSeconds))
 	}
 
+	retried := false
 call:
 	response, err := s.client.Do(request)
 	if err != nil {
@@ -110,14 +113,26 @@ call:
 		}
 		errMsg := err.Error()
 		if strings.Contains(errMsg, ": dial unix") {
-			os.Remove(s.SocketPath)
-			err = s.Login()
-			if err == nil {
+			/*
+			if !retried {
+				retried = true
+				randomSleepMs := 500 + rand.Intn(1000)
+				time.Sleep(time.Duration(randomSleepMs) * time.Millisecond)
 				goto call
 			}
+			*/
+			if err := os.Remove(s.SocketPath); err == nil {
+				err = s.Login()
+				if err != nil {
+					return nil, err
+				}
+			}
+			retried = true
+			goto call
 		}
 		return nil, err
 	}
+	retried = retried
 
 	data, err := io.ReadAll(response.Body)
 	response.Body.Close()
@@ -181,6 +196,19 @@ func (s *ClientSession) Close(internalError error) error {
 	return MakeErrorFromList(errorList)
 }
 
+func launchDaemon(thisExec string, socketPath string, daemonTimeout time.Duration) error {
+	cmd := []string { "daemon" }
+	if daemonTimeout >= time.Second {
+		cmd = append(cmd, "-t", daemonTimeout.String())
+	}
+	cmd = append(cmd, socketPath)
+
+	if err := exec.Command(thisExec, cmd...).Start(); err != nil {
+		return fmt.Errorf("Failed to launch daemon: %v", err)
+	}
+	return nil
+}
+
 func launchDaemonAndAwaitSocket(socketPath string, daemonTimeout time.Duration, optWarningBuilder *strings.Builder) error {
 	thisExec, err := os.Executable()
 	if err != nil {
@@ -204,14 +232,8 @@ func launchDaemonAndAwaitSocket(socketPath string, daemonTimeout time.Duration, 
 		})
 	}()
 
-	cmd := []string { "daemon" }
-	if daemonTimeout >= time.Second {
-		cmd = append(cmd, "-t", daemonTimeout.String())
-	}
-	cmd = append(cmd, socketPath)
-
-	if err = exec.Command(thisExec, cmd...).Start(); err != nil {
-		return fmt.Errorf("Failed to launch daemon: %v", err)
+	if err = launchDaemon(thisExec, socketPath, daemonTimeout); err != nil {
+		return err
 	}
 
 	tmDuration := time.Duration(500) * time.Millisecond
