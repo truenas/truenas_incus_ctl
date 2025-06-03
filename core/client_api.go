@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	//"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -86,6 +85,15 @@ func (s *ClientSession) Login() error {
 		}
 	}
 
+	request, _ := http.NewRequest("GET", "http://unix/tnc-daemon", nil)
+	request.Header.Set("TNC-Call-Method", "tnc_daemon.ping")
+	data, err := requestAndMaybeRetry(s, request)
+	if err != nil {
+		return err
+	}
+	if string(data) != "\"pong\"" {
+		return fmt.Errorf("Unexpected response: %s", string(data))
+	}
 	return nil
 }
 
@@ -104,46 +112,7 @@ func (s *ClientSession) CallRaw(method string, timeoutSeconds int64, params inte
 		request.Header.Set("TNC-Timeout", fmt.Sprintf("%ds", timeoutSeconds))
 	}
 
-	retried := false
-call:
-	response, err := s.client.Do(request)
-	if err != nil {
-		if response != nil {
-			response.Body.Close()
-		}
-		errMsg := err.Error()
-		if strings.Contains(errMsg, ": dial unix") {
-			/*
-			if !retried {
-				retried = true
-				randomSleepMs := 500 + rand.Intn(1000)
-				time.Sleep(time.Duration(randomSleepMs) * time.Millisecond)
-				goto call
-			}
-			*/
-			if err := os.Remove(s.SocketPath); err == nil {
-				err = s.Login()
-				if err != nil {
-					return nil, err
-				}
-			}
-			retried = true
-			goto call
-		}
-		return nil, err
-	}
-	retried = retried
-
-	data, err := io.ReadAll(response.Body)
-	response.Body.Close()
-
-	if err != nil {
-		return data, err
-	}
-	if response.StatusCode >= 400 {
-		return nil, errors.New("Error: " + string(data))
-	}
-	return data, err
+	return requestAndMaybeRetry(s, request)
 }
 
 func (s *ClientSession) CallAsyncRaw(method string, params interface{}) (int64, error) {
@@ -194,6 +163,44 @@ func (s *ClientSession) Close(internalError error) error {
 
 	s.client = nil
 	return MakeErrorFromList(errorList)
+}
+
+func requestAndMaybeRetry(s *ClientSession, request *http.Request) (json.RawMessage, error) {
+	retriesLeft := 10
+call:
+	response, err := s.client.Do(request)
+	if err != nil {
+		if response != nil {
+			response.Body.Close()
+		}
+		errMsg := err.Error()
+		if strings.Contains(errMsg, ": dial unix") {
+			if err := os.Remove(s.SocketPath); err == nil {
+				err = s.Login()
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				time.Sleep(time.Duration(500) * time.Millisecond)
+			}
+			retriesLeft--
+			if retriesLeft > 0 {
+				goto call
+			}
+		}
+		return nil, err
+	}
+
+	data, err := io.ReadAll(response.Body)
+	response.Body.Close()
+
+	if err != nil {
+		return data, err
+	}
+	if response.StatusCode >= 400 {
+		return nil, errors.New("Error: " + string(data))
+	}
+	return data, err
 }
 
 func launchDaemon(thisExec string, socketPath string, daemonTimeout time.Duration) error {
