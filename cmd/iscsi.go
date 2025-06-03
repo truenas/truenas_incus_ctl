@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"os/user"
 	"path"
 	"strings"
@@ -12,6 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 )
+
+const DEFAULT_ISCSI_PORT = 3260
 
 var iscsiCmd = &cobra.Command{
 	Use:   "iscsi",
@@ -125,7 +126,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	portalId, err := LookupPortalIdOrCreate(api, 3260, options.allFlags["portal"])
+	portalId, err := LookupPortalIdOrCreate(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
 	if err != nil {
 		return err
 	}
@@ -372,7 +373,7 @@ func listIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, args []string, hostname string) (map[string]bool, map[string]string, error) {
+func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, args []string, portalAddr string) (map[string]bool, map[string]string, error) {
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 
 	maybeHashedToVolumeMap := make(map[string]string)
@@ -393,8 +394,6 @@ func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, ar
 	if err != nil {
 		return nil, nil, err
 	}
-
-	portalAddr := hostname + ":" + options.allFlags["iscsi_port"]
 
 	isCreate := core.IsStringTrue(options.allFlags, "create")
 
@@ -435,9 +434,14 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	hostname := core.StripPort(api.GetHostName());
 	options, _ := GetCobraFlags(cmd, false, nil)
-	shares, missingShares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostname)
+
+	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
+	if err != nil {
+		return err
+	}
+
+	shares, missingShares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, ipPortalAddr)
 	if err != nil {
 		return err
 	}
@@ -454,13 +458,6 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	if shares == nil && !shouldCreate && !isMinimal {
 		return fmt.Errorf("Could not find any matching iscsi shares")
 	}
-
-	ipAddrs, err := net.LookupIP(hostname)
-	if err != nil {
-		return err
-	}
-
-	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["iscsi_port"]
 
 	if shouldCreate {
 		toCreate := make([]string, 0)
@@ -566,9 +563,14 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	hostname := core.StripPort(api.GetHostName())
 	options, _ := GetCobraFlags(cmd, false, nil)
-	shares, _, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostname)
+
+	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
+	if err != nil {
+		return err
+	}
+
+	shares, _, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, ipPortalAddr)
 	if err != nil {
 		return err
 	}
@@ -576,13 +578,7 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return nil
 	}
 
-	ipAddrs, err := net.LookupIP(hostname)
-	if err != nil {
-		return err
-	}
-
 	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
-	ipAddr := ipAddrs[0].String() + ":" + options.allFlags["iscsi_port"]
 
 	targets := make([]typeIscsiLoginSpec, 0)
 	for share, _ := range shares {
@@ -593,13 +589,13 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			target = strings.Join(parts[1:], ":")
 		}
 		targets = append(targets, typeIscsiLoginSpec{
-			remoteIp: ipAddr,
+			remoteIp: ipPortalAddr,
 			iqn: iqn,
 			target: target,
 		})
 	}
 
-	return doIscsiActivate(targets, ipAddr, isMinimal, false)
+	return doIscsiActivate(targets, ipPortalAddr, isMinimal, false)
 }
 
 func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool, shouldPrintStatus bool) error {
@@ -723,13 +719,11 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 		return err
 	}
 
-	hostname := core.StripPort(api.GetHostName())
-	ipAddrs, err := net.LookupIP(hostname)
+	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
 	if err != nil {
 		return err
 	}
 
-	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["iscsi_port"]
 	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
 
 	deactivatedList := DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, isMinimal, false)
@@ -784,13 +778,10 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	hostname := core.StripPort(api.GetHostName())
-	ipAddrs, err := net.LookupIP(hostname)
+	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
 	if err != nil {
 		return err
 	}
-
-	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["iscsi_port"]
 
 	_ = DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, true, true)
 

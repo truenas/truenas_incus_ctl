@@ -87,6 +87,72 @@ func LookupPortalIdOrCreate(api core.Session, defaultPort int, spec string) (int
 	return portalId, nil
 }
 
+func MaybeLookupIpPortFromPortal(api core.Session, defaultPort int, spec string) (string, error) {
+	if spec == "" {
+		return "", fmt.Errorf("Portal was not specified (use ':' for the default portal)")
+	}
+
+	var ipPortObjMap map[string]interface{}
+	if asInt, errNotNumber := strconv.Atoi(spec); errNotNumber == nil {
+		queryFilter := []interface{} { []interface{} {"id","=",asInt} }
+		queryParams := []interface{} {
+			queryFilter,
+			make(map[string]interface{}),
+		}
+		out, err := core.ApiCall(api, "iscsi.portal.query", 10, queryParams)
+		if err != nil {
+			return "", err
+		}
+		var response map[string]interface{}
+		if err = json.Unmarshal(out, &response); err != nil {
+			return "", err
+		}
+		results, _ := response["result"].([]interface{})
+		for i := 0; i < len(results); i++ {
+			if obj, ok := results[i].(map[string]interface{}); ok {
+				if listenArray, ok := obj["listen"].([]interface{}); ok && len(listenArray) > 0 {
+					ipPortObjMap, _ = listenArray[0].(map[string]interface{})
+					break
+				} else if listenMap, ok := obj["listen"].(map[string]interface{}); ok {
+					ipPortObjMap = listenMap
+					break
+				}
+			}
+		}
+	}
+
+	if ipPortObjMap == nil {
+		ipPortStr := core.IpPortToJsonString(spec, api.GetHostName(), defaultPort)
+		var obj interface{}
+		if err := json.Unmarshal([]byte(ipPortStr), &obj); err != nil {
+			return "", err
+		}
+		if objArray, isArray := obj.([]interface{}); isArray {
+			if len(objArray) > 0 {
+				obj = objArray[0]
+			} else {
+				return "", fmt.Errorf("listen object was empty")
+			}
+		}
+		if objMap, isMap := obj.(map[string]interface{}); isMap {
+			ipPortObjMap = objMap
+		} else {
+			return "", fmt.Errorf("listen object was not a map or array of map")
+		}
+	}
+
+	ip, exists := ipPortObjMap["ip"]
+	if !exists {
+		ip = core.ResolvedIpv4OrVerbatim(api.GetHostName())
+	}
+	port, exists := ipPortObjMap["port"]
+	if !exists {
+		port = defaultPort
+	}
+
+	return fmt.Sprintf("%v:%v", ip, port), nil
+}
+
 func LookupInitiatorByFilter(api core.Session, queryFilter []interface{}) (int, error) {
 	queryParams := []interface{} {
 		queryFilter,
