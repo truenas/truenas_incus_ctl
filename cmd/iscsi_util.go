@@ -69,7 +69,17 @@ func LookupPortalIdOrCreate(api core.Session, defaultPort int, spec string) (int
 	}
 
 	if portalId == -1 {
-		out, err := core.ApiCall(api, "iscsi.portal.create", 10, []interface{} { map[string]interface{} { "listen": ipPortObj } })
+		if ipPortArray, ok := ipPortObj.([]interface{}); ok && len(ipPortArray) > 0 {
+			if ipPortMap, ok := ipPortArray[0].(map[string]interface{}); ok {
+				delete(ipPortMap, "port")
+				ipPortArray[0] = ipPortMap
+				ipPortObj = ipPortArray
+			}
+		}
+		paramsCreate := []interface{} { map[string]interface{} { "listen": ipPortObj } }
+		DebugJson(paramsCreate)
+
+		out, err := core.ApiCall(api, "iscsi.portal.create", 10, paramsCreate)
 		if err != nil {
 			return -1, err
 		}
