@@ -39,6 +39,17 @@ type DaemonContext struct {
 	sessionMap_   map[string]*Future[*TruenasSession]
 }
 
+type CallInfo struct {
+	method string
+	params []interface{}
+}
+
+type LoginInfo struct {
+	call CallInfo
+	serverUrl string
+	allowInsecure bool
+}
+
 func RunDaemon(serverSockAddr string, globalTimeoutStr string) {
 	var err error
 	var daemonTimeout time.Duration
@@ -154,20 +165,50 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 	}
 
 	var sessionKey string
-	var withApiKey bool
+	var methodLogin string
+	var paramsLogin []interface{}
 
 	if key == "" {
 		if user == "" || pass == "" {
 			return nil, fmt.Errorf("TNC-Api-Key was not provided, nor TNC-Username nor TNC-Password")
 		}
 		sessionKey = host + user + pass
-		withApiKey = false
+		methodLogin = "auth.login"
+		paramsLogin = []interface{}{user, pass}
 	} else {
 		sessionKey = host + key
-		withApiKey = true
+		methodLogin = "auth.login_with_api_key"
+		paramsLogin = []interface{}{key}
 	}
 	sessionKey += fmt.Sprint(allowInsecure)
 
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var params []interface{}
+	if err = json.Unmarshal(data, &params); err != nil {
+		return nil, err
+	}
+
+	call := CallInfo {
+		method: method,
+		params: params,
+	}
+	login := LoginInfo {
+		call: CallInfo {
+			method: methodLogin,
+			params: paramsLogin,
+		},
+		serverUrl: host,
+		allowInsecure: allowInsecure,
+	}
+
+	return d.maybeCreateSessionAndCall(sessionKey, timeoutStr, call, login)
+}
+
+func (d *DaemonContext) maybeCreateSessionAndCall(sessionKey string, timeoutStr string, call CallInfo, login LoginInfo) (json.RawMessage, error) {
 	shouldCreate := false
 
 	d.mapMtx.Lock()
@@ -183,11 +224,7 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 	var err error
 
 	if shouldCreate {
-		if withApiKey {
-			s, err = d.createSession(allowInsecure, host, "auth.login_with_api_key", []interface{}{key})
-		} else {
-			s, err = d.createSession(allowInsecure, host, "auth.login", []interface{}{user, pass})
-		}
+		s, err = d.createSession(sessionKey, login)
 		if err != nil {
 			future.Fail(err)
 		} else if s == nil {
@@ -214,30 +251,30 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 		return nil, err
 	}
 
-	//log.Println("Reading request body")
-
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		return nil, err
-	}
-
 	//log.Println("Calling method", method)
 
-	return s.call(method, timeoutStr, data)
+	out, err, callRetry := s.callJson(call.method, timeoutStr, call.params)
+	if callRetry != nil {
+		d.mapMtx.Lock()
+		delete(d.sessionMap_, sessionKey)
+		d.mapMtx.Unlock()
+		return d.maybeCreateSessionAndCall(sessionKey, timeoutStr, *callRetry, login)
+	}
+	return out, err
 }
 
-func (d *DaemonContext) createSession(allowInsecure bool, truenasServerUrl string, loginMethod string, loginParams []interface{}) (*TruenasSession, error) {
-	u, err := url.Parse(truenasServerUrl)
+func (d *DaemonContext) createSession(sessionKey string, login LoginInfo) (*TruenasSession, error) {
+	u, err := url.Parse(login.serverUrl)
 	if err != nil {
 		return nil, fmt.Errorf("Invalid URL: %w", err)
 	}
 
-	log.Println("Daemon: creating connection with allowInsecure=" + fmt.Sprint(allowInsecure))
+	log.Println("Daemon: creating connection with allowInsecure=" + fmt.Sprint(login.allowInsecure))
 
 	// Configure WebSocket connection with insecure TLS to accept self-signed certs
 	dialer := &websocket.Dialer{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: allowInsecure,
+			InsecureSkipVerify: login.allowInsecure,
 		},
 		Proxy: http.ProxyFromEnvironment,
 	}
@@ -248,13 +285,8 @@ func (d *DaemonContext) createSession(allowInsecure bool, truenasServerUrl strin
 		return nil, fmt.Errorf("Failed to connect: %w", err)
 	}
 
-	sessionKey := truenasServerUrl + loginParams[0].(string)
-	if len(loginParams) > 1 {
-		sessionKey += loginParams[1].(string)
-	}
-
 	session := &TruenasSession{
-		url: truenasServerUrl,
+		url: login.serverUrl,
 		conn: conn,
 		ctx: d,
 		sessionKey: sessionKey,
@@ -266,36 +298,31 @@ func (d *DaemonContext) createSession(allowInsecure bool, truenasServerUrl strin
 
 	go session.listen()
 
-	if _, err = session.callJson(loginMethod, "10s", loginParams); err != nil {
+	_, err, retryInfo := session.callJson(login.call.method, "10s", login.call.params)
+	if err != nil {
 		return nil, err
 	}
-	if _, err = session.callJson("core.subscribe", "10s", []interface{}{"core.get_jobs"}); err != nil {
+	if retryInfo != nil {
+		return nil, fmt.Errorf("use of closed network connection")
+	}
+
+	_, err, retryInfo = session.callJson("core.subscribe", "10s", []interface{}{"core.get_jobs"})
+	if err != nil {
 		return nil, err
+	}
+	if retryInfo != nil {
+		return nil, fmt.Errorf("use of closed network connection")
 	}
 
 	return session, nil
 }
 
-func (s *TruenasSession) call(method string, timeoutStr string, data json.RawMessage) (json.RawMessage, error) {
-	var request interface{}
-	err := json.Unmarshal(data, &request)
-	if err != nil {
-		return nil, err
-	}
-
-	return s.callJson(method, timeoutStr, request)
-}
-
-func (s *TruenasSession) callJson(method string, timeoutStr string, request interface{}) (json.RawMessage, error) {
+func (s *TruenasSession) callJson(method string, timeoutStr string, request []interface{}) (json.RawMessage, error, *CallInfo) {
 	s.ctx.UpdateCountdown()
 
-	requestParams, ok := request.([]interface{})
-	if !ok {
-		return nil, fmt.Errorf("Request body was not a JSON array")
-	}
-
 	if strings.HasPrefix(method, TNC_PREFIX_STRING) {
-		return s.handleDaemonProcedure(method[len(TNC_PREFIX_STRING):], timeoutStr, requestParams)
+		out, err := s.handleDaemonProcedure(method[len(TNC_PREFIX_STRING):], timeoutStr, request)
+		return out, err, nil
 	}
 
 	s.mapMtx.Lock()
@@ -308,13 +335,20 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request inte
 	reqMsg := make(map[string]interface{})
 	reqMsg["jsonrpc"] = "2.0"
 	reqMsg["method"] = method
-	reqMsg["params"] = requestParams
+	reqMsg["params"] = request
 	reqMsg["id"] = callId
 
 	//log.Println("Writing JSON request with callId:", callId, reqMsg)
 
 	if err := s.conn.WriteJSON(reqMsg); err != nil {
-		return nil, err
+		var callRetry *CallInfo
+		if strings.Contains(err.Error(), "use of closed network connection") {
+			callRetry = &CallInfo{
+				method: method,
+				params: request,
+			}
+		}
+		return nil, err, callRetry
 	}
 
 	timeout, err := time.ParseDuration(timeoutStr)
@@ -325,11 +359,11 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request inte
 	isDone, dataRes, err := AwaitFutureOrTimeout(fCall, timeout)
 	if !isDone {
 		timeoutParsed := timeout.String()
-		return nil, fmt.Errorf("Request timed out (exceeded %s)", timeoutParsed)
+		return nil, fmt.Errorf("Request timed out (exceeded %s)", timeoutParsed), nil
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, err, nil
 	}
 
 	jobId, _ := GetJobNumber(dataRes)
@@ -341,11 +375,11 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request inte
 	delete(s.callMap_, callId)
 	s.mapMtx.Unlock()
 
+	var callRetry *CallInfo
 	if jobId > 0 && method != JOB_WAIT_STRING {
-		_, _ = s.callJson(JOB_WAIT_STRING, timeoutStr, []interface{}{jobId})
+		_, _, callRetry = s.callJson(JOB_WAIT_STRING, timeoutStr, []interface{}{jobId})
 	}
-
-	return dataRes, nil
+	return dataRes, nil, callRetry
 }
 
 func (s *TruenasSession) listen() {
