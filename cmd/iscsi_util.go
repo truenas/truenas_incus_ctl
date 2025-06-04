@@ -324,7 +324,13 @@ func IterateActivatedIscsiShares(optIpPortalAddr string, callback func(root stri
 	}
 }
 
-func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeMap map[string]string, isMinimal bool, shouldPrintStatus bool) []string {
+func DeactivateMatchingIscsiTargets(
+	api core.Session,
+	optIpPortalAddr string,
+	maybeHashedToVolumeMap map[string]string,
+	isMinimal bool,
+	shouldPrintStatus bool,
+) []string {
 	deactivatedList := make([]string, 0)
 	IterateActivatedIscsiShares(optIpPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
 		if _, exists := maybeHashedToVolumeMap[targetOnlyName]; exists {
@@ -338,7 +344,7 @@ func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeM
 				"--logout",
 			}
 			DebugString(strings.Join(logoutParams, " "))
-			_, err := RunIscsiAdminTool(logoutParams)
+			_, err := RunIscsiAdminTool(api, logoutParams)
 
 			if err != nil {
 				fmt.Printf("failed\t%s\t%v\n", iqnTargetName, err)
@@ -358,8 +364,8 @@ func DeactivateMatchingIscsiTargets(optIpPortalAddr string, maybeHashedToVolumeM
 	return deactivatedList
 }
 
-func GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap map[string]string, portalAddr string) ([]typeIscsiLoginSpec, error) {
-	out, err := RunIscsiDiscover(portalAddr)
+func GetIscsiTargetsFromDiscovery(api core.Session, maybeHashedToVolumeMap map[string]string, portalAddr string) ([]typeIscsiLoginSpec, error) {
+	out, err := RunIscsiDiscover(api, portalAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -393,8 +399,8 @@ func GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap map[string]string, port
 	return targets, nil
 }
 
-func GetIscsiTargetsFromSession(maybeHashedToVolumeMap map[string]string) ([]typeIscsiLoginSpec, error) {
-	out, err := RunIscsiAdminTool([]string{"--mode", "session"})
+func GetIscsiTargetsFromSession(api core.Session, maybeHashedToVolumeMap map[string]string) ([]typeIscsiLoginSpec, error) {
+	out, err := RunIscsiAdminTool(api, []string{"--mode", "session"})
 	if err != nil {
 		return nil, err
 	}
@@ -440,8 +446,23 @@ func GetIscsiTargetsFromSession(maybeHashedToVolumeMap map[string]string) ([]typ
 	return targets, nil
 }
 
-func RunIscsiDiscover(portalAddr string) (string, error) {
-	return RunIscsiAdminTool([]string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"})
+func CheckRemoteIscsiServiceIsRunning(api core.Session) (string, error) {
+	out, err := core.ApiCall(api, "service.started", 10, []interface{} { "iscsitarget" })
+	if err != nil {
+		return "", err
+	}
+	var response map[string]interface{}
+	if err = json.Unmarshal(out, &response); err != nil {
+		return "", err
+	}
+	if !core.IsValueTrue(response, "result") {
+		return "the iSCSI service has not been started\nRun this tool with:\nservice start --enable iscsitarget\nTo start the service", nil
+	}
+	return "", nil
+}
+
+func RunIscsiDiscover(api core.Session, portalAddr string) (string, error) {
+	return RunIscsiAdminTool(api, []string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"})
 }
 
 func CheckIscsiAdminToolExists() error {
@@ -461,7 +482,7 @@ func MaybeLaunchIscsiDaemon() error {
 	return nil
 }
 
-func RunIscsiAdminTool(args []string) (string, error) {
+func RunIscsiAdminTool(api core.Session, args []string) (string, error) {
 	retriesLeft := 10
 begin:
 	out, err := core.RunCommand("iscsiadm", args...)
@@ -473,9 +494,14 @@ begin:
 		}
 	}
 	if err != nil {
-		err = errors.New(err.Error() +
-			"\nMake sure you've started the iscsi service, eg."+
-			"\n./truenas_incus_ctl service start --enable iscsitarget")
+		msg, apiErr := CheckRemoteIscsiServiceIsRunning(api)
+		if apiErr == nil {
+			if msg != "" {
+				err = errors.New(err.Error() + "\n" + msg)
+			} else {
+				err = errors.New(err.Error() + "\nThe iscsitarget service is running.")
+			}
+		}
 	}
 	return out, err
 }

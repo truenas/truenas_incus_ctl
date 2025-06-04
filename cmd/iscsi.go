@@ -376,18 +376,26 @@ func testIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 	options, _ := GetCobraFlags(cmd, false, nil)
 
+	msg, err := CheckRemoteIscsiServiceIsRunning(api)
+	if err != nil {
+		return err
+	}
+	if msg != "" {
+		return fmt.Errorf(msg)
+	}
+
 	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
 	if err != nil {
 		return err
 	}
 
-	out, err := RunIscsiDiscover(ipPortalAddr)
+	discoveryOutput, err := RunIscsiDiscover(api, ipPortalAddr)
 	if err != nil {
 		return err
 	}
 
 	if !core.IsStringTrue(options.allFlags, "parsable") {
-		fmt.Println(out)
+		fmt.Println(discoveryOutput)
 	}
 	return nil
 }
@@ -424,12 +432,12 @@ func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, ar
 
 	isCreate := core.IsStringTrue(options.allFlags, "create")
 
-	sessionTargets, err := GetIscsiTargetsFromSession(maybeHashedToVolumeMap)
+	sessionTargets, err := GetIscsiTargetsFromSession(api, maybeHashedToVolumeMap)
 	if !isCreate && err != nil && !strings.Contains(strings.ToLower(err.Error()), "no active sessions") {
 		return nil, nil, err
 	}
 
-	discoveryTargets, err := GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap, portalAddr)
+	discoveryTargets, err := GetIscsiTargetsFromDiscovery(api, maybeHashedToVolumeMap, portalAddr)
 	if !isCreate && err != nil {
 		return nil, nil, err
 	}
@@ -518,7 +526,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	if shouldActivate {
 		var remainingTargets []typeIscsiLoginSpec
 		if shouldCreate {
-			remainingTargets, _ = GetIscsiTargetsFromDiscovery(missingShares, ipPortalAddr)
+			remainingTargets, _ = GetIscsiTargetsFromDiscovery(api, missingShares, ipPortalAddr)
 		} else {
 			remainingTargets = make([]typeIscsiLoginSpec, 0)
 		}
@@ -537,7 +545,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			remainingTargets = append(remainingTargets, t)
 		}
 		if len(remainingTargets) > 0 {
-			if err = doIscsiActivate(remainingTargets, ipPortalAddr, isMinimal, true); err != nil {
+			if err = doIscsiActivate(api, remainingTargets, ipPortalAddr, isMinimal, true); err != nil {
 				return err
 			}
 		}
@@ -563,7 +571,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 				"--logout",
 			}
 			DebugString(strings.Join(logoutParams, " "))
-			_, err := RunIscsiAdminTool(logoutParams)
+			_, err := RunIscsiAdminTool(api, logoutParams)
 			if err != nil {
 				fmt.Printf("failed\t%s\t%v\n", t, err)
 			} else {
@@ -622,10 +630,10 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		})
 	}
 
-	return doIscsiActivate(targets, ipPortalAddr, isMinimal, false)
+	return doIscsiActivate(api, targets, ipPortalAddr, isMinimal, false)
 }
 
-func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool, shouldPrintStatus bool) error {
+func doIscsiActivate(api core.Session, targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool, shouldPrintStatus bool) error {
 	outerMap := make(map[string]bool)
 
 	for _, t := range targets {
@@ -646,7 +654,7 @@ func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool
 			"--login",
 		}
 		DebugString(strings.Join(loginParams, " "))
-		_, err := RunIscsiAdminTool(loginParams)
+		_, err := RunIscsiAdminTool(api, loginParams)
 		if err == nil {
 			outerMap[iqnTarget] = true
 		} else {
@@ -753,7 +761,7 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 
 	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
 
-	deactivatedList := DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, isMinimal, false)
+	deactivatedList := DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, isMinimal, false)
 
 	if !isMinimal {
 		for _, vol := range deactivatedList {
@@ -810,7 +818,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	_ = DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, true, true)
+	_ = DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, true, true)
 
 	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(true),
