@@ -21,6 +21,7 @@ type ClientSession struct {
 	HostName string
 	ApiKey string
 	SocketPath string
+	IsDebug bool
 	AllowInsecure bool
 	client *http.Client
 	timeout time.Duration
@@ -40,6 +41,11 @@ func (s *ClientSession) GetUrl() string {
 }
 
 func (s *ClientSession) Login() error {
+	var t1 time.Time
+	if s.IsDebug {
+		t1 = time.Now()
+	}
+
 	if s.jobsList == nil {
 		s.jobsList = make([]int64, 0)
 	}
@@ -84,10 +90,29 @@ func (s *ClientSession) Login() error {
 			},
 		}
 	}
+
+	request, _ := http.NewRequest("GET", "http://unix/tnc-daemon", nil)
+	request.Header.Set("TNC-Call-Method", "tnc_daemon.ping")
+	data, err, _ := requestAndMaybeRetry(s, request)
+	if err != nil {
+		return err
+	}
+	if string(data) != "\"pong\"" {
+		return fmt.Errorf("Unexpected response: %s", string(data))
+	}
+
+	if s.IsDebug {
+		fmt.Println("tncdaemon connection time:", time.Now().Sub(t1).String())
+	}
 	return nil
 }
 
 func (s *ClientSession) CallRaw(method string, timeoutSeconds int64, params interface{}) (json.RawMessage, error) {
+	var t1 time.Time
+	if s.IsDebug {
+		t1 = time.Now()
+	}
+
 	paramsData, err := json.Marshal(params)
 	if err != nil {
 		return nil, err
@@ -102,31 +127,12 @@ func (s *ClientSession) CallRaw(method string, timeoutSeconds int64, params inte
 		request.Header.Set("TNC-Timeout", fmt.Sprintf("%ds", timeoutSeconds))
 	}
 
-call:
-	response, err := s.client.Do(request)
-	if err != nil {
-		if response != nil {
-			response.Body.Close()
-		}
-		errMsg := err.Error()
-		if strings.Contains(errMsg, ": dial unix") {
-			os.Remove(s.SocketPath)
-			err = s.Login()
-			if err == nil {
-				goto call
-			}
-		}
-		return nil, err
-	}
-
-	data, err := io.ReadAll(response.Body)
-	response.Body.Close()
-
-	if err != nil {
+	data, err, completed := requestAndMaybeRetry(s, request)
+	if !completed {
 		return data, err
 	}
-	if response.StatusCode >= 400 {
-		return nil, errors.New("Error: " + string(data))
+	if s.IsDebug {
+		fmt.Println(method + ":", time.Now().Sub(t1).String())
 	}
 	return data, err
 }
@@ -181,6 +187,57 @@ func (s *ClientSession) Close(internalError error) error {
 	return MakeErrorFromList(errorList)
 }
 
+func requestAndMaybeRetry(s *ClientSession, request *http.Request) (json.RawMessage, error, bool) {
+	retriesLeft := 10
+call:
+	response, err := s.client.Do(request)
+	if err != nil {
+		if response != nil {
+			response.Body.Close()
+		}
+		errMsg := err.Error()
+		if strings.Contains(errMsg, ": dial unix") {
+			if err := os.Remove(s.SocketPath); err == nil {
+				err = s.Login()
+				if err != nil {
+					return nil, err, false
+				}
+			} else {
+				time.Sleep(time.Duration(500) * time.Millisecond)
+			}
+			retriesLeft--
+			if retriesLeft > 0 {
+				goto call
+			}
+		}
+		return nil, err, false
+	}
+
+	data, err := io.ReadAll(response.Body)
+	response.Body.Close()
+
+	if err != nil {
+		return data, err, true
+	}
+	if response.StatusCode >= 400 {
+		return nil, errors.New("Error: " + string(data)), true
+	}
+	return data, err, true
+}
+
+func launchDaemon(thisExec string, socketPath string, daemonTimeout time.Duration) error {
+	cmd := []string { "daemon" }
+	if daemonTimeout >= time.Second {
+		cmd = append(cmd, "-t", daemonTimeout.String())
+	}
+	cmd = append(cmd, socketPath)
+
+	if err := exec.Command(thisExec, cmd...).Start(); err != nil {
+		return fmt.Errorf("Failed to launch daemon: %v", err)
+	}
+	return nil
+}
+
 func launchDaemonAndAwaitSocket(socketPath string, daemonTimeout time.Duration, optWarningBuilder *strings.Builder) error {
 	thisExec, err := os.Executable()
 	if err != nil {
@@ -204,14 +261,8 @@ func launchDaemonAndAwaitSocket(socketPath string, daemonTimeout time.Duration, 
 		})
 	}()
 
-	cmd := []string { "daemon" }
-	if daemonTimeout >= time.Second {
-		cmd = append(cmd, "-t", daemonTimeout.String())
-	}
-	cmd = append(cmd, socketPath)
-
-	if err = exec.Command(thisExec, cmd...).Start(); err != nil {
-		return fmt.Errorf("Failed to launch daemon: %v", err)
+	if err = launchDaemon(thisExec, socketPath, daemonTimeout); err != nil {
+		return err
 	}
 
 	tmDuration := time.Duration(500) * time.Millisecond

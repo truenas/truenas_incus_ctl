@@ -3,16 +3,16 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"os/user"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 	"truenas/truenas_incus_ctl/core"
 
 	"github.com/spf13/cobra"
 )
+
+const DEFAULT_ISCSI_PORT = 3260
 
 var iscsiCmd = &cobra.Command{
 	Use:   "iscsi",
@@ -35,6 +35,11 @@ var iscsiActivateCmd = &cobra.Command{
 	Use:   "activate <dataset>...",
 	Short: "Activate the iscsi targets that map to the given datasets",
 	Args:  cobra.MinimumNArgs(1),
+}
+
+var iscsiTestCmd = &cobra.Command{
+	Use:   "test",
+	Short: "Test an iSCSI portal connection",
 }
 
 var iscsiListCmd = &cobra.Command{
@@ -63,6 +68,7 @@ var iscsiDeleteCmd = &cobra.Command{
 func init() {
 	iscsiCreateCmd.RunE = WrapCommandFunc(createIscsi)
 	iscsiActivateCmd.RunE = WrapCommandFunc(activateIscsi)
+	iscsiTestCmd.RunE = WrapCommandFunc(testIscsi)
 	iscsiListCmd.RunE = WrapCommandFunc(listIscsi)
 	iscsiLocateCmd.RunE = WrapCommandFunc(locateIscsi)
 	iscsiDeactivateCmd.RunE = WrapCommandFunc(deactivateIscsi)
@@ -76,17 +82,17 @@ func init() {
 	iscsiLocateCmd.Flags().Bool("delete", false, "Deactivate and delete any shares that could be located")
 	iscsiLocateCmd.Flags().Bool("readonly", false, "If a share is to be created, ensure that its extent is read-only. Ignored for snapshots.")
 
-	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
+	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiTestCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "", "label to prefix the created target")
-		c.Flags().Int("iscsi-port", 3260, "iSCSI portal port")
 		c.Flags().Bool("parsable", false, "Parsable (ie. minimal) output")
-		c.Flags().StringP("portal", "p", ":", "iSCSI portal [ip]:[port] or id, overrides --iscsi-port")
+		c.Flags().StringP("portal", "p", ":", "iSCSI portal [ip]:[port] or id")
 		c.Flags().StringP("initiator", "i", "", "iSCSI initiator id or comment")
 	}
 
 	iscsiCmd.AddCommand(iscsiCreateCmd)
 	iscsiCmd.AddCommand(iscsiActivateCmd)
+	iscsiCmd.AddCommand(iscsiTestCmd)
 	iscsiCmd.AddCommand(iscsiListCmd)
 	iscsiCmd.AddCommand(iscsiLocateCmd)
 	iscsiCmd.AddCommand(iscsiDeactivateCmd)
@@ -95,13 +101,6 @@ func init() {
 	AddIscsiCrudCommands(iscsiCmd)
 
 	shareCmd.AddCommand(iscsiCmd)
-}
-
-type typeIscsiTargetParams struct {
-	verb        string
-	id          interface{}
-	portalId    int
-	initiatorId int
 }
 
 func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
@@ -134,157 +133,48 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	toCreateMap := make(map[string]bool)
-	for _, t := range args {
-		toCreateMap[t] = true
+	portalId, err := LookupPortalIdOrCreate(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
+	if err != nil {
+		return err
 	}
 
-	//missingInitiators := make(map[string]bool)
-	targets := make(map[string]typeIscsiTargetParams)
-	shouldFindPortal := false
+	initiatorId, err := LookupInitiatorOrCreateBlank(api, options.allFlags["initiator"])
+	if err != nil {
+		return err
+	}
 
-	for targetId, target := range responseTargetQuery.resultsMap {
-		targetName, _ := target["alias"].(string)
-		if targetName == "" {
-			return fmt.Errorf("Name could not be found in iSCSI target with ID %v", targetId)
-		}
-		delete(toCreateMap, targetName)
-
-		anyGroups := false
-		if groupsObj, exists := target["groups"]; exists {
-			if groups, ok := groupsObj.([]interface{}); ok && len(groups) > 0 {
-				anyGroups = true
-				portalExists := false
-				initiatorExists := false
-				if elem, isElemMap := groups[0].(map[string]interface{}); isElemMap {
-					_, portalExists = elem["portal"].(float64)
-					_, initiatorExists = elem["initiator"].(float64)
-				}
-
-				portal := 1    // -1
-				initiator := 1 // -1
-				if portalExists {
-					portal = 1 // 0
-				} else {
-					shouldFindPortal = true
-				}
-				if initiatorExists {
-					initiator = 1 // 0
-				} else {
-					//missingInitiators[targetName] = true
-				}
-
-				targets[targetName] = typeIscsiTargetParams{
-					verb:        "update",
-					id:          targetId,
-					portalId:    portal,
-					initiatorId: initiator,
-				}
-			}
-		}
-		if !anyGroups {
-			shouldFindPortal = true
-			//missingInitiators[targetName] = true
-
-			targets[targetName] = typeIscsiTargetParams{
-				verb:        "update",
-				id:          targetId,
-				portalId:    1, // -1
-				initiatorId: 1, // -1
-			}
+	toUpdateMap := make(map[string]interface{})
+	for _, target := range responseTargetQuery.resultsMap {
+		if targetAlias, _ := target["alias"].(string); targetAlias != "" {
+			toUpdateMap[targetAlias] = core.GetIdFromObject(target)
 		}
 	}
 
-	for targetName, _ := range toCreateMap {
-		shouldFindPortal = true
-		//missingInitiators[targetName] = true
+	targetUpdates := make([]interface{}, 0)
+	targetCreates := make([]interface{}, 0)
 
-		targets[targetName] = typeIscsiTargetParams{
-			verb:        "create",
-			id:          -1,
-			portalId:    1, // -1
-			initiatorId: 1, // -1
+	for _, vol := range args {
+		group := make(map[string]interface{})
+		group["portal"] = portalId
+		group["initiator"] = initiatorId
+
+		obj := make(map[string]interface{})
+		obj["name"] = volumeToMaybeHashedMap[vol]
+		obj["alias"] = vol
+		obj["groups"] = []map[string]interface{}{group}
+
+		if idObj, exists := toUpdateMap[vol]; exists {
+			targetUpdates = append(targetUpdates, []interface{}{idObj, obj})
+		} else {
+			targetCreates = append(targetCreates, []interface{}{obj})
 		}
 	}
 
-	if len(targets) == 0 {
+	if len(targetUpdates) == 0 && len(targetCreates) == 0 {
 		if !core.IsStringTrue(options.allFlags, "parsable") {
 			fmt.Println("iSCSI targets, portal and initiator groups are up to date for", args)
 		}
 		return nil
-	}
-
-	emptyQueryParams := []interface{}{make([]interface{}, 0), make(map[string]interface{})}
-
-	defaultPortal := -1
-	if shouldFindPortal {
-		out, err := core.ApiCall(api, "iscsi.portal.query", 10, emptyQueryParams)
-		if err != nil {
-			return err
-		}
-		var response map[string]interface{}
-		if err = json.Unmarshal(out, &response); err != nil {
-			return err
-		}
-		results, _ := response["result"].([]interface{})
-		for i := 0; i < len(results); i++ {
-			if obj, ok := results[i].(map[string]interface{}); ok {
-				if idObj, exists := obj["id"]; exists {
-					if id, ok := idObj.(float64); ok {
-						defaultPortal = int(id)
-						break
-					}
-				}
-			}
-		}
-		if defaultPortal == -1 {
-			cmd.SilenceUsage = false
-			return fmt.Errorf("No iSCSI portal was found for this host. Use:\n" +
-				"<truenas_incus_ctl> share iscsi portal create --listen <IP address>:<port number>\n" +
-				"To create one.\n")
-		}
-	}
-
-	/*
-		if len(missingInitiators) > 0 {
-			//...
-		}
-	*/
-
-	targetCreates := make([]interface{}, 0)
-	targetUpdates := make([]interface{}, 0)
-	for volName, t := range targets {
-		group := make(map[string]interface{})
-		isGroupEmpty := true
-		if t.portalId != 0 {
-			pid := t.portalId
-			if pid < 0 {
-				pid = defaultPortal
-			}
-			group["portal"] = pid
-			isGroupEmpty = false
-		}
-		if t.initiatorId > 0 {
-			group["initiator"] = t.initiatorId
-			isGroupEmpty = false
-		}
-
-		obj := make(map[string]interface{})
-		obj["name"] = volumeToMaybeHashedMap[volName]
-		obj["alias"] = volName
-
-		if !isGroupEmpty {
-			obj["groups"] = []map[string]interface{}{group}
-		}
-
-		if t.verb == "create" {
-			targetCreates = append(targetCreates, []interface{}{obj})
-		} else {
-			if id, errNotNumber := strconv.Atoi(fmt.Sprint(t.id)); errNotNumber == nil {
-				t.id = id
-			}
-			targetUpdates = append(targetUpdates, []interface{}{t.id, obj})
-		}
 	}
 
 	jobIdUpdate := int64(-1)
@@ -446,12 +336,14 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	changes = make([]typeApiCallRecord, 0)
 
 	if strings.HasPrefix(cmd.Use, "locate") || !core.IsStringTrue(options.allFlags, "parsable") {
-		for volName, _ := range targets {
-			fmt.Println("created\t" + volName)
+		for _, target := range allTargets {
+			vol, _ := target["alias"].(string)
+			fmt.Println("created\t" + vol)
 		}
 	} else {
-		for volName, _ := range targets {
-			fmt.Println(volName)
+		for _, target := range allTargets {
+			vol, _ := target["alias"].(string)
+			fmt.Println(vol)
 		}
 	}
 
@@ -480,6 +372,34 @@ func undoIscsiCreateList(api core.Session, changes *[]typeApiCallRecord) {
 	}
 }
 
+func testIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	cmd.SilenceUsage = true
+	options, _ := GetCobraFlags(cmd, false, nil)
+
+	msg, err := CheckRemoteIscsiServiceIsRunning(api)
+	if err != nil {
+		return err
+	}
+	if msg != "" {
+		return fmt.Errorf(msg)
+	}
+
+	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
+	if err != nil {
+		return err
+	}
+
+	discoveryOutput, err := RunIscsiDiscover(api, ipPortalAddr)
+	if err != nil {
+		return err
+	}
+
+	if !core.IsStringTrue(options.allFlags, "parsable") {
+		fmt.Println(discoveryOutput)
+	}
+	return nil
+}
+
 func listIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	IterateActivatedIscsiShares("", func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
 		fullPath := path.Join(root, fullName)
@@ -488,7 +408,7 @@ func listIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, args []string, hostname string) (map[string]bool, map[string]string, error) {
+func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, args []string, portalAddr string) (map[string]bool, map[string]string, error) {
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 
 	maybeHashedToVolumeMap := make(map[string]string)
@@ -510,16 +430,14 @@ func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, ar
 		return nil, nil, err
 	}
 
-	portalAddr := hostname + ":" + options.allFlags["iscsi_port"]
-
 	isCreate := core.IsStringTrue(options.allFlags, "create")
 
-	sessionTargets, err := GetIscsiTargetsFromSession(maybeHashedToVolumeMap)
+	sessionTargets, err := GetIscsiTargetsFromSession(api, maybeHashedToVolumeMap)
 	if !isCreate && err != nil && !strings.Contains(strings.ToLower(err.Error()), "no active sessions") {
 		return nil, nil, err
 	}
 
-	discoveryTargets, err := GetIscsiTargetsFromDiscovery(maybeHashedToVolumeMap, portalAddr)
+	discoveryTargets, err := GetIscsiTargetsFromDiscovery(api, maybeHashedToVolumeMap, portalAddr)
 	if !isCreate && err != nil {
 		return nil, nil, err
 	}
@@ -551,9 +469,14 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	hostname := core.StripPort(api.GetHostName());
 	options, _ := GetCobraFlags(cmd, false, nil)
-	shares, missingShares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostname)
+
+	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
+	if err != nil {
+		return err
+	}
+
+	shares, missingShares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, ipPortalAddr)
 	if err != nil {
 		return err
 	}
@@ -570,13 +493,6 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	if shares == nil && !shouldCreate && !isMinimal {
 		return fmt.Errorf("Could not find any matching iscsi shares")
 	}
-
-	ipAddrs, err := net.LookupIP(hostname)
-	if err != nil {
-		return err
-	}
-
-	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["iscsi_port"]
 
 	if shouldCreate {
 		toCreate := make([]string, 0)
@@ -610,7 +526,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	if shouldActivate {
 		var remainingTargets []typeIscsiLoginSpec
 		if shouldCreate {
-			remainingTargets, _ = GetIscsiTargetsFromDiscovery(missingShares, ipPortalAddr)
+			remainingTargets, _ = GetIscsiTargetsFromDiscovery(api, missingShares, ipPortalAddr)
 		} else {
 			remainingTargets = make([]typeIscsiLoginSpec, 0)
 		}
@@ -629,7 +545,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			remainingTargets = append(remainingTargets, t)
 		}
 		if len(remainingTargets) > 0 {
-			if err = doIscsiActivate(remainingTargets, ipPortalAddr, isMinimal, true); err != nil {
+			if err = doIscsiActivate(api, remainingTargets, ipPortalAddr, isMinimal, true); err != nil {
 				return err
 			}
 		}
@@ -655,7 +571,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 				"--logout",
 			}
 			DebugString(strings.Join(logoutParams, " "))
-			_, err := RunIscsiAdminTool(logoutParams)
+			_, err := RunIscsiAdminTool(api, logoutParams)
 			if err != nil {
 				fmt.Printf("failed\t%s\t%v\n", t, err)
 			} else {
@@ -682,9 +598,14 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	hostname := core.StripPort(api.GetHostName())
 	options, _ := GetCobraFlags(cmd, false, nil)
-	shares, _, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, hostname)
+
+	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
+	if err != nil {
+		return err
+	}
+
+	shares, _, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, ipPortalAddr)
 	if err != nil {
 		return err
 	}
@@ -692,13 +613,7 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return nil
 	}
 
-	ipAddrs, err := net.LookupIP(hostname)
-	if err != nil {
-		return err
-	}
-
 	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
-	ipAddr := ipAddrs[0].String() + ":" + options.allFlags["iscsi_port"]
 
 	targets := make([]typeIscsiLoginSpec, 0)
 	for share, _ := range shares {
@@ -709,16 +624,16 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			target = strings.Join(parts[1:], ":")
 		}
 		targets = append(targets, typeIscsiLoginSpec{
-			remoteIp: ipAddr,
+			remoteIp: ipPortalAddr,
 			iqn: iqn,
 			target: target,
 		})
 	}
 
-	return doIscsiActivate(targets, ipAddr, isMinimal, false)
+	return doIscsiActivate(api, targets, ipPortalAddr, isMinimal, false)
 }
 
-func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool, shouldPrintStatus bool) error {
+func doIscsiActivate(api core.Session, targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool, shouldPrintStatus bool) error {
 	outerMap := make(map[string]bool)
 
 	for _, t := range targets {
@@ -739,7 +654,7 @@ func doIscsiActivate(targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool
 			"--login",
 		}
 		DebugString(strings.Join(loginParams, " "))
-		_, err := RunIscsiAdminTool(loginParams)
+		_, err := RunIscsiAdminTool(api, loginParams)
 		if err == nil {
 			outerMap[iqnTarget] = true
 		} else {
@@ -839,16 +754,14 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 		return err
 	}
 
-	hostname := core.StripPort(api.GetHostName())
-	ipAddrs, err := net.LookupIP(hostname)
+	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
 	if err != nil {
 		return err
 	}
 
-	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["iscsi_port"]
 	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
 
-	deactivatedList := DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, isMinimal, false)
+	deactivatedList := DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, isMinimal, false)
 
 	if !isMinimal {
 		for _, vol := range deactivatedList {
@@ -900,15 +813,12 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	hostname := core.StripPort(api.GetHostName())
-	ipAddrs, err := net.LookupIP(hostname)
+	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
 	if err != nil {
 		return err
 	}
 
-	ipPortalAddr := ipAddrs[0].String() + ":" + options.allFlags["iscsi_port"]
-
-	_ = DeactivateMatchingIscsiTargets(ipPortalAddr, maybeHashedToVolumeMap, true, true)
+	_ = DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, true, true)
 
 	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(true),
