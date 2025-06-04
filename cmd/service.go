@@ -137,9 +137,6 @@ func listService(cmd *cobra.Command, api core.Session, args []string) error {
 
 func changeServiceState(cmd *cobra.Command, api core.Session, args []string) error {
 	cmdType := strings.Split(cmd.Use, " ")[0]
-	if cmdType != "reload" && cmdType != "restart" && cmdType != "start" && cmdType != "stop" {
-		return fmt.Errorf("cmdType was not reload, restart, start or stop")
-	}
 
 	options, _ := GetCobraFlags(cmd, false, nil)
 	cmd.SilenceUsage = true
@@ -149,28 +146,7 @@ func changeServiceState(cmd *cobra.Command, api core.Session, args []string) err
 	isDisable := core.IsStringTrue(options.allFlags, "disable")
 	RemoveFlag(options, "disable")
 
-	if err := toggleService(api, args, isEnable, isDisable); err != nil {
-		return err
-	}
-
-	outMap := make(map[string]interface{})
-
-	for propName, valueStr := range options.usedFlags {
-		value, _ := ParseStringAndValidate(propName, valueStr, nil)
-		outMap[propName] = value
-	}
-
-	paramsArray := make([]interface{}, len(args))
-	for i, arg := range args {
-		paramsArray[i] = []interface{} { arg, outMap }
-	}
-
-	out, _, err := MaybeBulkApiCallArray(api, "service." + cmdType, int64(10 + 10 * len(paramsArray)), paramsArray, true)
-	if err != nil {
-		return err
-	}
-	DebugString(string(out))
-	return nil
+	return changeServiceStateImpl(api, cmdType, options.usedFlags, isEnable, isDisable, args)
 }
 
 func enableOrDisableService(cmd *cobra.Command, api core.Session, args []string) error {
@@ -199,4 +175,35 @@ func toggleService(api core.Session, args []string, shouldEnable bool, shouldDis
 
 	_, _, err := MaybeBulkApiCallArray(api, "service.update", int64(10 + 10 * len(paramsArray)), paramsArray, false)
 	return err
+}
+
+func changeServiceStateImpl(api core.Session, newState string, optionalFlags map[string]string, isEnable, isDisable bool, serviceList []string) error {
+	if newState != "reload" && newState != "restart" && newState != "start" && newState != "stop" {
+		return fmt.Errorf("The intended state was not reload, restart, start or stop")
+	}
+
+	if err := toggleService(api, serviceList, isEnable, isDisable); err != nil {
+		return err
+	}
+
+	outMap := make(map[string]interface{})
+
+	if optionalFlags != nil {
+		for propName, valueStr := range optionalFlags {
+			value, _ := ParseStringAndValidate(propName, valueStr, nil)
+			outMap[propName] = value
+		}
+	}
+
+	paramsArray := make([]interface{}, len(serviceList))
+	for i, arg := range serviceList {
+		paramsArray[i] = []interface{} { arg, outMap }
+	}
+
+	out, _, err := MaybeBulkApiCallArray(api, "service." + newState, int64(10 + 10 * len(paramsArray)), paramsArray, true)
+	if err != nil {
+		return err
+	}
+	DebugString(string(out))
+	return nil
 }

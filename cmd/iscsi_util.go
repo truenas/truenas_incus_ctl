@@ -456,7 +456,7 @@ func CheckRemoteIscsiServiceIsRunning(api core.Session) (string, error) {
 		return "", err
 	}
 	if !core.IsValueTrue(response, "result") {
-		return "the iSCSI service has not been started\nRun this tool with:\nservice start --enable iscsitarget\nTo start the service", nil
+		return "The iSCSI service has not been started\nRun this tool with:\nservice start --enable iscsitarget\nTo start the service", nil
 	}
 	return "", nil
 }

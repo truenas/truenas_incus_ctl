@@ -39,7 +39,12 @@ var iscsiActivateCmd = &cobra.Command{
 
 var iscsiTestCmd = &cobra.Command{
 	Use:   "test",
-	Short: "Test an iSCSI portal connection",
+	Short: "Test an iSCSI portal connection, and optionally setup one as well",
+}
+
+var iscsiSetupCmd = &cobra.Command{
+	Use:   "setup",
+	Short: "Ensure the iSCSI service is started and there exists a portal and initiator for the given host",
 }
 
 var iscsiListCmd = &cobra.Command{
@@ -69,6 +74,7 @@ func init() {
 	iscsiCreateCmd.RunE = WrapCommandFunc(createIscsi)
 	iscsiActivateCmd.RunE = WrapCommandFunc(activateIscsi)
 	iscsiTestCmd.RunE = WrapCommandFunc(testIscsi)
+	iscsiSetupCmd.RunE = WrapCommandFunc(setupIscsi)
 	iscsiListCmd.RunE = WrapCommandFunc(listIscsi)
 	iscsiLocateCmd.RunE = WrapCommandFunc(locateIscsi)
 	iscsiDeactivateCmd.RunE = WrapCommandFunc(deactivateIscsi)
@@ -76,13 +82,17 @@ func init() {
 
 	iscsiCreateCmd.Flags().Bool("readonly", false, "Ensure the new iSCSI extent is read-only. Ignored for snapshots.")
 
+	iscsiTestCmd.Flags().Bool("setup", false, "Ensure the iSCSI service is started and there exists a portal and initiator for the given host")
+
+	iscsiSetupCmd.Flags().Bool("test", false, "Test the iSCSI portal connection")
+
 	iscsiLocateCmd.Flags().Bool("activate", false, "Activate any shares that could not be located")
 	iscsiLocateCmd.Flags().Bool("create", false, "Create any shares that could not be activated or located, then activate them")
 	iscsiLocateCmd.Flags().Bool("deactivate", false, "Deactivate any shares that could be located")
 	iscsiLocateCmd.Flags().Bool("delete", false, "Deactivate and delete any shares that could be located")
 	iscsiLocateCmd.Flags().Bool("readonly", false, "If a share is to be created, ensure that its extent is read-only. Ignored for snapshots.")
 
-	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiTestCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
+	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiTestCmd, iscsiSetupCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "", "label to prefix the created target")
 		c.Flags().Bool("parsable", false, "Parsable (ie. minimal) output")
@@ -93,6 +103,7 @@ func init() {
 	iscsiCmd.AddCommand(iscsiCreateCmd)
 	iscsiCmd.AddCommand(iscsiActivateCmd)
 	iscsiCmd.AddCommand(iscsiTestCmd)
+	iscsiCmd.AddCommand(iscsiSetupCmd)
 	iscsiCmd.AddCommand(iscsiListCmd)
 	iscsiCmd.AddCommand(iscsiLocateCmd)
 	iscsiCmd.AddCommand(iscsiDeactivateCmd)
@@ -376,12 +387,38 @@ func testIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 	options, _ := GetCobraFlags(cmd, false, nil)
 
-	msg, err := CheckRemoteIscsiServiceIsRunning(api)
-	if err != nil {
+	checkedServiceState := false
+	if core.IsStringTrue(options.allFlags, "setup") {
+		if err := setupIscsiImpl(api, options); err != nil {
+			return err
+		}
+		checkedServiceState = true
+	}
+	return testIscsiImpl(api, options, checkedServiceState)
+}
+
+func setupIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	cmd.SilenceUsage = true
+	options, _ := GetCobraFlags(cmd, false, nil)
+
+	if err := setupIscsiImpl(api, options); err != nil {
 		return err
 	}
-	if msg != "" {
-		return fmt.Errorf(msg)
+	if core.IsStringTrue(options.allFlags, "test") {
+		return testIscsiImpl(api, options, true)
+	}
+	return nil
+}
+
+func testIscsiImpl(api core.Session, options FlagMap, checkedServiceState bool) error {
+	if !checkedServiceState {
+		msg, err := CheckRemoteIscsiServiceIsRunning(api)
+		if err != nil {
+			return err
+		}
+		if msg != "" {
+			return fmt.Errorf(msg)
+		}
 	}
 
 	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
@@ -397,6 +434,45 @@ func testIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	if !core.IsStringTrue(options.allFlags, "parsable") {
 		fmt.Println(discoveryOutput)
 	}
+	return nil
+}
+
+func setupIscsiImpl(api core.Session, options FlagMap) error {
+	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
+	msg, err := CheckRemoteIscsiServiceIsRunning(api)
+	if err != nil {
+		return err
+	}
+	if msg != "" {
+		isEnable := true
+		if err := changeServiceStateImpl(api, "start", nil, isEnable, false, []string {"iscsitarget"}); err != nil {
+			return err
+		}
+		if !isMinimal {
+			if isEnable {
+				fmt.Println("Started and enabled iscsitarget service")
+			} else {
+				fmt.Println("Started iscsitarget service")
+			}
+		}
+	}
+
+	portalId, err := LookupPortalIdOrCreate(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
+	if err != nil {
+		return err
+	}
+	if !isMinimal {
+		fmt.Println("Portal ID:", portalId)
+	}
+
+	initiatorId, err := LookupInitiatorOrCreateBlank(api, options.allFlags["initiator"])
+	if err != nil {
+		return err
+	}
+	if !isMinimal {
+		fmt.Println("Initiator ID:", initiatorId)
+	}
+
 	return nil
 }
 
