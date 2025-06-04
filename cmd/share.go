@@ -6,7 +6,7 @@ import (
 
 var shareCmd = &cobra.Command{
 	Use:   "share",
-	Short: "Create, list, update or delete network shares. Currently only NFS is supported.",
+	Short: "Create, list, update or delete NFS or iSCSI shares.",
 }
 
 func init() {
