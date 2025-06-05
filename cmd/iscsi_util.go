@@ -462,7 +462,7 @@ func CheckRemoteIscsiServiceIsRunning(api core.Session) (string, error) {
 }
 
 func RunIscsiDiscover(api core.Session, portalAddr string) (string, error) {
-	return RunIscsiAdminTool(api, []string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"})
+	return RunIscsiAdminTool(api, []string{"--mode", "discovery", "--type", "sendtargets", "--portal", portalAddr, "--discover"})
 }
 
 func TestIscsiDiscovery(api core.Session, portalAddr string) (string, error) {
@@ -503,7 +503,7 @@ begin:
 			if msg != "" {
 				err = errors.New(err.Error() + "\n" + msg)
 			} else {
-				err = errors.New(err.Error() + "\nThe iscsitarget service is running.")
+				err = errors.New(err.Error() + "\nThe iscsitarget service is running. It may need to be restarted with:\nservice restart iscsitarget")
 			}
 		}
 	}
