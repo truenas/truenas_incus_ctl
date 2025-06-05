@@ -426,7 +426,7 @@ func testIscsiImpl(api core.Session, options FlagMap, checkedServiceState bool) 
 		return err
 	}
 
-	discoveryOutput, err := RunIscsiDiscover(api, ipPortalAddr)
+	discoveryOutput, err := TestIscsiDiscovery(api, ipPortalAddr)
 	if err != nil {
 		return err
 	}

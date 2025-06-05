@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 	"syscall"
 	"time"
 	"truenas/truenas_incus_ctl/core"
@@ -500,6 +501,23 @@ func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 		break
 	}
+
+	var allowInsecureStr string
+	allowInsecure := false
+	for {
+		fmt.Print("Allow self-signed certificates [y/n]: ")
+		fmt.Scanln(&allowInsecureStr)
+		lower := strings.ToLower(allowInsecureStr)
+		if lower == "y" || lower == "yes" {
+			allowInsecure = true
+		} else if lower == "n" || lower == "no" {
+			allowInsecure = false
+		} else {
+			continue
+		}
+		break
+	}
+
 	fmt.Printf("Setting up connection to TrueNAS host: %s\n", hostname)
 
 	// Prompt for authentication method
@@ -519,8 +537,7 @@ func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
 	fmt.Printf("Testing connection to %s...\n", url)
 
 	// Test the connection by creating a temporary client
-	// Pass false to disable SSL verification and allow self-signed certificates
-	client, err := truenas_api.NewClient(url, false)
+	client, err := truenas_api.NewClient(url, allowInsecure)
 	if err != nil {
 		return fmt.Errorf("Failed to create connection to %s: %v", url, err)
 	}
@@ -659,6 +676,7 @@ func loginToHost(cmd *cobra.Command, api core.Session, args []string) error {
 	hostConfig := map[string]interface{}{
 		"url":     url, // Using the same URL with /api/current path
 		"api_key": apiKey,
+		"allow_insecure": allowInsecure,
 	}
 	hosts[name] = hostConfig
 
