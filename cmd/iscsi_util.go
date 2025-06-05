@@ -465,6 +465,10 @@ func RunIscsiDiscover(api core.Session, portalAddr string) (string, error) {
 	return RunIscsiAdminTool(api, []string{"--mode", "discoverydb", "--type", "sendtargets", "--portal", portalAddr, "--discover"})
 }
 
+func TestIscsiDiscovery(api core.Session, portalAddr string) (string, error) {
+	return RunIscsiAdminTool(api, []string{"--mode", "discovery", "--portal", portalAddr})
+}
+
 func CheckIscsiAdminToolExists() error {
 	_, err := exec.LookPath("iscsiadm")
 	if err != nil {
