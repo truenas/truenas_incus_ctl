@@ -366,6 +366,13 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request []in
 		return nil, err, nil
 	}
 
+	s.mapMtx.Lock()
+	delete(s.callMap_, callId)
+	s.mapMtx.Unlock()
+
+	return dataRes, nil, nil
+
+/*
 	jobId, _ := GetJobNumber(dataRes)
 
 	s.mapMtx.Lock()
@@ -380,6 +387,7 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request []in
 		_, _, callRetry = s.callJson(JOB_WAIT_STRING, timeoutStr, []interface{}{jobId})
 	}
 	return dataRes, nil, callRetry
+*/
 }
 
 func (s *TruenasSession) listen() {
@@ -438,10 +446,12 @@ func (s *TruenasSession) listen() {
 
 				s.mapMtx.Lock()
 				fJob, exists := s.jobMap_[innerJobId]
-				s.mapMtx.Unlock()
-				if exists {
-					fJob.Reach(json.Marshal(fields))
+				if !exists {
+					fJob = MakeFuture[json.RawMessage]()
+					s.jobMap_[innerJobId] = fJob
 				}
+				s.mapMtx.Unlock()
+				fJob.Reach(json.Marshal(fields))
 			}
 		}
 
@@ -474,16 +484,43 @@ func (s *TruenasSession) handleDaemonProcedure(proc string, timeoutStr string, p
 			return nil, fmt.Errorf("tnc_daemon.peek_job expects the first parameter to be a job number")
 		}
 		fJob := s.getJobFuture(firstParamAsNumber)
+		if fJob == nil {
+			return nil, fmt.Errorf("Job #%d could not be found internally", firstParamAsNumber)
+		}
 		isDone, response, err := fJob.Peek()
 		if isDone {
 			return response, err
 		}
 		return MakeIncompleteJobStatus(firstParamAsNumber)
+
 	case "await_job":
 		if !isFirstParamNumber {
 			return nil, fmt.Errorf("tnc_daemon.await_job expects the first parameter to be a job number")
 		}
-		fJob := s.getJobFuture(firstParamAsNumber)
+
+		s.mapMtx.Lock()
+		fJob, exists := s.jobMap_[firstParamAsNumber]
+		if !exists {
+			fJob = MakeFuture[json.RawMessage]()
+			s.jobMap_[firstParamAsNumber] = fJob
+		}
+		s.mapMtx.Unlock()
+
+		if exists {
+			isDone, response, err := fJob.Peek()
+			if isDone {
+				return response, err
+			}
+		}
+
+		_, err, callRetry := s.callJson(JOB_WAIT_STRING, timeoutStr, []interface{}{firstParamAsNumber})
+		if err != nil {
+			return nil, err
+		}
+		if callRetry != nil {
+			return nil, fmt.Errorf("use of closed network connection")
+		}
+
 		return fJob.Get()
 	}
 
