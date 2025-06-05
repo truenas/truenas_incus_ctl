@@ -208,6 +208,6 @@ func changeServiceStateImpl(api core.Session, newState string, optionalFlags map
 	return nil
 }
 
-func changeServiceStateSimple(api core.Session, newState string, service string) {
+func changeServiceStateSimple(api core.Session, newState string, service string) error {
 	return changeServiceStateImpl(api, newState, nil, false, false, []string{service})
 }
