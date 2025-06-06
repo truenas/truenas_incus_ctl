@@ -33,8 +33,9 @@ import (
 0.6.1 `share iscsi locate --create/--delete`
 0.6.2 `snapshot rename` now calls zfs.snapshot.rename end-point
 0.7.0 Add service commands, iscsi test, --daemon-socket to override path to the daemon's socket, add --portal and --initiator flags
+0.8.0 Add support for server side "iscsi defer"
 */
-const VERSION = "0.7.0"
+const VERSION = "0.8.0"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
