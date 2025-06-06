@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os/user"
 	"path"
@@ -119,8 +118,11 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 	cmd.SilenceUsage = true
 
+	// assume we don't support defer at first, so we skip the reload in undoIscsiCreateList if we didn't create or update anything
+	deferNotSupported := true
+
 	changes := make([]typeApiCallRecord, 0)
-	defer undoIscsiCreateList(api, &changes)
+	defer undoIscsiCreateList(api, &changes, &deferNotSupported)
 
 	maybeHashedToVolumeMap := make(map[string]string)
 	volumeToMaybeHashedMap := make(map[string]string)
@@ -188,24 +190,25 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return nil
 	}
 
-	jobIdUpdate := int64(-1)
-	jobIdCreate := int64(-1)
-	var rawResultsTargetUpdate json.RawMessage
+	// now we can assume that a reload is necessary if defer is supported
+	deferNotSupported = false
+
 	var resultsTargetCreate []interface{}
 	var errorsTargetCreate []interface{}
+	//var resultsTargetUpdate []interface{}
+	//var errorsTargetUpdate []interface{}
 
 	if len(targetUpdates) > 0 {
-		rawResultsTargetUpdate, jobIdUpdate, err = MaybeBulkApiCallArray(api, "iscsi.target.update", 10, targetUpdates, false)
+		_, _, err = TryDeferIscsiApiCallArray(&deferNotSupported, api, "iscsi.target.update", 10, targetUpdates)
 		if err != nil {
 			return err
 		}
 	}
 	if len(targetCreates) > 0 {
-		rawResultsTargetCreate, _, err := MaybeBulkApiCallArray(api, "iscsi.target.create", 10, targetCreates, true)
+		resultsTargetCreate, errorsTargetCreate, err = TryDeferIscsiApiCallArray(&deferNotSupported, api, "iscsi.target.create", 10, targetCreates)
 		if err != nil {
 			return err
 		}
-		resultsTargetCreate, errorsTargetCreate = core.GetResultsAndErrorsFromApiResponseRaw(rawResultsTargetCreate)
 		changes = append(changes, typeApiCallRecord{
 			endpoint:   "iscsi.target.create",
 			params:     targetCreates,
@@ -213,24 +216,6 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			errorList:  errorsTargetCreate,
 		})
 	}
-
-	if jobIdUpdate >= 0 {
-		rawResultsTargetUpdate, err = api.WaitForJob(jobIdUpdate)
-		if err != nil {
-			return err
-		}
-	}
-	/*
-		if jobIdCreate >= 0 {
-			rawResultsTargetCreate, err = api.WaitForJob(jobIdCreate)
-			if err != nil {
-				return err
-			}
-		}
-	*/
-
-	jobIdCreate = jobIdCreate
-	rawResultsTargetUpdate = rawResultsTargetUpdate
 
 	allTargets := GetListFromQueryResponse(&responseTargetQuery)
 	for _, t := range resultsTargetCreate {
@@ -281,18 +266,17 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 				},
 			}
 		}
-		out, _, err := MaybeBulkApiCallArray(
+		resultsExtentCreate, errorsExtentCreate, err := TryDeferIscsiApiCallArray(
+			&deferNotSupported,
 			api,
 			"iscsi.extent.create",
 			10,
 			paramsCreate,
-			true,
 		)
 		if err != nil {
 			return err
 		}
 
-		resultsExtentCreate, errorsExtentCreate := core.GetResultsAndErrorsFromApiResponseRaw(out)
 		changes = append(changes, typeApiCallRecord{
 			endpoint:   "iscsi.extent.create",
 			params:     paramsCreate,
@@ -338,7 +322,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	if len(teCreateList) > 0 {
-		_, _, err = MaybeBulkApiCallArray(api, "iscsi.targetextent.create", 10, teCreateList, true)
+		_, _, err = TryDeferIscsiApiCallArray(&deferNotSupported, api, "iscsi.targetextent.create", 10, teCreateList)
 		if err != nil {
 			return err
 		}
@@ -361,7 +345,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func undoIscsiCreateList(api core.Session, changes *[]typeApiCallRecord) {
+func undoIscsiCreateList(api core.Session, changes *[]typeApiCallRecord, deferNotSupportedRef *bool) {
 	DebugString("undoIscsiCreateList")
 	for _, call := range *changes {
 		DebugString(call.endpoint)
@@ -371,15 +355,18 @@ func undoIscsiCreateList(api core.Session, changes *[]typeApiCallRecord) {
 				idList = append(idList, []interface{}{core.GetIdFromObject(r)})
 			}
 			if len(idList) > 0 {
-				MaybeBulkApiCallArray(
+				TryDeferIscsiApiCallArray(
+					deferNotSupportedRef,
 					api,
 					call.endpoint[:len(call.endpoint)-7]+".delete",
 					10,
 					idList,
-					false,
 				)
 			}
 		}
+	}
+	if deferNotSupportedRef != nil && *deferNotSupportedRef == false {
+		changeServiceStateSimple(api, "reload", "iscsitarget")
 	}
 }
 
@@ -871,8 +858,11 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	cmd.SilenceUsage = true
 
+	// assume we don't support defer at first, so we skip the reload in undoIscsiCreateList if we didn't create or update anything
+	deferNotSupported := true
+
 	changes := make([]typeApiCallRecord, 0)
-	defer undoIscsiDeleteList(api, &changes)
+	defer undoIscsiDeleteList(api, &changes, &deferNotSupported)
 
 	if err := CheckIscsiAdminToolExists(); err != nil {
 		return err
@@ -909,7 +899,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	targetIdsDelete := make([]interface{}, len(targetIds))
 	for i, t := range targetIds {
-		targetIdsDelete[i] = []interface{}{t, true, true} //, true} // id, force, delete_extents, defer
+		targetIdsDelete[i] = []interface{}{t, true, true} // id, force, delete_extents
 	}
 
 	timeout := int64(10 + 10*len(targetIdsDelete))
@@ -925,7 +915,10 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		timeout = int64(10 + 10*len(responseDatasets.resultsMap))
 	}
 
-	_, _, err = MaybeBulkApiCallArray(api, "iscsi.target.delete", int64(timeout), targetIdsDelete, true)
+	// now we can assume that a reload is necessary if defer is supported
+	deferNotSupported = false
+
+	_, _, err = TryDeferIscsiApiCallArray(&deferNotSupported, api, "iscsi.target.delete", int64(timeout), targetIdsDelete)
 	if err != nil {
 		return err
 	}
@@ -939,7 +932,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func undoIscsiDeleteList(api core.Session, changes *[]typeApiCallRecord) {
+func undoIscsiDeleteList(api core.Session, changes *[]typeApiCallRecord, deferNotSupportedRef *bool) {
 	DebugString("undoIscsiDeleteList")
 	for _, call := range *changes {
 		DebugString(call.endpoint)
@@ -949,14 +942,17 @@ func undoIscsiDeleteList(api core.Session, changes *[]typeApiCallRecord) {
 				idList = append(idList, core.GetIdFromObject(r))
 			}
 			if len(idList) > 0 {
-				MaybeBulkApiCallArray(
+				TryDeferIscsiApiCallArray(
+					deferNotSupportedRef,
 					api,
 					call.endpoint[:len(call.endpoint)-7]+".create",
 					10,
 					idList,
-					false,
 				)
 			}
 		}
+	}
+	if deferNotSupportedRef != nil && *deferNotSupportedRef == false {
+		changeServiceStateSimple(api, "reload", "iscsitarget")
 	}
 }

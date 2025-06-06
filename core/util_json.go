@@ -31,6 +31,27 @@ func DeepCopy(input interface{}) interface{} {
 	return output
 }
 
+func GetObjectAsArrayOrNil(value interface{}) []interface{} {
+	if value == nil {
+		return nil
+	} else if valueArr, ok := value.([]interface{}); ok {
+		if len(valueArr) > 0 {
+			return valueArr
+		}
+	} else if valueMap, ok := value.(map[string]interface{}); ok {
+		if len(valueMap) > 0 {
+			return []interface{} {valueMap}
+		}
+	} else if valueStr, ok := value.(string); ok {
+		if valueStr != "" {
+			return []interface{} {valueStr}
+		}
+	} else {
+		return []interface{} {value}
+	}
+	return nil
+}
+
 func GetResultsAndErrorsFromApiResponseRaw(response json.RawMessage) ([]interface{}, []interface{}) {
 	var unmarshalled map[string]interface{}
 	if err := json.Unmarshal(response, &unmarshalled); err != nil {
@@ -46,24 +67,12 @@ func GetResultsAndErrorsFromApiResponse(response map[string]interface{}) ([]inte
 
 	var errorList []interface{}
 	if errorObj, exists := response["error"]; exists {
-		if errValue, ok := errorObj.(map[string]interface{}); ok {
-			if len(errValue) > 0 {
-				errorList = []interface{} {errValue}
-			}
-		} else if errValue, ok := errorObj.([]interface{}); ok {
-			if len(errValue) > 0 {
-				errorList = errValue
-			}
-		}
+		errorList = GetObjectAsArrayOrNil(errorObj)
 	}
 
 	var resultList []interface{}
 	if resultsObj, exists := response["result"]; exists {
-		if resultsMap, ok := resultsObj.(map[string]interface{}); ok {
-			resultList = []interface{} {resultsMap}
-		} else if resultsArray, ok := resultsObj.([]interface{}); ok && len(resultsArray) > 0 {
-			resultList = resultsArray
-		}
+		resultList = GetObjectAsArrayOrNil(resultsObj)
 	}
 	if len(resultList) == 0 {
 		return nil, errorList

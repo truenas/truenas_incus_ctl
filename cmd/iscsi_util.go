@@ -220,6 +220,66 @@ func LookupInitiatorOrCreateBlank(api core.Session, spec string) (int, error) {
 	return initiatorId, nil
 }
 
+func TryDeferIscsiApiCallArray(deferNotSupportedRef *bool, api core.Session, method string, timeoutSeconds int64, paramsArray []interface{}) ([]interface{}, []interface{}, error) {
+	nCalls := len(paramsArray)
+	if nCalls == 0 {
+		return nil, nil, errors.New("TryDeferIscsiApiCallArray: Nothing to do")
+	}
+	if deferNotSupportedRef != nil && *deferNotSupportedRef {
+		DebugString("defer not supported - aware")
+		out, _, err := MaybeBulkApiCallArray(api, method, timeoutSeconds, paramsArray, true)
+		if err != nil {
+			return nil, nil, err
+		}
+		res, errs := core.GetResultsAndErrorsFromApiResponseRaw(out)
+		return res, errs, nil
+	}
+
+	deferParamsArray := make([]interface{}, nCalls)
+	for i := 0; i < nCalls; i++ {
+		if paramsList, ok := paramsArray[i].([]interface{}); ok {
+			deferParamsArray[i] = append(paramsList, true)
+		} else {
+			deferParamsArray[i] = paramsList
+		}
+	}
+
+	if err := core.MaybeLogin(api); err != nil {
+		return nil, nil, err
+	}
+	out, err := api.CallRaw(method, timeoutSeconds, deferParamsArray[0])
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resultList, errorList := core.GetResultsAndErrorsFromApiResponseRaw(out)
+	if len(errorList) > 0 {
+		lower := strings.ToLower(core.ExtractApiErrorJsonGivenError(errorList[0]))
+		if strings.Contains(lower, "too many arguments") {
+			DebugString("defer not supported - was not aware")
+			if deferNotSupportedRef != nil {
+				*deferNotSupportedRef = true
+			}
+			out, _, err = MaybeBulkApiCallArray(api, method, timeoutSeconds, paramsArray, true)
+			if err != nil {
+				return nil, nil, err
+			}
+			res, errs := core.GetResultsAndErrorsFromApiResponseRaw(out)
+			return res, errs, nil
+		}
+	}
+	if nCalls >= 2 {
+		out, _, err = MaybeBulkApiCallArray(api, method, timeoutSeconds, deferParamsArray[1:nCalls], true)
+		if err != nil {
+			return nil, nil, err
+		}
+		subResults, subErrors := core.GetResultsAndErrorsFromApiResponseRaw(out)
+		resultList = append(resultList, subResults)
+		errorList = append(errorList, subErrors)
+	}
+	return resultList, errorList, nil
+}
+
 func GetIscsiTargetPrefixOrExit(options map[string]string) string {
 	prefixRaw := options["target_prefix"]
 	prefix := strings.TrimSpace(prefixRaw)
