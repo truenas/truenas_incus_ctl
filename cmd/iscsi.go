@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os/user"
 	"path"
@@ -196,12 +197,15 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	var resultsTargetCreate []interface{}
 	var errorsTargetCreate []interface{}
 	//var resultsTargetUpdate []interface{}
-	//var errorsTargetUpdate []interface{}
+	var errorsTargetUpdate []interface{}
 
 	if len(targetUpdates) > 0 {
-		_, _, err = TryDeferIscsiApiCallArray(&deferNotSupported, api, "iscsi.target.update", 10, targetUpdates)
+		_, errorsTargetUpdate, err = TryDeferIscsiApiCallArray(&deferNotSupported, api, "iscsi.target.update", 10, targetUpdates)
 		if err != nil {
 			return err
+		}
+		if len(errorsTargetUpdate) > 0 {
+			return errors.New(core.ExtractAllApiErrors(errorsTargetUpdate))
 		}
 	}
 	if len(targetCreates) > 0 {
@@ -215,6 +219,9 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			resultList: resultsTargetCreate,
 			errorList:  errorsTargetCreate,
 		})
+		if len(errorsTargetCreate) > 0 {
+			return errors.New(core.ExtractAllApiErrors(errorsTargetCreate))
+		}
 	}
 
 	allTargets := GetListFromQueryResponse(&responseTargetQuery)
@@ -283,6 +290,10 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			resultList: resultsExtentCreate,
 			errorList:  errorsExtentCreate,
 		})
+
+		if len(errorsExtentCreate) > 0 {
+			return errors.New(core.ExtractAllApiErrors(errorsExtentCreate))
+		}
 
 		for _, extent := range resultsExtentCreate {
 			if extentMap, ok := extent.(map[string]interface{}); ok {
@@ -366,6 +377,7 @@ func undoIscsiCreateList(api core.Session, changes *[]typeApiCallRecord, deferNo
 		}
 	}
 	if deferNotSupportedRef != nil && *deferNotSupportedRef == false {
+		DebugString("reloading iscsitarget")
 		changeServiceStateSimple(api, "reload", "iscsitarget")
 	}
 }
@@ -918,9 +930,18 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	// now we can assume that a reload is necessary if defer is supported
 	deferNotSupported = false
 
-	_, _, err = TryDeferIscsiApiCallArray(&deferNotSupported, api, "iscsi.target.delete", int64(timeout), targetIdsDelete)
+	resultList, errorList, err := TryDeferIscsiApiCallArray(&deferNotSupported, api, "iscsi.target.delete", int64(timeout), targetIdsDelete)
 	if err != nil {
 		return err
+	}
+	changes = append(changes, typeApiCallRecord{
+		endpoint:   "iscsi.target.delete",
+		params:     targetIdsDelete,
+		resultList: resultList,
+		errorList:  errorList,
+	})
+	if len(errorList) > 0 {
+		return errors.New(core.ExtractAllApiErrors(errorList))
 	}
 
 	//_ = changeServiceStateSimple(api, "reload", "iscsitarget")
@@ -953,6 +974,7 @@ func undoIscsiDeleteList(api core.Session, changes *[]typeApiCallRecord, deferNo
 		}
 	}
 	if deferNotSupportedRef != nil && *deferNotSupportedRef == false {
+		DebugString("reloading iscsitarget")
 		changeServiceStateSimple(api, "reload", "iscsitarget")
 	}
 }

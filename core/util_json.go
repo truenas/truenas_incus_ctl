@@ -271,6 +271,16 @@ func ExtractApiErrorJsonGivenError(errorValue interface{}) string {
 	return builder.String()
 }
 
+func ExtractAllApiErrors(errorList []interface{}) string {
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprint(len(errorList)))
+	builder.WriteString(" errors:\n")
+	for _, e := range errorList {
+		builder.WriteString(ExtractApiErrorJsonGivenError(e))
+	}
+	return builder.String()
+}
+
 func GetJobNumber(data json.RawMessage) (int64, error) {
 	var responseJson interface{}
 	if err := json.Unmarshal(data, &responseJson); err != nil {

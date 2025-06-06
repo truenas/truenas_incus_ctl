@@ -253,6 +253,10 @@ func TryDeferIscsiApiCallArray(deferNotSupportedRef *bool, api core.Session, met
 	}
 
 	resultList, errorList := core.GetResultsAndErrorsFromApiResponseRaw(out)
+
+	//DebugJson(resultList)
+	//DebugJson(errorList)
+
 	if len(errorList) > 0 {
 		lower := strings.ToLower(core.ExtractApiErrorJsonGivenError(errorList[0]))
 		if strings.Contains(lower, "too many arguments") {
