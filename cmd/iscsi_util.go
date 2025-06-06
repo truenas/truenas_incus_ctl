@@ -469,7 +469,7 @@ func RunIscsiDiscover(api core.Session, portalAddr string) (string, error) {
 }
 
 func TestIscsiDiscovery(api core.Session, portalAddr string) (string, error) {
-	return RunIscsiAdminTool(api, []string{"--mode", "discovery", "--portal", portalAddr})
+	return RunIscsiAdminTool(api, []string{"--mode", "discovery", "--type", "sendtargets", "--portal", portalAddr})
 }
 
 func CheckIscsiAdminToolExists() error {
