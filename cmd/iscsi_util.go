@@ -235,12 +235,32 @@ func TryDeferIscsiApiCallArray(deferNotSupportedRef *bool, api core.Session, met
 		return res, errs, nil
 	}
 
-	deferParamsArray := make([]interface{}, nCalls)
-	for i := 0; i < nCalls; i++ {
-		if paramsList, ok := paramsArray[i].([]interface{}); ok {
-			deferParamsArray[i] = append(paramsList, true)
-		} else {
-			deferParamsArray[i] = paramsList
+	deferParamsArray, _ := core.DeepCopy(paramsArray).([]interface{})
+	if strings.HasSuffix(method, ".delete") {
+		for i := 0; i < nCalls; i++ {
+			if paramsList, ok := deferParamsArray[i].([]interface{}); ok {
+				deferParamsArray[i] = append(paramsList, true)
+			}
+		}
+	} else if strings.HasSuffix(method, ".update") {
+		for i := 0; i < nCalls; i++ {
+			if paramsList, ok := deferParamsArray[i].([]interface{}); ok {
+				if paramsMap, ok := paramsList[1].(map[string]interface{}); ok {
+					paramsMap["defer"] = true
+					paramsList[1] = paramsMap
+				}
+				deferParamsArray[i] = paramsList
+			}
+		}
+	} else {
+		for i := 0; i < nCalls; i++ {
+			if paramsList, ok := deferParamsArray[i].([]interface{}); ok {
+				if paramsMap, ok := paramsList[0].(map[string]interface{}); ok {
+					paramsMap["defer"] = true
+					paramsList[0] = paramsMap
+				}
+				deferParamsArray[i] = paramsList
+			}
 		}
 	}
 
@@ -259,7 +279,7 @@ func TryDeferIscsiApiCallArray(deferNotSupportedRef *bool, api core.Session, met
 
 	if len(errorList) > 0 {
 		lower := strings.ToLower(core.ExtractApiErrorJsonGivenError(errorList[0]))
-		if strings.Contains(lower, "too many arguments") {
+		if strings.Contains(lower, "too many arguments") || strings.Contains(lower, "extra inputs are not") {
 			DebugString("defer not supported - was not aware")
 			if deferNotSupportedRef != nil {
 				*deferNotSupportedRef = true

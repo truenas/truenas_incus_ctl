@@ -943,6 +943,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	if len(errorList) > 0 {
 		return errors.New(core.ExtractAllApiErrors(errorList))
 	}
+	changes = make([]typeApiCallRecord, 0)
 
 	//_ = changeServiceStateSimple(api, "reload", "iscsitarget")
 
