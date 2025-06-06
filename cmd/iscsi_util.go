@@ -334,19 +334,7 @@ func DeactivateMatchingIscsiTargets(
 	deactivatedList := make([]string, 0)
 	IterateActivatedIscsiShares(optIpPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
 		if _, exists := maybeHashedToVolumeMap[targetOnlyName]; exists {
-			logoutParams := []string{
-				"--mode",
-				"node",
-				"--targetname",
-				iqnTargetName,
-				"--portal",
-				ipPortalAddr,
-				"--logout",
-			}
-			DebugString(strings.Join(logoutParams, " "))
-			_, err := RunIscsiAdminTool(api, logoutParams)
-
-			if err != nil {
+			if err := RunIscsiDeactivate(api, iqnTargetName, ipPortalAddr); err != nil {
 				fmt.Printf("failed\t%s\t%v\n", iqnTargetName, err)
 			} else {
 				if shouldPrintStatus || !isMinimal {
@@ -459,6 +447,24 @@ func CheckRemoteIscsiServiceIsRunning(api core.Session) (string, error) {
 		return "The iSCSI service has not been started\nRun this tool with:\nservice start --enable iscsitarget\nTo start the service", nil
 	}
 	return "", nil
+}
+
+func RunIscsiDeactivate(api core.Session, iqnTargetName string, ipPortalAddr string) error {
+	logoutParams := []string{
+		"--mode",
+		"node",
+		"--targetname",
+		iqnTargetName,
+		"--portal",
+		ipPortalAddr,
+		"--logout",
+	}
+	DebugString(strings.Join(logoutParams, " "))
+	_, err := RunIscsiAdminTool(api, logoutParams)
+	if err != nil && strings.Contains(err.Error(), "iscsiadm: Could not stat") {
+		return nil
+	}
+	return err
 }
 
 func RunIscsiDiscover(api core.Session, portalAddr string) (string, error) {

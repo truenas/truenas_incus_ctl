@@ -637,18 +637,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	} else if shouldDeactivate {
 		for _, t := range toDeactivate {
-			logoutParams := []string{
-				"--mode",
-				"node",
-				"--targetname",
-				t,
-				"--portal",
-				ipPortalAddr,
-				"--logout",
-			}
-			DebugString(strings.Join(logoutParams, " "))
-			_, err := RunIscsiAdminTool(api, logoutParams)
-			if err != nil {
+			if err := RunIscsiDeactivate(api, t, ipPortalAddr); err != nil {
 				fmt.Printf("failed\t%s\t%v\n", t, err)
 			} else {
 				fmt.Println("deactivated\t" + t)
