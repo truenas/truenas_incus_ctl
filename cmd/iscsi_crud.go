@@ -65,7 +65,7 @@ var iscsiCrudFeatureMap = map[string]map[string]iscsiCrudFeature {
 		"avail-threshold": iscsiCrudFeature { kind: "Int", defValue: 0, description: "Available threshold" },
 		"comment": iscsiCrudFeature { kind: "String", defValue: "", description: "Comment" },
 		"insecure-tpc": iscsiCrudFeature { kind: "Bool", defValue: true, description: "?" },
-		"xen": iscsiCrudFeature { kind: "Bool", defValue: false, description: "Xen processor" },
+		"xen": iscsiCrudFeature { kind: "Bool", defValue: false, description: "Xen" },
 		"rpm": iscsiCrudFeature { kind: "String", defValue: "ssd", description: ""+
 			AddFlagsEnum(&iscsiExtentUpdateCreateEnums, "rpm", []string {"unknown", "ssd", "5400", "7200", "10000", "15000"}) },
 		"ro": iscsiCrudFeature { kind: "Bool", defValue: false, description: "Read-only mode" },

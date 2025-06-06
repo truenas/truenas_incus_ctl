@@ -920,7 +920,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	targetIdsDelete := make([]interface{}, len(targetIds))
 	for i, t := range targetIds {
-		targetIdsDelete[i] = []interface{} {t, true, true} // id, force, delete_extents
+		targetIdsDelete[i] = []interface{} {t, true, true} //, true} // id, force, delete_extents, defer
 	}
 
 	timeout := int64(10 + 10 * len(targetIdsDelete))
@@ -940,6 +940,8 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	//_ = changeServiceStateSimple(api, "reload", "iscsitarget")
 
 	for _, name := range targetNames {
 		fmt.Println("deleted\t" + name)
