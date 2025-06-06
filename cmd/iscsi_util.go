@@ -465,7 +465,7 @@ func RunIscsiDeactivate(api core.Session, iqnTargetName string, ipPortalAddr str
 }
 
 func RunIscsiDiscover(api core.Session, portalAddr string) (string, error) {
-	return RunIscsiAdminTool(api, []string{"--mode", "discovery", "--type", "sendtargets", "--portal", portalAddr, "--discover"})
+	return RunIscsiAdminTool(api, []string{"--mode", "discovery", "--type", "sendtargets", "--portal", portalAddr})
 }
 
 func TestIscsiDiscovery(api core.Session, portalAddr string) (string, error) {
