@@ -65,8 +65,8 @@ var iscsiDeactivateCmd = &cobra.Command{
 }
 
 var iscsiDeleteCmd = &cobra.Command{
-	Use:     "delete <dataset>...",
-	Short:   "Delete the iscsi targets that map to the given datasets, after deactivating them first",
+	Use:   "delete <dataset>...",
+	Short: "Delete the iscsi targets that map to the given datasets, after deactivating them first",
 	Args:  cobra.MinimumNArgs(1),
 }
 
@@ -92,7 +92,7 @@ func init() {
 	iscsiLocateCmd.Flags().Bool("delete", false, "Deactivate and delete any shares that could be located")
 	iscsiLocateCmd.Flags().Bool("readonly", false, "If a share is to be created, ensure that its extent is read-only. Ignored for snapshots.")
 
-	_iscsiCmds := []*cobra.Command {iscsiCreateCmd, iscsiTestCmd, iscsiSetupCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
+	_iscsiCmds := []*cobra.Command{iscsiCreateCmd, iscsiTestCmd, iscsiSetupCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "", "label to prefix the created target")
 		c.Flags().Bool("parsable", false, "Parsable (ie. minimal) output")
@@ -206,11 +206,11 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			return err
 		}
 		resultsTargetCreate, errorsTargetCreate = core.GetResultsAndErrorsFromApiResponseRaw(rawResultsTargetCreate)
-		changes = append(changes, typeApiCallRecord {
-			endpoint: "iscsi.target.create",
-			params: targetCreates,
+		changes = append(changes, typeApiCallRecord{
+			endpoint:   "iscsi.target.create",
+			params:     targetCreates,
 			resultList: resultsTargetCreate,
-			errorList: errorsTargetCreate,
+			errorList:  errorsTargetCreate,
 		})
 	}
 
@@ -221,12 +221,12 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 	/*
-	if jobIdCreate >= 0 {
-		rawResultsTargetCreate, err = api.WaitForJob(jobIdCreate)
-		if err != nil {
-			return err
+		if jobIdCreate >= 0 {
+			rawResultsTargetCreate, err = api.WaitForJob(jobIdCreate)
+			if err != nil {
+				return err
+			}
 		}
-	}
 	*/
 
 	jobIdCreate = jobIdCreate
@@ -261,8 +261,8 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	extentsCreate := make([]string, 0)
 	extentsIqnCreate := make([]string, 0)
 	for _, vol := range args {
-		if _, exists := extentsByDisk["zvol/" + vol]; !exists {
-			extentsCreate = append(extentsCreate, "zvol/" + vol)
+		if _, exists := extentsByDisk["zvol/"+vol]; !exists {
+			extentsCreate = append(extentsCreate, "zvol/"+vol)
 			extentsIqnCreate = append(extentsIqnCreate, volumeToMaybeHashedMap[vol])
 		}
 	}
@@ -273,11 +273,11 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		paramsCreate := make([]interface{}, len(extentsCreate))
 		for i, _ := range extentsCreate {
 			snapOffset := strings.Index(extentsCreate[i], "@")
-			paramsCreate[i] = []interface{} {
-				map[string]interface{} {
+			paramsCreate[i] = []interface{}{
+				map[string]interface{}{
 					"name": extentsIqnCreate[i],
 					"disk": extentsCreate[i],
-					"ro": isReadOnly || snapOffset >= 0,
+					"ro":   isReadOnly || snapOffset >= 0,
 				},
 			}
 		}
@@ -293,11 +293,11 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 
 		resultsExtentCreate, errorsExtentCreate := core.GetResultsAndErrorsFromApiResponseRaw(out)
-		changes = append(changes, typeApiCallRecord {
-			endpoint: "iscsi.extent.create",
-			params: paramsCreate,
+		changes = append(changes, typeApiCallRecord{
+			endpoint:   "iscsi.extent.create",
+			params:     paramsCreate,
 			resultList: resultsExtentCreate,
-			errorList: errorsExtentCreate,
+			errorList:  errorsExtentCreate,
 		})
 
 		for _, extent := range resultsExtentCreate {
@@ -373,7 +373,7 @@ func undoIscsiCreateList(api core.Session, changes *[]typeApiCallRecord) {
 			if len(idList) > 0 {
 				MaybeBulkApiCallArray(
 					api,
-					call.endpoint[:len(call.endpoint)-7] + ".delete",
+					call.endpoint[:len(call.endpoint)-7]+".delete",
 					10,
 					idList,
 					false,
@@ -445,7 +445,7 @@ func setupIscsiImpl(api core.Session, options FlagMap) error {
 	}
 	if msg != "" {
 		isEnable := true
-		if err := changeServiceStateImpl(api, "start", nil, isEnable, false, []string {"iscsitarget"}); err != nil {
+		if err := changeServiceStateImpl(api, "start", nil, isEnable, false, []string{"iscsitarget"}); err != nil {
 			return err
 		}
 		if !isMinimal {
@@ -528,7 +528,7 @@ func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, ar
 
 	shares := make(map[string]bool)
 	for _, t := range targets {
-		shares[t.iqn + ":" + t.target] = true
+		shares[t.iqn+":"+t.target] = true
 		delete(missingShares, t.target)
 	}
 
@@ -613,10 +613,10 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 			if len(parts) > 1 {
 				target = strings.Join(parts[1:], ":")
 			}
-			t := typeIscsiLoginSpec {
+			t := typeIscsiLoginSpec{
 				remoteIp: ipPortalAddr,
-				iqn: iqn,
-				target: target,
+				iqn:      iqn,
+				target:   target,
 			}
 			remainingTargets = append(remainingTargets, t)
 		}
@@ -649,7 +649,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 }
 
 type typeIscsiPathAndIqnTarget struct {
-	fullPath string
+	fullPath      string
 	iqnTargetName string
 }
 
@@ -690,8 +690,8 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 		targets = append(targets, typeIscsiLoginSpec{
 			remoteIp: ipPortalAddr,
-			iqn: iqn,
-			target: target,
+			iqn:      iqn,
+			target:   target,
 		})
 	}
 
@@ -741,10 +741,10 @@ func doIscsiActivate(api core.Session, targets []typeIscsiLoginSpec, ipAddr stri
 
 	shareCh := make(chan typeIscsiPathAndIqnTarget)
 	go func() {
-		err := core.WaitForFilesToAppear("/dev/disk/by-path", func(fname string, wasCreate bool)bool {
+		err := core.WaitForFilesToAppear("/dev/disk/by-path", func(fname string, wasCreate bool) bool {
 			IterateActivatedIscsiShares(ipAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
-				shareCh <- typeIscsiPathAndIqnTarget {
-					fullPath: path.Join(root, fullName),
+				shareCh <- typeIscsiPathAndIqnTarget{
+					fullPath:      path.Join(root, fullName),
 					iqnTargetName: iqnTargetName,
 				}
 				delete(innerMap, iqnTargetName)
@@ -760,27 +760,27 @@ func doIscsiActivate(api core.Session, targets []typeIscsiLoginSpec, ipAddr stri
 	const maxTries = 30
 	for i := 0; i < maxTries; i++ {
 		select {
-			case names := <- shareCh:
-				if _, exists := outerMap[names.iqnTargetName]; exists {
-					if !isMinimal || shouldPrintStatus {
-						fmt.Println("activated\t" + names.fullPath)
-					} else {
-						fmt.Println(names.fullPath)
-					}
-					delete(outerMap, names.iqnTargetName)
+		case names := <-shareCh:
+			if _, exists := outerMap[names.iqnTargetName]; exists {
+				if !isMinimal || shouldPrintStatus {
+					fmt.Println("activated\t" + names.fullPath)
+				} else {
+					fmt.Println(names.fullPath)
 				}
-			case <- time.After(time.Duration(1000) * time.Millisecond):
-				IterateActivatedIscsiShares(ipAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
-					if _, exists := outerMap[iqnTargetName]; exists {
-						fullPath := path.Join(root, fullName)
-						if !isMinimal || shouldPrintStatus {
-							fmt.Println("activated\t" + fullPath)
-						} else {
-							fmt.Println(fullPath)
-						}
-						delete(outerMap, iqnTargetName)
+				delete(outerMap, names.iqnTargetName)
+			}
+		case <-time.After(time.Duration(1000) * time.Millisecond):
+			IterateActivatedIscsiShares(ipAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+				if _, exists := outerMap[iqnTargetName]; exists {
+					fullPath := path.Join(root, fullName)
+					if !isMinimal || shouldPrintStatus {
+						fmt.Println("activated\t" + fullPath)
+					} else {
+						fmt.Println(fullPath)
 					}
-				})
+					delete(outerMap, iqnTargetName)
+				}
+			})
 		}
 		if len(outerMap) == 0 {
 			break
@@ -862,8 +862,8 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	maybeHashedToVolumeMap := make(map[string]string)
 
 	for i, vol := range args {
-		diskNames = append(diskNames, "zvol/" + vol)
-		diskNameIndex["zvol/" + vol] = i
+		diskNames = append(diskNames, "zvol/"+vol)
+		diskNameIndex["zvol/"+vol] = i
 		argsMapIndex[vol] = i
 		maybeHashed := MaybeHashIscsiNameFromVolumePath(prefixName, vol)
 		maybeHashedToVolumeMap[maybeHashed] = vol
@@ -909,10 +909,10 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	targetIdsDelete := make([]interface{}, len(targetIds))
 	for i, t := range targetIds {
-		targetIdsDelete[i] = []interface{} {t, true, true} //, true} // id, force, delete_extents, defer
+		targetIdsDelete[i] = []interface{}{t, true, true} //, true} // id, force, delete_extents, defer
 	}
 
-	timeout := int64(10 + 10 * len(targetIdsDelete))
+	timeout := int64(10 + 10*len(targetIdsDelete))
 
 	extras = typeQueryParams{
 		valueOrder:         BuildValueOrder(true),
@@ -922,7 +922,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 	responseDatasets, err := QueryApi(api, "pool.dataset", args, core.StringRepeated("name", len(args)), []string{}, extras)
 	if err == nil {
-		timeout = int64(10 + 10 * len(responseDatasets.resultsMap))
+		timeout = int64(10 + 10*len(responseDatasets.resultsMap))
 	}
 
 	_, _, err = MaybeBulkApiCallArray(api, "iscsi.target.delete", int64(timeout), targetIdsDelete, true)
@@ -951,7 +951,7 @@ func undoIscsiDeleteList(api core.Session, changes *[]typeApiCallRecord) {
 			if len(idList) > 0 {
 				MaybeBulkApiCallArray(
 					api,
-					call.endpoint[:len(call.endpoint)-7] + ".create",
+					call.endpoint[:len(call.endpoint)-7]+".create",
 					10,
 					idList,
 					false,
