@@ -20,15 +20,15 @@ type typeIscsiLoginSpec struct {
 }
 
 type typeApiCallRecord struct {
-	endpoint string
-	params []interface{}
+	endpoint   string
+	params     []interface{}
 	resultList []interface{}
-	errorList []interface{}
+	errorList  []interface{}
 }
 
 func LookupPortalByObject(api core.Session, toMatch interface{}) (int, error) {
-	queryFilter := []interface{} { []interface{} {"listen","=",toMatch} }
-	queryParams := []interface{} {
+	queryFilter := []interface{}{[]interface{}{"listen", "=", toMatch}}
+	queryParams := []interface{}{
 		queryFilter,
 		make(map[string]interface{}),
 	}
@@ -76,7 +76,7 @@ func LookupPortalIdOrCreate(api core.Session, defaultPort int, spec string) (int
 				ipPortObj = ipPortArray
 			}
 		}
-		paramsCreate := []interface{} { map[string]interface{} { "listen": ipPortObj } }
+		paramsCreate := []interface{}{map[string]interface{}{"listen": ipPortObj}}
 		DebugJson(paramsCreate)
 
 		out, err := core.ApiCall(api, "iscsi.portal.create", 10, paramsCreate)
@@ -105,8 +105,8 @@ func MaybeLookupIpPortFromPortal(api core.Session, defaultPort int, spec string)
 
 	var ipPortObjMap map[string]interface{}
 	if asInt, errNotNumber := strconv.Atoi(spec); errNotNumber == nil {
-		queryFilter := []interface{} { []interface{} {"id","=",asInt} }
-		queryParams := []interface{} {
+		queryFilter := []interface{}{[]interface{}{"id", "=", asInt}}
+		queryParams := []interface{}{
 			queryFilter,
 			make(map[string]interface{}),
 		}
@@ -165,7 +165,7 @@ func MaybeLookupIpPortFromPortal(api core.Session, defaultPort int, spec string)
 }
 
 func LookupInitiatorByFilter(api core.Session, queryFilter []interface{}) (int, error) {
-	queryParams := []interface{} {
+	queryParams := []interface{}{
 		queryFilter,
 		make(map[string]interface{}),
 	}
@@ -193,7 +193,7 @@ func LookupInitiatorOrCreateBlank(api core.Session, spec string) (int, error) {
 	}
 	queryFilter := make([]interface{}, 0)
 	if spec != "" {
-		queryFilter = append(queryFilter, []interface{} {"comment","=",spec})
+		queryFilter = append(queryFilter, []interface{}{"comment", "=", spec})
 	}
 	initiatorId, err := LookupInitiatorByFilter(api, queryFilter)
 	if err != nil {
@@ -201,7 +201,7 @@ func LookupInitiatorOrCreateBlank(api core.Session, spec string) (int, error) {
 	}
 
 	if initiatorId == -1 {
-		out, err := core.ApiCall(api, "iscsi.initiator.create", 10, []interface{} { map[string]interface{} { "comment": spec } })
+		out, err := core.ApiCall(api, "iscsi.initiator.create", 10, []interface{}{map[string]interface{}{"comment": spec}})
 		if err != nil {
 			return -1, err
 		}
@@ -256,7 +256,7 @@ func MaybeHashIscsiNameFromVolumePath(prefix, vol string) string {
 		} else {
 			begin = prefix + ":-:"
 		}
-		return begin + core.MakeHashedString(vol, 64 - len(begin))
+		return begin + core.MakeHashedString(vol, 64-len(begin))
 	}
 	return iscsiName
 }
@@ -317,7 +317,7 @@ func IterateActivatedIscsiShares(optIpPortalAddr string, callback func(root stri
 		}
 
 		iqnStart := pathStartPos + len(iqnPathStart) - 4
-		iqnTargetName := name[iqnStart:len(name)-len(suffix)]
+		iqnTargetName := name[iqnStart : len(name)-len(suffix)]
 		targetOnlyName := iqnTargetName[strings.Index(iqnTargetName, ":")+1:]
 
 		callback("/dev/disk/by-path", name, ipPortalAddr, iqnTargetName, targetOnlyName)
@@ -400,7 +400,7 @@ func GetIscsiTargetsFromSession(api core.Session, maybeHashedToVolumeMap map[str
 		if firstEndBracket == -1 {
 			continue
 		}
-		addrStart := firstEndBracket+2
+		addrStart := firstEndBracket + 2
 		firstSpacePos := strings.Index(l[addrStart:], " ")
 		if firstSpacePos == -1 {
 			continue
@@ -435,7 +435,7 @@ func GetIscsiTargetsFromSession(api core.Session, maybeHashedToVolumeMap map[str
 }
 
 func CheckRemoteIscsiServiceIsRunning(api core.Session) (string, error) {
-	out, err := core.ApiCall(api, "service.started", 10, []interface{} { "iscsitarget" })
+	out, err := core.ApiCall(api, "service.started", 10, []interface{}{"iscsitarget"})
 	if err != nil {
 		return "", err
 	}
@@ -461,9 +461,6 @@ func RunIscsiDeactivate(api core.Session, iqnTargetName string, ipPortalAddr str
 	}
 	DebugString(strings.Join(logoutParams, " "))
 	_, err := RunIscsiAdminTool(api, logoutParams)
-	if err != nil && strings.Contains(err.Error(), "iscsiadm: Could not stat") {
-		return nil
-	}
 	return err
 }
 
@@ -496,7 +493,8 @@ func RunIscsiAdminTool(api core.Session, args []string) (string, error) {
 	retriesLeft := 10
 begin:
 	out, err := core.RunCommand("iscsiadm", args...)
-	if err != nil && strings.HasPrefix(err.Error(), "iscsiadm: Could not scan /sys/class/iscsi_transport") {
+	// "Could not stat" seems to happen when iscsiadm decides to delete a node... and another instance deletes the node, a retry should resolve.
+	if err != nil && (strings.HasPrefix(err.Error(), "iscsiadm: Could not scan /sys/class/iscsi_transport") || strings.HasPrefix(err.Error(), "iscsiadm: Could not stat")) {
 		time.Sleep(time.Duration(500) * time.Millisecond)
 		retriesLeft--
 		if retriesLeft > 0 {
