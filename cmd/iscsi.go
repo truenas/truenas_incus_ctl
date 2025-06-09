@@ -386,6 +386,13 @@ func testIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 	options, _ := GetCobraFlags(cmd, false, nil)
 
+	thisUser, err := user.Current()
+	if err == nil {
+		if thisUser.Username != "root" {
+			return fmt.Errorf("This command must be run as root.")
+		}
+	}
+
 	checkedServiceState := false
 	if core.IsStringTrue(options.allFlags, "setup") {
 		if err := setupIscsiImpl(api, options); err != nil {
@@ -399,6 +406,15 @@ func testIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 func setupIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 	options, _ := GetCobraFlags(cmd, false, nil)
+
+	if core.IsStringTrue(options.allFlags, "test") {
+		thisUser, err := user.Current()
+		if err == nil {
+			if thisUser.Username != "root" {
+				return fmt.Errorf("When --test is specified, this command must be run as root.")
+			}
+		}
+	}
 
 	if err := setupIscsiImpl(api, options); err != nil {
 		return err
@@ -483,57 +499,6 @@ func listIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
-func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, args []string, portalAddr string) (map[string]bool, map[string]string, error) {
-	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
-
-	maybeHashedToVolumeMap := make(map[string]string)
-	missingShares := make(map[string]string)
-
-	for _, vol := range args {
-		maybeHashed := MaybeHashIscsiNameFromVolumePath(prefixName, vol)
-		maybeHashedToVolumeMap[maybeHashed] = vol
-		missingShares[maybeHashed] = vol
-	}
-
-	var err error
-	if err = CheckIscsiAdminToolExists(); err != nil {
-		return nil, nil, err
-	}
-
-	err = MaybeLaunchIscsiDaemon()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	isCreate := core.IsStringTrue(options.allFlags, "create")
-
-	sessionTargets, err := GetIscsiTargetsFromSession(api, maybeHashedToVolumeMap)
-	if !isCreate && err != nil && !strings.Contains(strings.ToLower(err.Error()), "no active sessions") {
-		return nil, nil, err
-	}
-
-	discoveryTargets, err := GetIscsiTargetsFromDiscovery(api, maybeHashedToVolumeMap, portalAddr)
-	if !isCreate && err != nil {
-		return nil, nil, err
-	}
-
-	targets := make([]typeIscsiLoginSpec, 0)
-	targets = append(targets, sessionTargets...)
-	targets = append(targets, discoveryTargets...)
-
-	if len(targets) == 0 {
-		return nil, missingShares, nil
-	}
-
-	shares := make(map[string]bool)
-	for _, t := range targets {
-		shares[t.iqn+":"+t.target] = true
-		delete(missingShares, t.target)
-	}
-
-	return shares, missingShares, nil
-}
-
 func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
@@ -551,11 +516,6 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	shares, missingShares, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, ipPortalAddr)
-	if err != nil {
-		return err
-	}
-
 	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
 	shouldActivate := core.IsStringTrue(options.allFlags, "activate")
 	shouldDeactivate := core.IsStringTrue(options.allFlags, "deactivate")
@@ -564,6 +524,13 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	shouldActivate = shouldActivate || shouldCreate
 	shouldDeactivate = shouldDeactivate || shouldDelete
+
+	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
+
+	shares, missingShares, err := GetIscsiSharesFromSessionAndDiscovery(api, prefixName, shouldCreate, args, ipPortalAddr)
+	if err != nil {
+		return err
+	}
 
 	if shares == nil && !shouldCreate && !isMinimal {
 		return fmt.Errorf("Could not find any matching iscsi shares")
@@ -669,7 +636,8 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	shares, _, err := getIscsiSharesFromSessionAndDiscovery(options, api, args, ipPortalAddr)
+	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
+	shares, _, err := GetIscsiSharesFromSessionAndDiscovery(api, prefixName, false, args, ipPortalAddr)
 	if err != nil {
 		return err
 	}
@@ -697,28 +665,19 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	return doIscsiActivate(api, targets, ipPortalAddr, isMinimal, false)
 }
 
-func doIscsiActivate(api core.Session, targets []typeIscsiLoginSpec, ipAddr string, isMinimal bool, shouldPrintStatus bool) error {
+func doIscsiActivate(api core.Session, targets []typeIscsiLoginSpec, ipPortalAddr string, isMinimal bool, shouldPrintStatus bool) error {
 	outerMap := make(map[string]bool)
 
 	for _, t := range targets {
 		iqnTarget := t.iqn + ":" + t.target
-		if t.remoteIp != ipAddr {
+		if t.remoteIp != ipPortalAddr {
 			if !isMinimal {
-				fmt.Println("IP MISMATCH:", t.remoteIp, "!=", ipAddr)
+				fmt.Println("IP MISMATCH:", t.remoteIp, "!=", ipPortalAddr)
 			}
 			continue
 		}
-		loginParams := []string{
-			"--mode",
-			"node",
-			"--targetname",
-			iqnTarget,
-			"--portal",
-			ipAddr,
-			"--login",
-		}
-		DebugString(strings.Join(loginParams, " "))
-		_, err := RunIscsiAdminTool(api, loginParams)
+
+		err := RunIscsiActivate(api, iqnTarget, ipPortalAddr)
 		if err == nil {
 			outerMap[iqnTarget] = true
 		} else {
@@ -741,7 +700,7 @@ func doIscsiActivate(api core.Session, targets []typeIscsiLoginSpec, ipAddr stri
 	shareCh := make(chan typeIscsiPathAndIqnTarget)
 	go func() {
 		err := core.WaitForFilesToAppear("/dev/disk/by-path", func(fname string, wasCreate bool) bool {
-			IterateActivatedIscsiShares(ipAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+			IterateActivatedIscsiShares(ipPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
 				shareCh <- typeIscsiPathAndIqnTarget{
 					fullPath:      path.Join(root, fullName),
 					iqnTargetName: iqnTargetName,
@@ -769,7 +728,7 @@ func doIscsiActivate(api core.Session, targets []typeIscsiLoginSpec, ipAddr stri
 				delete(outerMap, names.iqnTargetName)
 			}
 		case <-time.After(time.Duration(1000) * time.Millisecond):
-			IterateActivatedIscsiShares(ipAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+			IterateActivatedIscsiShares(ipPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
 				if _, exists := outerMap[iqnTargetName]; exists {
 					fullPath := path.Join(root, fullName)
 					if !isMinimal || shouldPrintStatus {
@@ -870,7 +829,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 
 	cmd.SilenceUsage = true
 
-	// assume we don't support defer at first, so we skip the reload in undoIscsiCreateList if we didn't create or update anything
+	// assume we don't support defer at first, so we skip the reload in undoIscsiDeleteList if we didn't delete anything
 	deferNotSupported := true
 
 	changes := make([]typeApiCallRecord, 0)
@@ -894,13 +853,13 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		shouldRecurse:      false,
 	}
 
-	responseTarget, err := QueryApi(api, "iscsi.target", args, core.StringRepeated("alias", len(args)), nil, extras)
+	responseTargets, err := QueryApi(api, "iscsi.target", args, core.StringRepeated("alias", len(args)), nil, extras)
 	if err != nil {
 		return err
 	}
 
 	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
-	targetIds, targetNames := GetIdsOrderedByArgsFromResponse(responseTarget, "alias", args, argsMapIndex, isMinimal)
+	targetIds, targetNames := GetIdsOrderedByArgsFromResponse(responseTargets, "alias", args, argsMapIndex, isMinimal)
 
 	if len(targetIds) == 0 {
 		if !isMinimal {
@@ -939,13 +898,12 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		params:     targetIdsDelete,
 		resultList: resultList,
 		errorList:  errorList,
+		priorQuery: &responseTargets,
 	})
 	if len(errorList) > 0 {
 		return errors.New(core.ExtractAllApiErrors(errorList))
 	}
 	changes = make([]typeApiCallRecord, 0)
-
-	//_ = changeServiceStateSimple(api, "reload", "iscsitarget")
 
 	for _, name := range targetNames {
 		fmt.Println("deleted\t" + name)
@@ -959,17 +917,27 @@ func undoIscsiDeleteList(api core.Session, changes *[]typeApiCallRecord, deferNo
 	for _, call := range *changes {
 		DebugString(call.endpoint)
 		if strings.HasSuffix(call.endpoint, ".delete") {
-			idList := make([]interface{}, 0)
-			for _, r := range call.resultList {
-				idList = append(idList, core.GetIdFromObject(r))
+			if call.priorQuery == nil {
+				DebugString("Could not recreate deleted targets: missing prior target query")
+				continue
 			}
-			if len(idList) > 0 {
+			targets := make([]interface{}, 0)
+			for _, r := range call.resultList {
+				id := core.GetIdFromObject(r)
+				if id == nil {
+					continue
+				}
+				if t, exists := call.priorQuery.resultsMap[fmt.Sprint(id)]; exists {
+					targets = append(targets, []interface{} {t})
+				}
+			}
+			if len(targets) > 0 {
 				TryDeferIscsiApiCallArray(
 					deferNotSupportedRef,
 					api,
 					call.endpoint[:len(call.endpoint)-7]+".create",
 					10,
-					idList,
+					targets,
 				)
 			}
 		}

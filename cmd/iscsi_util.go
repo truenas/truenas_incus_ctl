@@ -24,6 +24,7 @@ type typeApiCallRecord struct {
 	params     []interface{}
 	resultList []interface{}
 	errorList  []interface{}
+	priorQuery *typeQueryResponse
 }
 
 func LookupPortalByObject(api core.Session, toMatch interface{}) (int, error) {
@@ -366,6 +367,55 @@ func AddIscsiInitiator(initiators map[string]int, resultRow map[string]interface
 	return name, nil
 }
 
+func GetIscsiSharesFromSessionAndDiscovery(api core.Session, prefixName string, isCreate bool, args []string, portalAddr string) (map[string]bool, map[string]string, error) {
+	maybeHashedToVolumeMap := make(map[string]string)
+	missingShares := make(map[string]string)
+
+	for _, vol := range args {
+		maybeHashed := MaybeHashIscsiNameFromVolumePath(prefixName, vol)
+		maybeHashedToVolumeMap[maybeHashed] = vol
+		missingShares[maybeHashed] = vol
+	}
+
+	var err error
+	if err = CheckIscsiAdminToolExists(); err != nil {
+		return nil, nil, err
+	}
+
+	err = MaybeLaunchIscsiDaemon()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	discoveryTargets, err := GetIscsiTargetsFromDiscovery(api, maybeHashedToVolumeMap, portalAddr)
+	//fmt.Println(discoveryTargets, err)
+	if !isCreate && err != nil {
+		return nil, nil, err
+	}
+
+	sessionTargets, err := GetIscsiTargetsFromSession(api, maybeHashedToVolumeMap)
+	//fmt.Println(sessionTargets, err)
+	if !isCreate && err != nil && !strings.Contains(strings.ToLower(err.Error()), "no active sessions") {
+		return nil, nil, err
+	}
+
+	targets := make([]typeIscsiLoginSpec, 0)
+	targets = append(targets, sessionTargets...)
+	targets = append(targets, discoveryTargets...)
+
+	if len(targets) == 0 {
+		return nil, missingShares, nil
+	}
+
+	shares := make(map[string]bool)
+	for _, t := range targets {
+		shares[t.iqn+":"+t.target] = true
+		delete(missingShares, t.target)
+	}
+
+	return shares, missingShares, nil
+}
+
 func IterateActivatedIscsiShares(optIpPortalAddr string, callback func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string)) {
 	diskEntries, err := os.ReadDir("/dev/disk/by-path")
 	if err != nil {
@@ -531,6 +581,21 @@ func CheckRemoteIscsiServiceIsRunning(api core.Session) (string, error) {
 		return "The iSCSI service has not been started\nRun this tool with:\nservice start --enable iscsitarget\nTo start the service", nil
 	}
 	return "", nil
+}
+
+func RunIscsiActivate(api core.Session, iqnTargetName string, ipPortalAddr string) error {
+	loginParams := []string{
+		"--mode",
+		"node",
+		"--targetname",
+		iqnTargetName,
+		"--portal",
+		ipPortalAddr,
+		"--login",
+	}
+	DebugString(strings.Join(loginParams, " "))
+	_, err := RunIscsiAdminTool(api, loginParams)
+	return err
 }
 
 func RunIscsiDeactivate(api core.Session, iqnTargetName string, ipPortalAddr string) error {
