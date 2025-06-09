@@ -126,20 +126,11 @@ func InitializeApiClient() core.Session {
 // Additionally, we might not know the config path (in which case we use the default),
 // or the name (in which case we just pick the first config in the list)
 func findCredsFromConfig(fileName, name, existingHost, existingApiKey string) (string, string, map[string]interface{}, error) {
-	var data []byte
-	var err error
-
 	if fileName == "" {
 		fileName = getDefaultConfigPath()
-		data, err = os.ReadFile(fileName)
-	} else {
-		data, err = os.ReadFile(fileName)
-		if err != nil {
-			fileName = getDefaultConfigPath()
-			data, err = os.ReadFile(fileName)
-		}
 	}
 
+	data, err := os.ReadFile(fileName)
 	if err != nil {
 		return "", "", nil, err
 	}
