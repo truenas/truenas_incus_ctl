@@ -6,6 +6,7 @@ import (
 	"crypto/sha512"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math"
 	"net"
 	"net/url"
@@ -104,6 +105,11 @@ func ResolvedIpv4OrVerbatim(hostname string) string {
 		return hostname
 	}
 	return ipAddrs[0].String()
+}
+
+func IsLocal() bool {
+	st, err := os.Stat("/var/run/middleware/middlewared.sock")
+	return err == nil && (st.Mode() & fs.ModeSocket) != 0
 }
 
 func StringRepeated(str string, count int) []string {

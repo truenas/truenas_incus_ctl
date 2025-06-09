@@ -1,20 +1,21 @@
 package core
 
 import (
+	"context"
 	"crypto/tls"
-	"io"
-	"os"
 	"fmt"
+	"encoding/json"
+	"io"
 	"log"
 	"net"
-	"sync"
-	"time"
+	"net/http"
+	"net/url"
+	"os"
+	"os/signal"
 	"strings"
 	"syscall"
-	"net/url"
-	"net/http"
-	"os/signal"
-	"encoding/json"
+	"sync"
+	"time"
 	"github.com/gorilla/websocket"
 )
 
@@ -47,6 +48,7 @@ type CallInfo struct {
 type LoginInfo struct {
 	call CallInfo
 	serverUrl string
+	transport string
 	allowInsecure bool
 }
 
@@ -142,6 +144,7 @@ func (d *DaemonContext) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 	host := r.Header.Get("TNC-Host-Url")
+	transport := r.Header.Get("TNC-Transport")
 	key := r.Header.Get("TNC-Api-Key")
 	user := r.Header.Get("TNC-Username")
 	pass := r.Header.Get("TNC-Password")
@@ -150,6 +153,12 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 	allowInsecure := false
 	if str := r.Header.Get("TNC-Allow-Insecure"); str != "" {
 		allowInsecure = strings.ToLower(str) == "true"
+	}
+
+	if transport == "" {
+		transport = "ip4"
+	} else {
+		transport = strings.ToLower(transport)
 	}
 
 	if method == "" {
@@ -202,6 +211,7 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 			params: paramsLogin,
 		},
 		serverUrl: host,
+		transport: transport,
 		allowInsecure: allowInsecure,
 	}
 
@@ -269,14 +279,19 @@ func (d *DaemonContext) createSession(sessionKey string, login LoginInfo) (*True
 		return nil, fmt.Errorf("Invalid URL: %w", err)
 	}
 
-	log.Println("Daemon: creating connection with allowInsecure=" + fmt.Sprint(login.allowInsecure))
+	log.Println("Daemon: creating " + login.transport + " connection with allowInsecure=" + fmt.Sprint(login.allowInsecure))
 
-	// Configure WebSocket connection with insecure TLS to accept self-signed certs
 	dialer := &websocket.Dialer{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: login.allowInsecure,
 		},
 		Proxy: http.ProxyFromEnvironment,
+	}
+
+	if login.transport == "local" || login.transport == "unix" {
+		dialer.NetDialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return net.Dial("unix", "/var/run/middleware/middlewared.sock")
+		}
 	}
 
 	// Establish the WebSocket connection

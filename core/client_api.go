@@ -23,6 +23,7 @@ type ClientSession struct {
 	SocketPath string
 	IsDebug bool
 	AllowInsecure bool
+	isLocal bool
 	client *http.Client
 	timeout time.Duration
 	jobsList []int64
@@ -45,6 +46,8 @@ func (s *ClientSession) Login() error {
 	if s.IsDebug {
 		t1 = time.Now()
 	}
+
+	s.isLocal = IsLocal()
 
 	if s.jobsList == nil {
 		s.jobsList = make([]int64, 0)
@@ -111,6 +114,7 @@ func (s *ClientSession) CallRaw(method string, timeoutSeconds int64, params inte
 	var t1 time.Time
 	if s.IsDebug {
 		t1 = time.Now()
+		fmt.Println("local:", s.isLocal)
 	}
 
 	paramsData, err := json.Marshal(params)
@@ -119,7 +123,12 @@ func (s *ClientSession) CallRaw(method string, timeoutSeconds int64, params inte
 	}
 
 	request, _ := http.NewRequest("POST", "http://unix/tnc-daemon", bytes.NewReader(paramsData))
-	request.Header.Set("TNC-Host-Url", s.GetUrl())
+	if s.isLocal {
+		request.Header.Set("TNC-Transport", "unix")
+		request.Header.Set("TNC-Host-Url", "ws://unix/api/current")
+	} else {
+		request.Header.Set("TNC-Host-Url", s.GetUrl())
+	}
 	request.Header.Set("TNC-Api-Key", s.ApiKey)
 	request.Header.Set("TNC-Allow-Insecure", fmt.Sprint(s.AllowInsecure))
 	request.Header.Set("TNC-Call-Method", method)
