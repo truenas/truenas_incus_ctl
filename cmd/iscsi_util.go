@@ -644,7 +644,7 @@ func RunIscsiAdminTool(api core.Session, args []string) (string, error) {
 begin:
 	out, err := core.RunCommand("iscsiadm", args...)
 	// "Could not stat" seems to happen when iscsiadm decides to delete a node... and another instance deletes the node, a retry should resolve.
-	if err != nil && (strings.HasPrefix(err.Error(), "iscsiadm: Could not scan /sys/class/iscsi_transport") || strings.HasPrefix(err.Error(), "iscsiadm: Could not stat")) {
+	if err != nil && (strings.HasPrefix(err.Error(), "iscsiadm: Could not scan /sys/class/iscsi_transport") || strings.HasPrefix(err.Error(), "iscsiadm: Could not stat") || strings.HasPrefix(err.Error(), "iscsiadm: Could not lookup devpath") || strings.HasPrefix(err.Error(), "iSCSI ERROR: realpath() failed")) {
 		time.Sleep(time.Duration(500) * time.Millisecond)
 		retriesLeft--
 		if retriesLeft > 0 {
