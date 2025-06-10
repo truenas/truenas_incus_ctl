@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/user"
 	"path"
+	"slices"
 	"strings"
 	"time"
 	"truenas/truenas_incus_ctl/core"
@@ -387,31 +388,24 @@ func testIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 	options, _ := GetCobraFlags(cmd, false, nil)
 
-	checkedServiceState := false
+	isLocal := core.IsLocal()
+	if !isLocal {
+		thisUser, err := user.Current()
+		if err == nil {
+			if thisUser.Username != "root" {
+				return fmt.Errorf("This command must be run as root.")
+			}
+		}
+	}
+
 	if core.IsStringTrue(options.allFlags, "setup") {
 		if err := setupIscsiImpl(api, options); err != nil {
 			return err
 		}
-		checkedServiceState = true
-	}
-	return testIscsiImpl(api, options, checkedServiceState)
-}
-
-func setupIscsi(cmd *cobra.Command, api core.Session, args []string) error {
-	cmd.SilenceUsage = true
-	options, _ := GetCobraFlags(cmd, false, nil)
-
-	if err := setupIscsiImpl(api, options); err != nil {
-		return err
-	}
-	if core.IsStringTrue(options.allFlags, "test") {
-		return testIscsiImpl(api, options, true)
-	}
-	return nil
-}
-
-func testIscsiImpl(api core.Session, options FlagMap, checkedServiceState bool) error {
-	if !checkedServiceState {
+		if isLocal {
+			return nil
+		}
+	} else {
 		msg, err := CheckRemoteIscsiServiceIsRunning(api)
 		if err != nil {
 			return err
@@ -420,7 +414,35 @@ func testIscsiImpl(api core.Session, options FlagMap, checkedServiceState bool) 
 			return fmt.Errorf(msg)
 		}
 	}
+	return testIscsiImpl(api, options)
+}
 
+func setupIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	cmd.SilenceUsage = true
+	options, _ := GetCobraFlags(cmd, false, nil)
+
+	isLocal := core.IsLocal()
+	isTest := core.IsStringTrue(options.allFlags, "test")
+
+	if isTest && !isLocal {
+		thisUser, err := user.Current()
+		if err == nil {
+			if thisUser.Username != "root" {
+				return fmt.Errorf("This command must be run as root.")
+			}
+		}
+	}
+
+	if err := setupIscsiImpl(api, options); err != nil {
+		return err
+	}
+	if isTest && !isLocal {
+		return testIscsiImpl(api, options)
+	}
+	return nil
+}
+
+func testIscsiImpl(api core.Session, options FlagMap) error {
 	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
 	if err != nil {
 		return err
@@ -476,11 +498,46 @@ func setupIscsiImpl(api core.Session, options FlagMap) error {
 	return nil
 }
 
+func QueryVolumes(api core.Session, nameList []string) ([]string, error) {
+	extras := typeQueryParams{
+		valueOrder:         BuildValueOrder(true),
+		shouldGetAllProps:  false,
+		shouldGetUserProps: false,
+		shouldRecurse:      true,
+	}
+	response, err := QueryApi(api, "pool.dataset", nameList, core.StringRepeated("name", len(nameList)), nil, extras)
+	if err != nil {
+		return nil, err
+	}
+	foundVols := make([]string, 0)
+	for _, r := range response.resultsMap {
+		keepEntry := false
+		if t, exists := r["type"]; exists {
+			keepEntry = strings.ToLower(fmt.Sprint(t)) == "volume"
+		}
+		if name, exists := r["name"]; exists && keepEntry {
+			foundVols = append(foundVols, fmt.Sprint(name))
+		}
+	}
+	slices.Sort(foundVols)
+	return foundVols, nil
+}
+
 func listIscsi(cmd *cobra.Command, api core.Session, args []string) error {
-	IterateActivatedIscsiShares("", func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
-		fullPath := path.Join(root, fullName)
-		fmt.Println(fullPath)
-	})
+	if core.IsLocal() {
+		vols, err := QueryVolumes(api, nil)
+		if err != nil {
+			return err
+		}
+		for _, v := range vols {
+			fmt.Println("/dev/zvol/" + v)
+		}
+	} else {
+		IterateActivatedIscsiShares("", func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+			fullPath := path.Join(root, fullName)
+			fmt.Println(fullPath)
+		})
+	}
 	return nil
 }
 
@@ -537,6 +594,10 @@ func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, ar
 
 func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
+
+	if core.IsLocal() {
+		return locateIscsiLocal(cmd, api, args)
+	}
 
 	thisUser, err := user.Current()
 	if err == nil {
@@ -648,6 +709,68 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
+func locateIscsiLocal(cmd *cobra.Command, api core.Session, args []string) error {
+	options, _ := GetCobraFlags(cmd, false, nil)
+
+	//isMinimal := core.IsStringTrue(options.allFlags, "parsable")
+	shouldActivate := core.IsStringTrue(options.allFlags, "activate")
+	shouldDeactivate := core.IsStringTrue(options.allFlags, "deactivate")
+	shouldCreate := core.IsStringTrue(options.allFlags, "create")
+	shouldDelete := core.IsStringTrue(options.allFlags, "delete")
+
+	shouldActivate = shouldActivate || shouldCreate
+	shouldDeactivate = shouldDeactivate || shouldDelete
+
+	vols, err := QueryVolumes(api, args)
+	if err != nil {
+		return err
+	}
+	if shouldCreate {
+		missingShares := make([]string, 0)
+		for _, a := range args {
+			found := false
+			for _, v := range vols {
+				if a == v {
+					found = true
+					break
+				}
+			}
+			if !found {
+				missingShares = append(missingShares, a)
+			}
+		}
+		if err = createIscsi(cmd, api, missingShares); err != nil {
+			return err
+		}
+		if shouldActivate {
+			for _, v := range missingShares {
+				fmt.Println("created\t/dev/zvol/" + v)
+				fmt.Println("activated\t/dev/zvol/" + v)
+			}
+		} else {
+			for _, v := range missingShares {
+				fmt.Println("created\t/dev/zvol/" + v)
+			}
+		}
+	}
+	if shouldDelete {
+		return deleteIscsi(cmd, api, vols)
+	} else {
+		for _, v := range vols {
+			if shouldActivate {
+				fmt.Println("activated\t/dev/zvol/" + v)
+			}
+			if shouldDeactivate {
+				fmt.Println("deactivated\t/dev/zvol/" + v)
+			}
+			if !shouldActivate && !shouldDeactivate {
+				fmt.Println("located\t/dev/zvol/" + v)
+			}
+		}
+	}
+	return nil
+}
+
 type typeIscsiPathAndIqnTarget struct {
 	fullPath      string
 	iqnTargetName string
@@ -656,14 +779,32 @@ type typeIscsiPathAndIqnTarget struct {
 func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
+	options, _ := GetCobraFlags(cmd, false, nil)
+	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
+
+	if core.IsLocal() {
+		vols, err := QueryVolumes(api, args)
+		if err != nil {
+			return err
+		}
+		if !isMinimal {
+			for _, v := range vols {
+				fmt.Println("activated\t/dev/zvol/" + v)
+			}
+		} else {
+			for _, v := range vols {
+				fmt.Println("/dev/zvol/" + v)
+			}
+		}
+		return nil
+	}
+
 	thisUser, err := user.Current()
 	if err == nil {
 		if thisUser.Username != "root" {
 			return fmt.Errorf("This command must be run as root.")
 		}
 	}
-
-	options, _ := GetCobraFlags(cmd, false, nil)
 
 	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
 	if err != nil {
@@ -677,8 +818,6 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	if shares == nil {
 		return nil
 	}
-
-	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
 
 	targets := make([]typeIscsiLoginSpec, 0)
 	for share, _ := range shares {
@@ -799,6 +938,26 @@ func doIscsiActivate(api core.Session, targets []typeIscsiLoginSpec, ipAddr stri
 func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
 
+	options, _ := GetCobraFlags(cmd, false, nil)
+	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
+
+	if core.IsLocal() {
+		vols, err := QueryVolumes(api, args)
+		if err != nil {
+			return err
+		}
+		if !isMinimal {
+			for _, v := range vols {
+				fmt.Println("deactivated\t/dev/zvol/" + v)
+			}
+		} else {
+			for _, v := range vols {
+				fmt.Println("/dev/zvol/" + v)
+			}
+		}
+		return nil
+	}
+
 	thisUser, err := user.Current()
 	if err == nil {
 		if thisUser.Username != "root" {
@@ -806,7 +965,6 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 		}
 	}
 
-	options, _ := GetCobraFlags(cmd, false, nil)
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 
 	maybeHashedToVolumeMap := make(map[string]string)
@@ -823,8 +981,6 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 	if err != nil {
 		return err
 	}
-
-	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
 
 	deactivatedList := DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, isMinimal, false)
 
@@ -845,13 +1001,6 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 // It will deactivate the share before deleting it.
 func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	cmd.SilenceUsage = true
-
-	thisUser, err := user.Current()
-	if err == nil {
-		if thisUser.Username != "root" {
-			return fmt.Errorf("This command must be run as root.")
-		}
-	}
 
 	options, _ := GetCobraFlags(cmd, false, nil)
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
@@ -874,16 +1023,25 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	changes := make([]typeApiCallRecord, 0)
 	defer undoIscsiDeleteList(api, &changes)
 
-	if err := CheckIscsiAdminToolExists(); err != nil {
-		return err
-	}
+	if !core.IsLocal() {
+		thisUser, err := user.Current()
+		if err == nil {
+			if thisUser.Username != "root" {
+				return fmt.Errorf("This command must be run as root.")
+			}
+		}
 
-	ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
-	if err != nil {
-		return err
-	}
+		if err := CheckIscsiAdminToolExists(); err != nil {
+			return err
+		}
 
-	_ = DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, true, true)
+		ipPortalAddr, err := MaybeLookupIpPortFromPortal(api, DEFAULT_ISCSI_PORT, options.allFlags["portal"])
+		if err != nil {
+			return err
+		}
+
+		_ = DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, true, true)
+	}
 
 	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(true),
