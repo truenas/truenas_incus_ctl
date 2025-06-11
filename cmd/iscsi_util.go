@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +25,7 @@ type typeApiCallRecord struct {
 	params     []interface{}
 	resultList []interface{}
 	errorList  []interface{}
+	priorQuery *typeQueryResponse
 }
 
 func LookupPortalByObject(api core.Session, toMatch interface{}) (int, error) {
@@ -220,6 +222,90 @@ func LookupInitiatorOrCreateBlank(api core.Session, spec string) (int, error) {
 	return initiatorId, nil
 }
 
+func TryDeferIscsiApiCallArray(deferNotSupportedRef *bool, api core.Session, method string, timeoutSeconds int64, paramsArray []interface{}) ([]interface{}, []interface{}, error) {
+	nCalls := len(paramsArray)
+	if nCalls == 0 {
+		return nil, nil, errors.New("TryDeferIscsiApiCallArray: Nothing to do")
+	}
+	if deferNotSupportedRef != nil && *deferNotSupportedRef {
+		DebugString("defer not supported - aware")
+		out, _, err := MaybeBulkApiCallArray(api, method, timeoutSeconds, paramsArray, true)
+		if err != nil {
+			return nil, nil, err
+		}
+		res, errs := core.GetResultsAndErrorsFromApiResponseRaw(out)
+		return res, errs, nil
+	}
+
+	deferParamsArray, _ := core.DeepCopy(paramsArray).([]interface{})
+	if strings.HasSuffix(method, ".delete") {
+		for i := 0; i < nCalls; i++ {
+			if paramsList, ok := deferParamsArray[i].([]interface{}); ok {
+				deferParamsArray[i] = append(paramsList, true)
+			}
+		}
+	} else if strings.HasSuffix(method, ".update") {
+		for i := 0; i < nCalls; i++ {
+			if paramsList, ok := deferParamsArray[i].([]interface{}); ok {
+				if paramsMap, ok := paramsList[1].(map[string]interface{}); ok {
+					paramsMap["defer"] = true
+					paramsList[1] = paramsMap
+				}
+				deferParamsArray[i] = paramsList
+			}
+		}
+	} else {
+		for i := 0; i < nCalls; i++ {
+			if paramsList, ok := deferParamsArray[i].([]interface{}); ok {
+				if paramsMap, ok := paramsList[0].(map[string]interface{}); ok {
+					paramsMap["defer"] = true
+					paramsList[0] = paramsMap
+				}
+				deferParamsArray[i] = paramsList
+			}
+		}
+	}
+
+	if err := core.MaybeLogin(api); err != nil {
+		return nil, nil, err
+	}
+	out, err := api.CallRaw(method, timeoutSeconds, deferParamsArray[0])
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resultList, errorList := core.GetResultsAndErrorsFromApiResponseRaw(out)
+
+	//DebugJson(resultList)
+	//DebugJson(errorList)
+
+	if len(errorList) > 0 {
+		lower := strings.ToLower(core.ExtractApiErrorJsonGivenError(errorList[0]))
+		if strings.Contains(lower, "too many arguments") || strings.Contains(lower, "extra inputs are not") {
+			DebugString("defer not supported - was not aware")
+			if deferNotSupportedRef != nil {
+				*deferNotSupportedRef = true
+			}
+			out, _, err = MaybeBulkApiCallArray(api, method, timeoutSeconds, paramsArray, true)
+			if err != nil {
+				return nil, nil, err
+			}
+			res, errs := core.GetResultsAndErrorsFromApiResponseRaw(out)
+			return res, errs, nil
+		}
+	}
+	if nCalls >= 2 {
+		out, _, err = MaybeBulkApiCallArray(api, method, timeoutSeconds, deferParamsArray[1:nCalls], true)
+		if err != nil {
+			return nil, nil, err
+		}
+		subResults, subErrors := core.GetResultsAndErrorsFromApiResponseRaw(out)
+		resultList = append(resultList, subResults)
+		errorList = append(errorList, subErrors)
+	}
+	return resultList, errorList, nil
+}
+
 func GetIscsiTargetPrefixOrExit(options map[string]string) string {
 	prefixRaw := options["target_prefix"]
 	prefix := strings.TrimSpace(prefixRaw)
@@ -282,6 +368,55 @@ func AddIscsiInitiator(initiators map[string]int, resultRow map[string]interface
 	return name, nil
 }
 
+func GetIscsiSharesFromSessionAndDiscovery(api core.Session, prefixName string, isCreate bool, args []string, portalAddr string) (map[string]bool, map[string]string, error) {
+	maybeHashedToVolumeMap := make(map[string]string)
+	missingShares := make(map[string]string)
+
+	for _, vol := range args {
+		maybeHashed := MaybeHashIscsiNameFromVolumePath(prefixName, vol)
+		maybeHashedToVolumeMap[maybeHashed] = vol
+		missingShares[maybeHashed] = vol
+	}
+
+	var err error
+	if err = CheckIscsiAdminToolExists(); err != nil {
+		return nil, nil, err
+	}
+
+	err = MaybeLaunchIscsiDaemon()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	discoveryTargets, err := GetIscsiTargetsFromDiscovery(api, maybeHashedToVolumeMap, portalAddr)
+	//fmt.Println(discoveryTargets, err)
+	if !isCreate && err != nil {
+		return nil, nil, err
+	}
+
+	sessionTargets, err := GetIscsiTargetsFromSession(api, maybeHashedToVolumeMap)
+	//fmt.Println(sessionTargets, err)
+	if !isCreate && err != nil && !strings.Contains(strings.ToLower(err.Error()), "no active sessions") {
+		return nil, nil, err
+	}
+
+	targets := make([]typeIscsiLoginSpec, 0)
+	targets = append(targets, sessionTargets...)
+	targets = append(targets, discoveryTargets...)
+
+	if len(targets) == 0 {
+		return nil, missingShares, nil
+	}
+
+	shares := make(map[string]bool)
+	for _, t := range targets {
+		shares[t.iqn+":"+t.target] = true
+		delete(missingShares, t.target)
+	}
+
+	return shares, missingShares, nil
+}
+
 func IterateActivatedIscsiShares(optIpPortalAddr string, callback func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string)) {
 	diskEntries, err := os.ReadDir("/dev/disk/by-path")
 	if err != nil {
@@ -324,32 +459,124 @@ func IterateActivatedIscsiShares(optIpPortalAddr string, callback func(root stri
 	}
 }
 
+func DeactivateIscsiTargetList(api core.Session, ipPortalAddr string, toDeactivate []string, shouldWait bool) ([]string, []error) {
+	results := make([]string, 0)
+	errs := make([]error, 0)
+
+	toDeactivateMap := make(map[string]bool)
+	for _, t := range toDeactivate {
+		toDeactivateMap[t] = true
+	}
+
+	toSyncList := make([]string, 0)
+	IterateActivatedIscsiShares(ipPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+		if _, exists := toDeactivateMap[iqnTargetName]; exists {
+			fullPath := path.Join(root, fullName)
+			toSyncList = append(toSyncList, fullPath)
+		}
+	})
+
+	if len(toSyncList) > 0 {
+		_, _ = core.RunCommand("sync", append([]string{"-f"}, toSyncList...)...)
+	}
+
+	for _, t := range toDeactivate {
+		if err := RunIscsiDeactivate(api, t, ipPortalAddr); err != nil {
+			errs = append(errs, fmt.Errorf("%s\t%v", t, err.Error()))
+		} else {
+			results = append(results, t)
+		}
+	}
+	if len(results) == 0 {
+		results = nil
+	}
+	if len(errs) == 0 {
+		errs = nil
+	}
+
+	if !shouldWait || results == nil {
+		return results, errs
+	}
+
+	statusCh := make(chan bool)
+	innerMap := make(map[string]bool)
+	outerMap := make(map[string]bool)
+	for _, t := range results {
+		innerMap[t] = true
+		outerMap[t] = true
+	}
+
+	go func() {
+		core.WaitForCreatedDeletedFiles("/dev/disk/by-path", func(fname string, wasCreate, wasDelete bool) bool {
+			isDone := true
+			IterateActivatedIscsiShares(ipPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+				if _, exists := innerMap[iqnTargetName]; exists {
+					isDone = false
+				}
+			})
+			statusCh <- isDone
+			return isDone
+		})
+	}()
+
+	const maxTries = 30
+	for i := 0; i < maxTries; i++ {
+		select {
+		case isDone := <-statusCh:
+			if isDone {
+				return results, errs
+			}
+		case <-time.After(time.Duration(1000) * time.Millisecond):
+			isDone := true
+			IterateActivatedIscsiShares(ipPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+				if _, exists := outerMap[iqnTargetName]; exists {
+					isDone = false
+				}
+			})
+			if isDone {
+				return results, errs
+			}
+		}
+	}
+
+	return results, errs
+}
+
 func DeactivateMatchingIscsiTargets(
 	api core.Session,
-	optIpPortalAddr string,
+	ipPortalAddr string,
 	maybeHashedToVolumeMap map[string]string,
+	shouldWait bool,
 	isMinimal bool,
 	shouldPrintStatus bool,
 ) []string {
-	deactivatedList := make([]string, 0)
-	IterateActivatedIscsiShares(optIpPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+	toDeactivateMap := make(map[string]string)
+	toDeactivateIqnTargets := make([]string, 0)
+	IterateActivatedIscsiShares(ipPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
 		if _, exists := maybeHashedToVolumeMap[targetOnlyName]; exists {
-			if err := RunIscsiDeactivate(api, iqnTargetName, ipPortalAddr); err != nil {
-				fmt.Printf("failed\t%s\t%v\n", iqnTargetName, err)
-			} else {
-				if shouldPrintStatus || !isMinimal {
-					fmt.Println("deactivated\t", iqnTargetName)
-				} else {
-					fmt.Println(iqnTargetName)
-				}
-			}
-
-			deactivatedList = append(deactivatedList, targetOnlyName)
+			toDeactivateMap[iqnTargetName] = targetOnlyName
+			toDeactivateIqnTargets = append(toDeactivateIqnTargets, iqnTargetName)
 		} else if !isMinimal {
 			fmt.Println("not-found\t" + targetOnlyName)
 		}
 	})
-	return deactivatedList
+
+	deactivatedIqnTargetList, errorList := DeactivateIscsiTargetList(api, ipPortalAddr, toDeactivateIqnTargets, shouldWait)
+	for _, e := range errorList {
+		fmt.Printf("failed\t%v\n", e)
+	}
+
+	deactivatedTargets := make([]string, 0)
+	for _, t := range deactivatedIqnTargetList {
+		if shouldPrintStatus || !isMinimal {
+			fmt.Println("deactivated\t", t)
+		} else {
+			fmt.Println(t)
+		}
+		deactivatedTargets = append(deactivatedTargets, toDeactivateMap[t])
+	}
+
+	return deactivatedTargets
 }
 
 func GetIscsiTargetsFromDiscovery(api core.Session, maybeHashedToVolumeMap map[string]string, portalAddr string) ([]typeIscsiLoginSpec, error) {
@@ -449,6 +676,21 @@ func CheckRemoteIscsiServiceIsRunning(api core.Session) (string, error) {
 	return "", nil
 }
 
+func RunIscsiActivate(api core.Session, iqnTargetName string, ipPortalAddr string) error {
+	loginParams := []string{
+		"--mode",
+		"node",
+		"--targetname",
+		iqnTargetName,
+		"--portal",
+		ipPortalAddr,
+		"--login",
+	}
+	DebugString(strings.Join(loginParams, " "))
+	_, err := RunIscsiAdminTool(api, loginParams)
+	return err
+}
+
 func RunIscsiDeactivate(api core.Session, iqnTargetName string, ipPortalAddr string) error {
 	logoutParams := []string{
 		"--mode",
@@ -495,7 +737,7 @@ func RunIscsiAdminTool(api core.Session, args []string) (string, error) {
 begin:
 	out, err := core.RunCommand("iscsiadm", args...)
 	// "Could not stat" seems to happen when iscsiadm decides to delete a node... and another instance deletes the node, a retry should resolve.
-	if err != nil && (strings.HasPrefix(err.Error(), "iscsiadm: Could not scan /sys/class/iscsi_transport") || strings.HasPrefix(err.Error(), "iscsiadm: Could not stat")) {
+	if err != nil && (strings.HasPrefix(err.Error(), "iscsiadm: Could not scan /sys/class/iscsi_transport") || strings.HasPrefix(err.Error(), "iscsiadm: Could not stat") || strings.HasPrefix(err.Error(), "iscsiadm: Could not lookup devpath") || strings.HasPrefix(err.Error(), "iSCSI ERROR: realpath() failed") || strings.HasPrefix(err.Error(), "iSCSI ERROR: Got unexpected(should be")) {
 		time.Sleep(time.Duration(500) * time.Millisecond)
 		retriesLeft--
 		if retriesLeft > 0 {
