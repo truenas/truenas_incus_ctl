@@ -95,8 +95,6 @@ func init() {
 
 	iscsiDeactivateCmd.Flags().Bool("wait", false, "Wait until a target is deactivated before returning")
 
-	iscsiDeleteCmd.Flags().Bool("wait", false, "Wait until a target is deactivated before continuing")
-
 	_iscsiCmds := []*cobra.Command{iscsiCreateCmd, iscsiTestCmd, iscsiSetupCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
 		c.Flags().StringP("target-prefix", "t", "", "label to prefix the created target")
@@ -893,7 +891,7 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	shouldWait := core.IsStringTrue(options.allFlags, "wait")
-	_ = DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, shouldWait, true, true)
+	_ = DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, true, true, true)
 
 	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(true),
