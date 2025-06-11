@@ -33,7 +33,7 @@ func LookupPortalByObject(api core.Session, toMatch interface{}) (int, error) {
 		queryFilter,
 		make(map[string]interface{}),
 	}
-	out, err := core.ApiCall(api, "iscsi.portal.query", 10, queryParams)
+	out, err := core.ApiCall(api, "iscsi.portal.query", defaultCallTimeout, queryParams)
 	if err != nil {
 		return -1, err
 	}
@@ -80,7 +80,7 @@ func LookupPortalIdOrCreate(api core.Session, defaultPort int, spec string) (int
 		paramsCreate := []interface{}{map[string]interface{}{"listen": ipPortObj}}
 		DebugJson(paramsCreate)
 
-		out, err := core.ApiCall(api, "iscsi.portal.create", 10, paramsCreate)
+		out, err := core.ApiCall(api, "iscsi.portal.create", defaultCallTimeout, paramsCreate)
 		if err != nil {
 			return -1, err
 		}
@@ -111,7 +111,7 @@ func MaybeLookupIpPortFromPortal(api core.Session, defaultPort int, spec string)
 			queryFilter,
 			make(map[string]interface{}),
 		}
-		out, err := core.ApiCall(api, "iscsi.portal.query", 10, queryParams)
+		out, err := core.ApiCall(api, "iscsi.portal.query", defaultCallTimeout, queryParams)
 		if err != nil {
 			return "", err
 		}
@@ -170,7 +170,7 @@ func LookupInitiatorByFilter(api core.Session, queryFilter []interface{}) (int, 
 		queryFilter,
 		make(map[string]interface{}),
 	}
-	out, err := core.ApiCall(api, "iscsi.initiator.query", 10, queryParams)
+	out, err := core.ApiCall(api, "iscsi.initiator.query", defaultCallTimeout, queryParams)
 	if err != nil {
 		return -1, err
 	}
@@ -202,7 +202,7 @@ func LookupInitiatorOrCreateBlank(api core.Session, spec string) (int, error) {
 	}
 
 	if initiatorId == -1 {
-		out, err := core.ApiCall(api, "iscsi.initiator.create", 10, []interface{}{map[string]interface{}{"comment": spec}})
+		out, err := core.ApiCall(api, "iscsi.initiator.create", defaultCallTimeout, []interface{}{map[string]interface{}{"comment": spec}})
 		if err != nil {
 			return -1, err
 		}
@@ -528,7 +528,7 @@ func GetIscsiTargetsFromSession(api core.Session, maybeHashedToVolumeMap map[str
 }
 
 func CheckRemoteIscsiServiceIsRunning(api core.Session) (string, error) {
-	out, err := core.ApiCall(api, "service.started", 10, []interface{}{"iscsitarget"})
+	out, err := core.ApiCall(api, "service.started", defaultCallTimeout, []interface{}{"iscsitarget"})
 	if err != nil {
 		return "", err
 	}

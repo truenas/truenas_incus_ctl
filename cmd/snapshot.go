@@ -9,8 +9,8 @@ import (
 )
 
 var snapshotCmd = &cobra.Command{
-	Use:   "snapshot",
-	Short: "Edit or list snapshots on a remote or local machine",
+	Use:     "snapshot",
+	Short:   "Edit or list snapshots on a remote or local machine",
 	Aliases: []string{"snap"},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
@@ -114,7 +114,7 @@ func cloneSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 	params := []interface{}{outMap}
 	DebugJson(params)
 
-	out, err := core.ApiCall(api, "zfs.snapshot.clone", 10, params)
+	out, err := core.ApiCall(api, "zfs.snapshot.clone", defaultCallTimeout, params)
 	if err != nil {
 		return err
 	}
@@ -171,7 +171,7 @@ func createSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 		delMap := make(map[string]interface{})
 		delMap["recursive"] = true
 		delObjRemap := map[string][]interface{}{"": core.ToAnyArray(args)}
-		_, _, _ = MaybeBulkApiCall(api, "zfs.snapshot.delete", 10, []interface{} {args[0], delMap}, delObjRemap, true)
+		_, _, _ = MaybeBulkApiCall(api, "zfs.snapshot.delete", 10, []interface{}{args[0], delMap}, delObjRemap, true)
 	}
 
 	objRemap := map[string][]interface{}{"dataset": core.ToAnyArray(datasetList), "name": core.ToAnyArray(nameList)}
@@ -223,20 +223,20 @@ func renameSnapshot(cmd *cobra.Command, api core.Session, args []string) error {
 		return errors.New("\"" + source + "\" is not a snapshot")
 	}
 
-	dsName := source[0 : strings.Index(source, "@")]
+	dsName := source[0:strings.Index(source, "@")]
 
 	if dstType != "snapshot" {
 		dest = dsName + "@" + dest
-	} else if !strings.HasPrefix(dest, dsName + "@") {
+	} else if !strings.HasPrefix(dest, dsName+"@") {
 		return errors.New(
 			"The destination snapshot does not share the same dataset as the source.\n" +
-			"Try leaving out the dataset name in the destination.")
+				"Try leaving out the dataset name in the destination.")
 	}
 
 	params := []interface{}{source, dest}
 	DebugJson(params)
 
-	out, err := core.ApiCall(api, "zfs.snapshot.rename", 10, params)
+	out, err := core.ApiCall(api, "zfs.snapshot.rename", defaultCallTimeout, params)
 	if err != nil {
 		return err
 	}

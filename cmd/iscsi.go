@@ -198,13 +198,13 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	var errorsTargetCreate []interface{}
 
 	if len(targetUpdates) > 0 {
-		rawResultsTargetUpdate, jobIdUpdate, err = MaybeBulkApiCallArray(api, "iscsi.target.update", 10, targetUpdates, false)
+		rawResultsTargetUpdate, jobIdUpdate, err = MaybeBulkApiCallArray(api, "iscsi.target.update", defaultCallTimeout, targetUpdates, false)
 		if err != nil {
 			return err
 		}
 	}
 	if len(targetCreates) > 0 {
-		rawResultsTargetCreate, _, err := MaybeBulkApiCallArray(api, "iscsi.target.create", 10, targetCreates, true)
+		rawResultsTargetCreate, _, err := MaybeBulkApiCallArray(api, "iscsi.target.create", defaultCallTimeout, targetCreates, true)
 		if err != nil {
 			return err
 		}
@@ -287,7 +287,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		out, _, err := MaybeBulkApiCallArray(
 			api,
 			"iscsi.extent.create",
-			10,
+			defaultCallTimeout,
 			paramsCreate,
 			true,
 		)
@@ -341,7 +341,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	if len(teCreateList) > 0 {
-		_, _, err = MaybeBulkApiCallArray(api, "iscsi.targetextent.create", 10, teCreateList, true)
+		_, _, err = MaybeBulkApiCallArray(api, "iscsi.targetextent.create", defaultCallTimeout, teCreateList, true)
 		if err != nil {
 			return err
 		}
@@ -377,7 +377,7 @@ func undoIscsiCreateList(api core.Session, changes *[]typeApiCallRecord) {
 				MaybeBulkApiCallArray(
 					api,
 					call.endpoint[:len(call.endpoint)-7]+".delete",
-					10,
+					defaultCallTimeout,
 					idList,
 					false,
 				)
@@ -959,7 +959,7 @@ func undoIscsiDeleteList(api core.Session, changes *[]typeApiCallRecord) {
 				MaybeBulkApiCallArray(
 					api,
 					call.endpoint[:len(call.endpoint)-7]+".create",
-					10,
+					defaultCallTimeout,
 					idList,
 					false,
 				)
