@@ -890,7 +890,6 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	shouldWait := core.IsStringTrue(options.allFlags, "wait")
 	_ = DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, true, true, true)
 
 	extras := typeQueryParams{
