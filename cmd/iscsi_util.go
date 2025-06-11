@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -327,6 +328,21 @@ func IterateActivatedIscsiShares(optIpPortalAddr string, callback func(root stri
 func DeactivateIscsiTargetList(api core.Session, ipPortalAddr string, toDeactivate []string, shouldWait bool) ([]string, []error) {
 	results := make([]string, 0)
 	errs := make([]error, 0)
+
+	toDeactivateMap := make(map[string]bool)
+	for _, t := range toDeactivate {
+		toDeactivateMap[t] = true
+	}
+
+	toSyncList := make([]string, 0)
+	IterateActivatedIscsiShares(ipPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+		if _, exists := toDeactivateMap[iqnTargetName]; exists {
+			fullPath := path.Join(root, fullName)
+			toSyncList = append(toSyncList, fullPath)
+		}
+	})
+
+	_, _ = core.RunCommand("sync", append([]string{"-f"}, toSyncList...)...)
 
 	for _, t := range toDeactivate {
 		if err := RunIscsiDeactivate(api, t, ipPortalAddr); err != nil {
