@@ -33,9 +33,10 @@ import (
 0.6.1 `share iscsi locate --create/--delete`
 0.6.2 `snapshot rename` now calls zfs.snapshot.rename end-point
 0.7.0 Add service commands, iscsi test, --daemon-socket to override path to the daemon's socket, add --portal and --initiator flags
-0.7.1 Sends a sendtargets command before a plain discover. This seems to be required before verifying a portal, adds delete and deactivate support waiting for deactivation. --wait is required for deactivate
+0.7.1 Sends a sendtargets command before a plain discover. This seems to be required before verifying a portal, adds delete and deactivate support waiting for deactivation.
+0.7.2 Deactivate  optionally waits for deactivation. Delete always waits
 */
-const VERSION = "0.7.1"
+const VERSION = "0.7.2"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
