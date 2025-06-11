@@ -256,7 +256,7 @@ func launchDaemonAndAwaitSocket(socketPath string, daemonTimeout time.Duration, 
 		sockFolder := path.Dir(socketPath)
 		sockName := socketPath[lastSlash+1:]
 
-		WaitForFilesToAppear(sockFolder, func(fname string, isCreated bool) bool {
+		WaitForCreatedDeletedFiles(sockFolder, func(fname string, isCreated, isDeleted bool) bool {
 			return isCreated && fname != "" && strings.Contains(fname, sockName)
 		})
 	}()
