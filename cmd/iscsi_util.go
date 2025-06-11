@@ -324,32 +324,107 @@ func IterateActivatedIscsiShares(optIpPortalAddr string, callback func(root stri
 	}
 }
 
+func DeactivateIscsiTargetList(api core.Session, ipPortalAddr string, toDeactivate []string, shouldWait bool) ([]string, []error) {
+	results := make([]string, 0)
+	errs := make([]error, 0)
+
+	for _, t := range toDeactivate {
+		if err := RunIscsiDeactivate(api, t, ipPortalAddr); err != nil {
+			errs = append(errs, fmt.Errorf("%s\t%v", t, err.Error()))
+		} else {
+			results = append(results, t)
+		}
+	}
+	if len(results) == 0 {
+		results = nil
+	}
+	if len(errs) == 0 {
+		errs = nil
+	}
+
+	if !shouldWait || results == nil {
+		return results, errs
+	}
+
+	statusCh := make(chan bool)
+	innerMap := make(map[string]bool)
+	outerMap := make(map[string]bool)
+	for _, t := range results {
+		innerMap[t] = true
+		outerMap[t] = true
+	}
+
+	go func() {
+		core.WaitForCreatedDeletedFiles("/dev/disk/by-path", func(fname string, wasCreate, wasDelete bool) bool {
+			isDone := true
+			IterateActivatedIscsiShares(ipPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+				if _, exists := innerMap[iqnTargetName]; exists {
+					isDone = false
+				}
+			})
+			statusCh <- isDone
+			return isDone
+		})
+	}()
+
+	const maxTries = 30
+	for i := 0; i < maxTries; i++ {
+		select {
+		case isDone := <-statusCh:
+			if isDone {
+				return results, errs
+			}
+		case <-time.After(time.Duration(1000) * time.Millisecond):
+			isDone := true
+			IterateActivatedIscsiShares(ipPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+				if _, exists := outerMap[iqnTargetName]; exists {
+					isDone = false
+				}
+			})
+			if isDone {
+				return results, errs
+			}
+		}
+	}
+
+	return results, errs
+}
+
 func DeactivateMatchingIscsiTargets(
 	api core.Session,
-	optIpPortalAddr string,
+	ipPortalAddr string,
 	maybeHashedToVolumeMap map[string]string,
+	shouldWait bool,
 	isMinimal bool,
 	shouldPrintStatus bool,
 ) []string {
-	deactivatedList := make([]string, 0)
-	IterateActivatedIscsiShares(optIpPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
+	toDeactivateMap := make(map[string]string)
+	toDeactivateIqnTargets := make([]string, 0)
+	IterateActivatedIscsiShares(ipPortalAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
 		if _, exists := maybeHashedToVolumeMap[targetOnlyName]; exists {
-			if err := RunIscsiDeactivate(api, iqnTargetName, ipPortalAddr); err != nil {
-				fmt.Printf("failed\t%s\t%v\n", iqnTargetName, err)
-			} else {
-				if shouldPrintStatus || !isMinimal {
-					fmt.Println("deactivated\t", iqnTargetName)
-				} else {
-					fmt.Println(iqnTargetName)
-				}
-			}
-
-			deactivatedList = append(deactivatedList, targetOnlyName)
+			toDeactivateMap[iqnTargetName] = targetOnlyName
+			toDeactivateIqnTargets = append(toDeactivateIqnTargets, iqnTargetName)
 		} else if !isMinimal {
 			fmt.Println("not-found\t" + targetOnlyName)
 		}
 	})
-	return deactivatedList
+
+	deactivatedIqnTargetList, errorList := DeactivateIscsiTargetList(api, ipPortalAddr, toDeactivateIqnTargets, shouldWait)
+	for _, e := range errorList {
+		fmt.Printf("failed\t%v\n", e)
+	}
+
+	deactivatedTargets := make([]string, 0)
+	for _, t := range deactivatedIqnTargetList {
+		if shouldPrintStatus || !isMinimal {
+			fmt.Println("deactivated\t", t)
+		} else {
+			fmt.Println(t)
+		}
+		deactivatedTargets = append(deactivatedTargets, toDeactivateMap[t])
+	}
+
+	return deactivatedTargets
 }
 
 func GetIscsiTargetsFromDiscovery(api core.Session, maybeHashedToVolumeMap map[string]string, portalAddr string) ([]typeIscsiLoginSpec, error) {

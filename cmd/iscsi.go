@@ -91,6 +91,11 @@ func init() {
 	iscsiLocateCmd.Flags().Bool("deactivate", false, "Deactivate any shares that could be located")
 	iscsiLocateCmd.Flags().Bool("delete", false, "Deactivate and delete any shares that could be located")
 	iscsiLocateCmd.Flags().Bool("readonly", false, "If a share is to be created, ensure that its extent is read-only. Ignored for snapshots.")
+	iscsiLocateCmd.Flags().Bool("wait", false, "Wait until a target is deactivated before returning")
+
+	iscsiDeactivateCmd.Flags().Bool("wait", false, "Wait until a target is deactivated before returning")
+
+	iscsiDeleteCmd.Flags().Bool("wait", false, "Wait until a target is deactivated before continuing")
 
 	_iscsiCmds := []*cobra.Command{iscsiCreateCmd, iscsiTestCmd, iscsiSetupCmd, iscsiActivateCmd, iscsiLocateCmd, iscsiDeactivateCmd, iscsiDeleteCmd}
 	for _, c := range _iscsiCmds {
@@ -582,16 +587,16 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		}
 	}
 
-	toDeactivate := make([]string, 0)
-	toDeactivateTargets := make([]string, 0)
+	toDeactivateIqnTargets := make([]string, 0)
+	toDeactivateTargetsOnly := make([]string, 0)
 
 	IterateActivatedIscsiShares(ipPortalAddr, func(root string, fullName string, ipAddr string, iqnTargetName string, targetOnlyName string) {
 		if _, exists := shares[iqnTargetName]; !exists {
 			return
 		}
 		if shouldDeactivate {
-			toDeactivate = append(toDeactivate, iqnTargetName)
-			toDeactivateTargets = append(toDeactivateTargets, targetOnlyName)
+			toDeactivateIqnTargets = append(toDeactivateIqnTargets, iqnTargetName)
+			toDeactivateTargetsOnly = append(toDeactivateTargetsOnly, targetOnlyName)
 		} else {
 			fullPath := path.Join(root, fullName)
 			fmt.Println("located\t" + fullPath)
@@ -628,20 +633,21 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	}
 
 	// deleteIscsi() will deactivate the shares first regardless, so use else if here
-	if shouldDelete && len(toDeactivateTargets) > 0 {
-		if err = deleteIscsi(cmd, api, toDeactivateTargets); err != nil {
+	if shouldDelete && len(toDeactivateTargetsOnly) > 0 {
+		if err = deleteIscsi(cmd, api, toDeactivateTargetsOnly); err != nil {
 			return err
 		}
-		for _, t := range toDeactivate {
+		for _, t := range toDeactivateIqnTargets {
 			fmt.Println("deactivated\t" + t)
 		}
 	} else if shouldDeactivate {
-		for _, t := range toDeactivate {
-			if err := RunIscsiDeactivate(api, t, ipPortalAddr); err != nil {
-				fmt.Printf("failed\t%s\t%v\n", t, err)
-			} else {
-				fmt.Println("deactivated\t" + t)
-			}
+		shouldWait := core.IsStringTrue(options.allFlags, "wait")
+		successList, errorList := DeactivateIscsiTargetList(api, ipPortalAddr, toDeactivateIqnTargets, shouldWait)
+		for _, t := range successList {
+			fmt.Println("deactivated\t" + t)
+		}
+		for _, e := range errorList {
+			fmt.Printf("failed\t%v", e) // %s\t%v\n", t, err)
 		}
 	}
 
@@ -728,7 +734,7 @@ func doIscsiActivate(api core.Session, targets []typeIscsiLoginSpec, ipAddr stri
 	}
 
 	if len(outerMap) == 0 {
-		if !isMinimal {
+		if !isMinimal || !shouldPrintStatus {
 			return fmt.Errorf("No matching iscsi shares were found")
 		}
 		return nil
@@ -741,7 +747,7 @@ func doIscsiActivate(api core.Session, targets []typeIscsiLoginSpec, ipAddr stri
 
 	shareCh := make(chan typeIscsiPathAndIqnTarget)
 	go func() {
-		err := core.WaitForFilesToAppear("/dev/disk/by-path", func(fname string, wasCreate bool) bool {
+		err := core.WaitForCreatedDeletedFiles("/dev/disk/by-path", func(fname string, wasCreate, wasDelete bool) bool {
 			IterateActivatedIscsiShares(ipAddr, func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string) {
 				shareCh <- typeIscsiPathAndIqnTarget{
 					fullPath:      path.Join(root, fullName),
@@ -825,8 +831,11 @@ func deactivateIscsi(cmd *cobra.Command, api core.Session, args []string) error 
 	}
 
 	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
+	shouldWait := core.IsStringTrue(options.allFlags, "wait")
 
-	deactivatedList := DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, isMinimal, false)
+	t1 := time.Now()
+	deactivatedList := DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, shouldWait, isMinimal, false)
+	DebugString("deactivation time: " + fmt.Sprint(time.Now().Sub(t1).String()))
 
 	if !isMinimal {
 		for _, vol := range deactivatedList {
@@ -883,7 +892,8 @@ func deleteIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		return err
 	}
 
-	_ = DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, true, true)
+	shouldWait := core.IsStringTrue(options.allFlags, "wait")
+	_ = DeactivateMatchingIscsiTargets(api, ipPortalAddr, maybeHashedToVolumeMap, shouldWait, true, true)
 
 	extras := typeQueryParams{
 		valueOrder:         BuildValueOrder(true),
