@@ -342,7 +342,9 @@ func DeactivateIscsiTargetList(api core.Session, ipPortalAddr string, toDeactiva
 		}
 	})
 
-	_, _ = core.RunCommand("sync", append([]string{"-f"}, toSyncList...)...)
+	if len(toSyncList) > 0 {
+		_, _ = core.RunCommand("sync", append([]string{"-f"}, toSyncList...)...)
+	}
 
 	for _, t := range toDeactivate {
 		if err := RunIscsiDeactivate(api, t, ipPortalAddr); err != nil {
