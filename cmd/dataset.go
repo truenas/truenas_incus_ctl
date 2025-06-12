@@ -355,7 +355,7 @@ func deleteDataset(cmd *cobra.Command, api core.Session, args []string) error {
 		if err != nil {
 			return err
 		}
-		timeout = int64(10 + 10 * len(response.resultsMap))
+		timeout = int64(10 + 10*len(response.resultsMap))
 	}
 
 	params := BuildNameStrAndPropertiesJson(options, args[0])
@@ -455,7 +455,7 @@ func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
 	params := []interface{}{source, outMap}
 	DebugJson(params)
 
-	out, err := core.ApiCall(api, "zfs.dataset.rename", 10, params)
+	out, err := core.ApiCall(api, "zfs.dataset.rename", defaultCallTimeout, params)
 	if err != nil {
 		return err
 	}
@@ -482,7 +482,7 @@ func renameDataset(cmd *cobra.Command, api core.Session, args []string) error {
 
 		DebugJson(nfsParams)
 
-		out, err = core.ApiCall(api, "sharing.nfs.update", 10, nfsParams)
+		out, err = core.ApiCall(api, "sharing.nfs.update", defaultCallTimeout, nfsParams)
 		if err != nil {
 			return err
 		}
