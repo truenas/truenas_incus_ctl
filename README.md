@@ -72,6 +72,7 @@ The following patches may be useful to support the Incus TrueNAS driver.
 
 - [back-port zfs.snapshot.rename functionality](#zfssnapshotrename-backport)
 - [increase max_calls](#increase-max-api-calls)
+- [iSCSI defer functionality](#iscsi-defer-functionality)
 
 The middlewared source on a TrueNAS installation is located at `/usr/lib/python3/dist-packages/middlewared`
 
@@ -81,14 +82,14 @@ In order to apply patches to the middleware you need to [disable the read-only p
 
 In order to patch the middleware the current /usr dataset needs its readonly proection disabled.
 
-The rootfs read-only protection can be removed by the following command: `zfs set readonly=off <BOOT-POOL>/ROOT/<TRUENAS-BOOT-ENV>/usr`, where `<TRUENAS-BOOT-ENV>` is the name of the active TrueNAS Boot Environment, eg: "25.10.0", or "25.10.0-MASTER-20250519-015438, and `<BOOT-POOL>` is the name of the boot pool, eg: "boot-pool". You can use `cat /proc/mounts | grep /usr` to see the name of the active /usr dataset
+The rootfs read-only protection can be removed by the following command: `zfs set readonly=off <active /usr dataset>`. You can use `zfs list /usr` to see the name of the active /usr dataset.
 
 eg:
 
 ```sh
-# zfs list | grep /usr
-boot-pool/ROOT/25.04.0/usr                                                                                                      2.51G  37.5G  2.51G  /usr
-boot-pool/ROOT/25.10.0-MASTER-20250525-015443/usr                                                                               2.86G  37.5G  2.86G  /usr
+# zfs list /usr               
+NAME                                                USED  AVAIL  REFER  MOUNTPOINT
+boot-pool/ROOT/25.10.0-MASTER-20250525-015443/usr  3.06G  17.9G  3.04G  /usr
 # zfs set readonly=off boot-pool/ROOT/25.10.0-MASTER-20250525-015443/usr
 ```
 
@@ -138,6 +139,19 @@ index b04ecc1ec1..40797b71a7 100644
      max_period: int = 60
 
 ```
+
+### iSCSI Defer functionality ###
+
+A pull-request for the TrueNAS Goldeye middleware has been submitted
+
+https://github.com/truenas/middleware/pull/16614
+
+The PR implements deferred iscsi reloading for iscsi target deletion, as well as defer capability on other iscsi commands
+
+The iscsi target deletion improvement improves iscsi deletion operations by about 3.5x which makes a measurably improved performance
+improvement.
+
+When performance/integration testing the Incus driver, you may want to apply this patch if it is not already applied, as it can significantly reduce the runtime of integration tests.
 
 ### Restarting Middlewared
 
