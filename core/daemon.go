@@ -9,6 +9,7 @@ import (
 	"net"
 	"sync"
 	"time"
+	"errors"
 	"strings"
 	"syscall"
 	"net/url"
@@ -22,21 +23,23 @@ const TNC_PREFIX_STRING = "tnc_daemon."
 const JOB_WAIT_STRING   = "core.job_wait"
 
 type TruenasSession struct {
-	url        string
-	conn       *websocket.Conn
-	ctx        *DaemonContext
-	sessionKey string
-	mapMtx     *sync.Mutex
-	curCallId_ int64
-	callMap_   map[int64]*Future[json.RawMessage]
-	jobMap_    map[int64]*Future[json.RawMessage]
+	url             string
+	conn            *websocket.Conn
+	ctx             *DaemonContext
+	sessionKey      string
+	channel         int
+	connMtx         *sync.Mutex
+	callInProgress_ bool
+	curCallId_      int64
+	callMap_        map[int64]*Future[json.RawMessage]
+	jobMap_         map[int64]*Future[json.RawMessage]
 }
 
 type DaemonContext struct {
 	timeoutValue  time.Duration
 	timeoutTimer  *time.Timer
 	mapMtx        *sync.Mutex
-	sessionMap_   map[string]*Future[*TruenasSession]
+	sessionMap_   map[string][]*Future[*TruenasSession]
 }
 
 type CallInfo struct {
@@ -80,7 +83,7 @@ func RunDaemon(serverSockAddr string, globalTimeoutStr string) {
 		timeoutValue: daemonTimeout,
 		timeoutTimer: timer,
 		mapMtx: &sync.Mutex{},
-		sessionMap_: make(map[string]*Future[*TruenasSession]),
+		sessionMap_: make(map[string][]*Future[*TruenasSession]),
 	}
 
 	doneCh := make(chan os.Signal)
@@ -101,8 +104,8 @@ func RunDaemon(serverSockAddr string, globalTimeoutStr string) {
 		_ = ls.Close()
 		sessions := make([]*Future[*TruenasSession], 0)
 		daemon.mapMtx.Lock()
-		for _, future := range daemon.sessionMap_ {
-			sessions = append(sessions, future)
+		for _, futures := range daemon.sessionMap_ {
+			sessions = append(sessions, futures...)
 		}
 		daemon.mapMtx.Unlock()
 		for _, future := range sessions {
@@ -205,18 +208,58 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 		allowInsecure: allowInsecure,
 	}
 
-	return d.maybeCreateSessionAndCall(sessionKey, timeoutStr, call, login)
+retry:
+	out, err, shouldRetry := d.maybeCreateSessionAndCall(sessionKey, timeoutStr, call, login)
+	if shouldRetry {
+		goto retry
+	}
+	return out, err
 }
 
-func (d *DaemonContext) maybeCreateSessionAndCall(sessionKey string, timeoutStr string, call CallInfo, login LoginInfo) (json.RawMessage, error) {
+func (d *DaemonContext) maybeCreateSessionAndCall(sessionKey string, timeoutStr string, call CallInfo, login LoginInfo) (json.RawMessage, error, bool) {
 	shouldCreate := false
+	channel := -1
+	var future *Future[*TruenasSession]
 
 	d.mapMtx.Lock()
-	future, exists := d.sessionMap_[sessionKey]
+	futureSessions, exists := d.sessionMap_[sessionKey]
 	if !exists {
+		channel = 0
 		future = MakeFuture[*TruenasSession]()
-		d.sessionMap_[sessionKey] = future
+		futureSessions = []*Future[*TruenasSession] { future }
+		d.sessionMap_[sessionKey] = futureSessions
 		shouldCreate = true
+	} else {
+		for i := 0; i < len(futureSessions); i++ {
+			if futureSessions[i] == nil {
+				channel = i
+				future = MakeFuture[*TruenasSession]()
+				futureSessions[i] = future
+				d.sessionMap_[sessionKey] = futureSessions
+				shouldCreate = true
+				break
+			}
+			done, session, err := futureSessions[i].Peek()
+			if !done || err != nil {
+				continue
+			}
+			session.connMtx.Lock()
+			if !session.callInProgress_ {
+				channel = i
+				future = futureSessions[i]
+			}
+			session.connMtx.Unlock()
+			if future != nil {
+				break
+			}
+		}
+		if channel < 0 {
+			channel = len(futureSessions)
+			future = MakeFuture[*TruenasSession]()
+			futureSessions = append(futureSessions, future)
+			d.sessionMap_[sessionKey] = futureSessions
+			shouldCreate = true
+		}
 	}
 	d.mapMtx.Unlock()
 
@@ -224,7 +267,7 @@ func (d *DaemonContext) maybeCreateSessionAndCall(sessionKey string, timeoutStr 
 	var err error
 
 	if shouldCreate {
-		s, err = d.createSession(sessionKey, login)
+		s, err = d.createSession(sessionKey, login, channel)
 		if err != nil {
 			future.Fail(err)
 		} else if s == nil {
@@ -245,25 +288,21 @@ func (d *DaemonContext) maybeCreateSessionAndCall(sessionKey string, timeoutStr 
 		}
 	}
 	if err != nil {
-		d.mapMtx.Lock()
-		delete(d.sessionMap_, sessionKey)
-		d.mapMtx.Unlock()
-		return nil, err
+		d.deleteSession(sessionKey, channel)
+		return nil, err, false
 	}
 
 	//log.Println("Calling method", method)
 
-	out, err, callRetry := s.callJson(call.method, timeoutStr, call.params)
-	if callRetry != nil {
-		d.mapMtx.Lock()
-		delete(d.sessionMap_, sessionKey)
-		d.mapMtx.Unlock()
-		return d.maybeCreateSessionAndCall(sessionKey, timeoutStr, *callRetry, login)
+	out, err, shouldRetry := s.callJson(call.method, timeoutStr, call.params)
+	if shouldRetry {
+		d.deleteSession(sessionKey, channel)
 	}
-	return out, err
+
+	return out, err, shouldRetry
 }
 
-func (d *DaemonContext) createSession(sessionKey string, login LoginInfo) (*TruenasSession, error) {
+func (d *DaemonContext) createSession(sessionKey string, login LoginInfo, channel int) (*TruenasSession, error) {
 	u, err := url.Parse(login.serverUrl)
 	if err != nil {
 		return nil, fmt.Errorf("Invalid URL: %w", err)
@@ -290,7 +329,8 @@ func (d *DaemonContext) createSession(sessionKey string, login LoginInfo) (*True
 		conn: conn,
 		ctx: d,
 		sessionKey: sessionKey,
-		mapMtx: &sync.Mutex{},
+		channel: channel,
+		connMtx: &sync.Mutex{},
 		curCallId_: 0,
 		callMap_: make(map[int64]*Future[json.RawMessage]),
 		jobMap_: make(map[int64]*Future[json.RawMessage]),
@@ -298,39 +338,45 @@ func (d *DaemonContext) createSession(sessionKey string, login LoginInfo) (*True
 
 	go session.listen()
 
-	_, err, retryInfo := session.callJson(login.call.method, "10s", login.call.params)
+	_, err, _ = session.callJson(login.call.method, "10s", login.call.params)
 	if err != nil {
 		return nil, err
-	}
-	if retryInfo != nil {
-		return nil, fmt.Errorf("use of closed network connection")
 	}
 
-	_, err, retryInfo = session.callJson("core.subscribe", "10s", []interface{}{"core.get_jobs"})
+	_, err, _ = session.callJson("core.subscribe", "10s", []interface{}{"core.get_jobs"})
 	if err != nil {
 		return nil, err
-	}
-	if retryInfo != nil {
-		return nil, fmt.Errorf("use of closed network connection")
 	}
 
 	return session, nil
 }
 
-func (s *TruenasSession) callJson(method string, timeoutStr string, request []interface{}) (json.RawMessage, error, *CallInfo) {
+func (d *DaemonContext) deleteSession(sessionKey string, channel int) {
+	d.mapMtx.Lock()
+	if sessionList, exists := d.sessionMap_[sessionKey]; exists {
+		if channel >= 0 && channel < len(sessionList) {
+			sessionList[channel] = nil
+			d.sessionMap_[sessionKey] = sessionList
+		}
+	}
+	d.mapMtx.Unlock()
+}
+
+func (s *TruenasSession) callJson(method string, timeoutStr string, request []interface{}) (json.RawMessage, error, bool) {
 	s.ctx.UpdateCountdown()
 
 	if strings.HasPrefix(method, TNC_PREFIX_STRING) {
 		out, err := s.handleDaemonProcedure(method[len(TNC_PREFIX_STRING):], timeoutStr, request)
-		return out, err, nil
+		return out, err, false
 	}
 
-	s.mapMtx.Lock()
+	s.connMtx.Lock()
 	s.curCallId_++
 	callId := s.curCallId_
 	fCall := MakeFuture[json.RawMessage]()
 	s.callMap_[callId] = fCall
-	s.mapMtx.Unlock()
+	s.callInProgress_ = true
+	s.connMtx.Unlock()
 
 	reqMsg := make(map[string]interface{})
 	reqMsg["jsonrpc"] = "2.0"
@@ -340,15 +386,10 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request []in
 
 	//log.Println("Writing JSON request with callId:", callId, reqMsg)
 
-	if err := s.conn.WriteJSON(reqMsg); err != nil {
-		var callRetry *CallInfo
-		if strings.Contains(err.Error(), "use of closed network connection") {
-			callRetry = &CallInfo{
-				method: method,
-				params: request,
-			}
-		}
-		return nil, err, callRetry
+	if err := wrapWriteJSON(s.conn, reqMsg); err != nil {
+		errMsg := err.Error()
+		shouldRetry := strings.Contains(errMsg, "use of closed network connection") || strings.Contains(errMsg, "gorilla panic")
+		return nil, err, shouldRetry
 	}
 
 	timeout, err := time.ParseDuration(timeoutStr)
@@ -359,53 +400,58 @@ func (s *TruenasSession) callJson(method string, timeoutStr string, request []in
 	isDone, dataRes, err := AwaitFutureOrTimeout(fCall, timeout)
 	if !isDone {
 		timeoutParsed := timeout.String()
-		return nil, fmt.Errorf("Request timed out (exceeded %s)", timeoutParsed), nil
+		return nil, fmt.Errorf("Request timed out (exceeded %s)", timeoutParsed), false
 	}
+
+	s.connMtx.Lock()
+	delete(s.callMap_, callId)
+	s.callInProgress_ = false
+	s.connMtx.Unlock()
 
 	if err != nil {
-		return nil, err, nil
+		return nil, err, false
 	}
 
-	s.mapMtx.Lock()
-	delete(s.callMap_, callId)
-	s.mapMtx.Unlock()
+	return dataRes, nil, false
+}
 
-	return dataRes, nil, nil
-
-/*
-	jobId, _ := GetJobNumber(dataRes)
-
-	s.mapMtx.Lock()
-	if jobId > 0 {
-		s.jobMap_[jobId] = MakeFuture[json.RawMessage]()
-	}
-	delete(s.callMap_, callId)
-	s.mapMtx.Unlock()
-
-	var callRetry *CallInfo
-	if jobId > 0 && method != JOB_WAIT_STRING {
-		_, _, callRetry = s.callJson(JOB_WAIT_STRING, timeoutStr, []interface{}{jobId})
-	}
-	return dataRes, nil, callRetry
-*/
+func wrapWriteJSON(conn *websocket.Conn, reqMsg interface{}) (err error) {
+	err = nil
+	defer func() {
+		if r := recover(); r != nil {
+			msg := "gorilla panic: "
+			if rErr, ok := r.(error); ok {
+				innerMsg := rErr.Error()
+				if innerMsg != "" {
+					msg += innerMsg
+				}
+			} else {
+				msg += fmt.Sprint(r)
+			}
+			err = errors.New(msg)
+		}
+	}()
+	err = conn.WriteJSON(reqMsg)
+	return err
 }
 
 func (s *TruenasSession) listen() {
 	var err error
 	defer func() {
+		if r := recover(); r != nil {
+			log.Println("Recovered from panic:", r)
+		}
 		internalErr := fmt.Errorf("listen() exiting: %v", err)
-		s.conn.Close()
-		s.mapMtx.Lock()
+		_ = s.conn.Close()
+		s.connMtx.Lock()
 		for _, f := range s.callMap_ {
 			f.Fail(internalErr)
 		}
 		for _, f := range s.jobMap_ {
 			f.Fail(internalErr)
 		}
-		s.mapMtx.Unlock()
-		s.ctx.mapMtx.Lock()
-		delete(s.ctx.sessionMap_, s.sessionKey)
-		s.ctx.mapMtx.Unlock()
+		s.connMtx.Unlock()
+		s.ctx.deleteSession(s.sessionKey, s.channel)
 		log.Println("listen exiting")
 	}()
 	for true {
@@ -427,15 +473,19 @@ func (s *TruenasSession) listen() {
 
 		s.ctx.UpdateCountdown()
 
+		innerJobId := int64(-1)
+
 		method, _ := responseMap["method"].(string)
+		var fields map[string]interface{}
+
 		if method == "collection_update" {
-			params := responseMap["params"].(map[string]interface{})
-			jobId := int64(params["id"].(float64))
-			fields := params["fields"].(map[string]interface{})
+			params, _ := responseMap["params"].(map[string]interface{})
+			jobIdF, _ := params["id"].(float64)
+			fields, _ = params["fields"].(map[string]interface{})
 			state, _ := fields["state"].(string)
 
 			if state == "SUCCESS" || state == "FAILED" {
-				innerJobId := jobId
+				innerJobId = int64(jobIdF)
 				if innerMethod, _ := fields["method"].(string); innerMethod == JOB_WAIT_STRING {
 					if args, ok := fields["arguments"].([]interface{}); ok && len(args) > 0 {
 						if value, ok := args[0].(float64); ok {
@@ -443,26 +493,39 @@ func (s *TruenasSession) listen() {
 						}
 					}
 				}
+			}
+		}
 
-				s.mapMtx.Lock()
-				fJob, exists := s.jobMap_[innerJobId]
+		idValue := int64(-1)
+		if id, exists := responseMap["id"]; exists {
+			idFloat, _ := id.(float64)
+			idValue = int64(idFloat)
+		}
+
+		var fJob *Future[json.RawMessage]
+		var fCall *Future[json.RawMessage]
+		var exists bool
+
+		if innerJobId >= 0 || idValue >= 0 {
+			s.connMtx.Lock()
+			if innerJobId >= 0 {
+				fJob, exists = s.jobMap_[innerJobId]
 				if !exists {
 					fJob = MakeFuture[json.RawMessage]()
 					s.jobMap_[innerJobId] = fJob
 				}
-				s.mapMtx.Unlock()
-				fJob.Reach(json.Marshal(fields))
 			}
+			if idValue >= 0 {
+				fCall, exists = s.callMap_[idValue]
+			}
+			s.connMtx.Unlock()
 		}
 
-		if id, exists := responseMap["id"]; exists {
-			idValue, _ := id.(float64)
-			s.mapMtx.Lock()
-			fCall, exists := s.callMap_[int64(idValue)]
-			s.mapMtx.Unlock()
-			if exists {
-				fCall.Complete(message)
-			}
+		if fJob != nil && fields != nil {
+			fJob.Reach(json.Marshal(fields))
+		}
+		if fCall != nil {
+			fCall.Complete(message)
 		}
 	}
 }
@@ -498,13 +561,13 @@ func (s *TruenasSession) handleDaemonProcedure(proc string, timeoutStr string, p
 			return nil, fmt.Errorf("tnc_daemon.await_job expects the first parameter to be a job number")
 		}
 
-		s.mapMtx.Lock()
+		s.connMtx.Lock()
 		fJob, exists := s.jobMap_[firstParamAsNumber]
 		if !exists {
 			fJob = MakeFuture[json.RawMessage]()
 			s.jobMap_[firstParamAsNumber] = fJob
 		}
-		s.mapMtx.Unlock()
+		s.connMtx.Unlock()
 
 		if exists {
 			isDone, response, err := fJob.Peek()
@@ -513,12 +576,9 @@ func (s *TruenasSession) handleDaemonProcedure(proc string, timeoutStr string, p
 			}
 		}
 
-		_, err, callRetry := s.callJson(JOB_WAIT_STRING, timeoutStr, []interface{}{firstParamAsNumber})
+		_, err, _ := s.callJson(JOB_WAIT_STRING, timeoutStr, []interface{}{firstParamAsNumber})
 		if err != nil {
 			return nil, err
-		}
-		if callRetry != nil {
-			return nil, fmt.Errorf("use of closed network connection")
 		}
 
 		return fJob.Get()
@@ -528,8 +588,8 @@ func (s *TruenasSession) handleDaemonProcedure(proc string, timeoutStr string, p
 }
 
 func (s *TruenasSession) getJobFuture(id int64) (*Future[json.RawMessage]) {
-	s.mapMtx.Lock()
-	defer s.mapMtx.Unlock()
+	s.connMtx.Lock()
+	defer s.connMtx.Unlock()
 	f, exists := s.jobMap_[id]
 	if !exists {
 		return nil
@@ -538,8 +598,8 @@ func (s *TruenasSession) getJobFuture(id int64) (*Future[json.RawMessage]) {
 }
 
 func (s *TruenasSession) getCallFuture(id int64) (*Future[json.RawMessage]) {
-	s.mapMtx.Lock()
-	defer s.mapMtx.Unlock()
+	s.connMtx.Lock()
+	defer s.connMtx.Unlock()
 	f, exists := s.callMap_[id]
 	if !exists {
 		return nil
