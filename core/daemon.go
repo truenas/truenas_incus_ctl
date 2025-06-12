@@ -111,9 +111,11 @@ func RunDaemon(serverSockAddr string, globalTimeoutStr string) {
 		}
 		daemon.mapMtx.Unlock()
 		for _, future := range sessions {
-			_, s, _ := future.Peek()
-			if s != nil {
-				s.conn.Close()
+			if future != nil {
+				_, s, _ := future.Peek()
+				if s != nil {
+					s.conn.Close()
+				}
 			}
 		}
 		os.Remove(serverSockAddr)
