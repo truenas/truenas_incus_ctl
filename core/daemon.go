@@ -2,25 +2,27 @@ package core
 
 import (
 	"crypto/tls"
-	"io"
-	"os"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
-	"sync"
-	"time"
-	"errors"
-	"strings"
-	"syscall"
-	"net/url"
 	"net/http"
+	"net/url"
+	"os"
 	"os/signal"
-	"encoding/json"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
 	"github.com/gorilla/websocket"
 )
 
 const TNC_PREFIX_STRING = "tnc_daemon."
-const JOB_WAIT_STRING   = "core.job_wait"
+const JOB_WAIT_STRING = "core.job_wait"
+const DEFAULT_CALL_TIMEOUT = "30s" // also see: cmd.defaultCallTimeout
 
 type TruenasSession struct {
 	url             string
@@ -36,10 +38,10 @@ type TruenasSession struct {
 }
 
 type DaemonContext struct {
-	timeoutValue  time.Duration
-	timeoutTimer  *time.Timer
-	mapMtx        *sync.Mutex
-	sessionMap_   map[string][]*Future[*TruenasSession]
+	timeoutValue time.Duration
+	timeoutTimer *time.Timer
+	mapMtx       *sync.Mutex
+	sessionMap_  map[string][]*Future[*TruenasSession]
 }
 
 type CallInfo struct {
@@ -48,8 +50,8 @@ type CallInfo struct {
 }
 
 type LoginInfo struct {
-	call CallInfo
-	serverUrl string
+	call          CallInfo
+	serverUrl     string
 	allowInsecure bool
 }
 
@@ -82,8 +84,8 @@ func RunDaemon(serverSockAddr string, globalTimeoutStr string) {
 	daemon := &DaemonContext{
 		timeoutValue: daemonTimeout,
 		timeoutTimer: timer,
-		mapMtx: &sync.Mutex{},
-		sessionMap_: make(map[string][]*Future[*TruenasSession]),
+		mapMtx:       &sync.Mutex{},
+		sessionMap_:  make(map[string][]*Future[*TruenasSession]),
 	}
 
 	doneCh := make(chan os.Signal)
@@ -160,7 +162,7 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 		return nil, fmt.Errorf("TNC-Call-Method was not provided")
 	}
 
-	if method == TNC_PREFIX_STRING + "ping" {
+	if method == TNC_PREFIX_STRING+"ping" {
 		return []byte("\"pong\""), nil
 	}
 
@@ -196,16 +198,16 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 		return nil, err
 	}
 
-	call := CallInfo {
+	call := CallInfo{
 		method: method,
 		params: params,
 	}
-	login := LoginInfo {
-		call: CallInfo {
+	login := LoginInfo{
+		call: CallInfo{
 			method: methodLogin,
 			params: paramsLogin,
 		},
-		serverUrl: host,
+		serverUrl:     host,
 		allowInsecure: allowInsecure,
 	}
 
@@ -227,7 +229,7 @@ func (d *DaemonContext) maybeCreateSessionAndCall(sessionKey string, timeoutStr 
 	if !exists {
 		channel = 0
 		future = MakeFuture[*TruenasSession]()
-		futureSessions = []*Future[*TruenasSession] { future }
+		futureSessions = []*Future[*TruenasSession]{future}
 		d.sessionMap_[sessionKey] = futureSessions
 		shouldCreate = true
 	} else {
@@ -326,25 +328,25 @@ func (d *DaemonContext) createSession(sessionKey string, login LoginInfo, channe
 	}
 
 	session := &TruenasSession{
-		url: login.serverUrl,
-		conn: conn,
-		ctx: d,
+		url:        login.serverUrl,
+		conn:       conn,
+		ctx:        d,
 		sessionKey: sessionKey,
-		channel: channel,
-		connMtx: &sync.Mutex{},
+		channel:    channel,
+		connMtx:    &sync.Mutex{},
 		curCallId_: 0,
-		callMap_: make(map[int64]*Future[json.RawMessage]),
-		jobMap_: make(map[int64]*Future[json.RawMessage]),
+		callMap_:   make(map[int64]*Future[json.RawMessage]),
+		jobMap_:    make(map[int64]*Future[json.RawMessage]),
 	}
 
 	go session.listen()
 
-	_, err, _ = session.callJson(login.call.method, "10s", login.call.params)
+	_, err, _ = session.callJson(login.call.method, DEFAULT_CALL_TIMEOUT, login.call.params)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err, _ = session.callJson("core.subscribe", "10s", []interface{}{"core.get_jobs"})
+	_, err, _ = session.callJson("core.subscribe", DEFAULT_CALL_TIMEOUT, []interface{}{"core.get_jobs"})
 	if err != nil {
 		return nil, err
 	}
@@ -588,7 +590,7 @@ func (s *TruenasSession) handleDaemonProcedure(proc string, timeoutStr string, p
 	return nil, fmt.Errorf("Unrecognised daemon command \"tnc_daemon.%s\"", proc)
 }
 
-func (s *TruenasSession) getJobFuture(id int64) (*Future[json.RawMessage]) {
+func (s *TruenasSession) getJobFuture(id int64) *Future[json.RawMessage] {
 	s.connMtx.Lock()
 	defer s.connMtx.Unlock()
 	f, exists := s.jobMap_[id]
@@ -598,7 +600,7 @@ func (s *TruenasSession) getJobFuture(id int64) (*Future[json.RawMessage]) {
 	return f
 }
 
-func (s *TruenasSession) getCallFuture(id int64) (*Future[json.RawMessage]) {
+func (s *TruenasSession) getCallFuture(id int64) *Future[json.RawMessage] {
 	s.connMtx.Lock()
 	defer s.connMtx.Unlock()
 	f, exists := s.callMap_[id]

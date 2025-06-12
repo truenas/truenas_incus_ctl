@@ -11,6 +11,9 @@ import (
 	"truenas/truenas_incus_ctl/core"
 )
 
+// defautCallTimeout should be used when calling API call functions.
+const defaultCallTimeout = 30
+
 type typeQueryParams struct {
 	valueOrder         []string
 	shouldSkipKeyBuild bool
@@ -21,8 +24,8 @@ type typeQueryParams struct {
 
 type typeQueryResponse struct {
 	resultsMap map[string]map[string]interface{}
-	intKeys []int
-	strKeys []string
+	intKeys    []int
+	strKeys    []string
 }
 
 func BuildNameStrAndPropertiesJson(options FlagMap, nameStr string) []interface{} {
@@ -56,7 +59,7 @@ func QueryApi(api core.Session, category string, entries, entryTypes, propsList 
 
 	DebugJson(query)
 
-	data, err := core.ApiCall(api, endpoint, 20, query)
+	data, err := core.ApiCall(api, endpoint, defaultCallTimeout, query)
 	if err != nil {
 		return response, err
 	}
@@ -137,10 +140,10 @@ func QueryApi(api core.Session, category string, entries, entryTypes, propsList 
 		}
 	}
 
-	response = typeQueryResponse {
+	response = typeQueryResponse{
 		resultsMap: outputMap,
-		intKeys: outputMapIntKeys,
-		strKeys: outputMapStrKeys,
+		intKeys:    outputMapIntKeys,
+		strKeys:    outputMapStrKeys,
 	}
 	return response, nil
 }
@@ -680,7 +683,7 @@ func MaybeBulkApiCall(api core.Session, endpoint string, timeoutSeconds int64, p
 	return out, jobId, err
 }
 
-func MaybeBulkApiCallArray(api core.Session, endpoint string, timeoutSeconds int64, paramsArray []interface{}, shouldWaitNow bool) (json.RawMessage, int64, error) {
+func MaybeBulkApiCallArray(api core.Session, endpoint string, timeoutSeconds int64 /* see: defaultCallTimeout */, paramsArray []interface{}, shouldWaitNow bool) (json.RawMessage, int64, error) {
 	nCalls := len(paramsArray)
 	if nCalls == 0 {
 		return nil, -1, errors.New("MaybeBulkApiCallArray: Nothing to do")
