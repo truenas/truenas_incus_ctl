@@ -153,14 +153,14 @@ func GetKeysSorted[T any](dict map[string]T) []string {
 	return keys
 }
 
-func WaitForFilesToAppear(directory string, onFileAppeared func(string, bool)bool) error {
+func WaitForCreatedDeletedFiles(directory string, onFileEvent func(string, bool, bool)bool) error {
 	fdInotify, err := syscall.InotifyInit()
 	if err != nil {
 		return fmt.Errorf("syscall.InotifyInit: %v", err)
 	}
 	defer syscall.Close(fdInotify)
 
-	flagsInterested := uint32(syscall.IN_CREATE)
+	flagsInterested := uint32(syscall.IN_CREATE | syscall.IN_DELETE | syscall.IN_DELETE_SELF)
 	watchDesc, err := syscall.InotifyAddWatch(fdInotify, directory, flagsInterested)
 	if err != nil {
 		return fmt.Errorf("syscall.InotifyAddWatch: %v", err)
@@ -169,10 +169,11 @@ func WaitForFilesToAppear(directory string, onFileAppeared func(string, bool)boo
 
 	var prevName string
 	wasCreate := false
+	wasDelete := false
 	buf := make([]byte, 4096)
 
 	for true {
-		if onFileAppeared(prevName, wasCreate) {
+		if onFileEvent(prevName, wasCreate, wasDelete) {
 			break
 		}
 		prevName = ""
@@ -211,6 +212,7 @@ func WaitForFilesToAppear(directory string, onFileAppeared func(string, bool)boo
 
 		mask := uint32(buf[4]) | (uint32(buf[5]) << 8) | (uint32(buf[6]) << 16) | (uint32(buf[7]) << 24)
 		wasCreate = (mask & syscall.IN_CREATE) != 0
+		wasDelete = (mask & (syscall.IN_DELETE | syscall.IN_DELETE_SELF)) != 0
 		prevName = name
 	}
 
