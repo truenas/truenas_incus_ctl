@@ -130,7 +130,6 @@ func (d *DaemonContext) UpdateCountdown() {
 }
 
 func (d *DaemonContext) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Println("Received request at", r.URL.String())
 	out, err := d.serveImpl(r)
 	if err != nil {
 		//log.Println(err)
@@ -154,6 +153,8 @@ func (d *DaemonContext) serveImpl(r *http.Request) (json.RawMessage, error) {
 	if str := r.Header.Get("TNC-Allow-Insecure"); str != "" {
 		allowInsecure = strings.ToLower(str) == "true"
 	}
+
+	log.Println("Received request at", r.URL.String(), "for method", method)
 
 	if method == "" {
 		return nil, fmt.Errorf("TNC-Call-Method was not provided")
