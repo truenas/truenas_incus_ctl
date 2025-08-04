@@ -66,6 +66,18 @@ After a host has been added to the config-file, it can be specified with `--conf
 
 `go test -v ./cmd`
 
+## Daemon Mode
+
+During normal use `truenas_incus_ctl` will be launched in daemon mode with a 3 minute timeout. When updating the tool, be aware that the daemon will not refresh until the timeout expires, unless manually killed.
+
+The deamon can normally be found in the process list with:
+
+`ps -ax | grep "[t]ncdaemon"`
+
+When debugging or testing, it can be useful to prelaunch the daemon to view its console. The follow command will launch the daemon as a foreground process without a timeout.
+
+`sudo /home/<user>/go/bin/truenas_incus_ctl daemon /home/<user>/tncdaemon.sock`
+
 ## Middleware Patches
 
 The following patches may be useful to support the Incus TrueNAS driver. 
