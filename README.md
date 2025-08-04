@@ -62,6 +62,16 @@ After a host has been added to the config-file, it can be specified with `--conf
 - share
 	- Administer network shares
 
+## IPv6
+
+When using IPv6 you must specify the IP address wrapped in `[]`, eg:
+
+`truenas_incus_ctl --host '[aaaa:bbbb:cccc:dddd::1]' --allow-insecure --api-key $TN_APIKEY dataset ls`
+
+If you need to specify a port:
+
+`truenas_incus_ctl --host '[aaaa:bbbb:cccc:dddd::1]:8443' --allow-insecure --api-key $TN_APIKEY dataset ls`
+
 ## Testing
 
 `go test -v ./cmd`
