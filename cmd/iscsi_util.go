@@ -59,7 +59,7 @@ func LookupPortalIdOrCreate(api core.Session, defaultPort int, spec string) (int
 		return asInt, nil
 	}
 
-	ipPortStr := core.IpPortToJsonString(spec, api.GetHostName(), defaultPort)
+	ipPortStr := core.IpPortToJsonString(spec, stripIpV6Brackets(api.GetHostName()), defaultPort)
 	var ipPortObj interface{}
 	if err := json.Unmarshal([]byte(ipPortStr), &ipPortObj); err != nil {
 		return -1, err
@@ -283,15 +283,22 @@ func AddIscsiInitiator(initiators map[string]int, resultRow map[string]interface
 	return name, nil
 }
 
+// Normalize IPv6 portal: remove brackets if present
+func stripIpV6Brackets(ipv6Addr string) string {
+	s := strings.ReplaceAll(ipv6Addr, "[", "")
+	s = strings.ReplaceAll(s, "]", "")
+
+	return s
+}
+
 func IterateActivatedIscsiShares(optIpPortalAddr string, callback func(root string, fullName string, ipPortalAddr string, iqnTargetName string, targetOnlyName string)) {
 	diskEntries, err := os.ReadDir("/dev/disk/by-path")
 	if err != nil {
 		return
 	}
 
-	// Normalize IPv6 portal: remove brackets if present
-	optIpPortalAddr = strings.ReplaceAll(optIpPortalAddr, "[", "")
-	optIpPortalAddr = strings.ReplaceAll(optIpPortalAddr, "]", "")
+	// Normalize IPv6 portal. The brackets are not used in the /dev/disk/by-path node
+	optIpPortalAddr = stripIpV6Brackets(optIpPortalAddr)
 
 	for _, e := range diskEntries {
 		name := e.Name()
