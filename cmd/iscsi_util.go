@@ -288,12 +288,18 @@ func IterateActivatedIscsiShares(optIpPortalAddr string, callback func(root stri
 	if err != nil {
 		return
 	}
+
+	// Normalize IPv6 portal: remove brackets if present
+	optIpPortalAddr = strings.ReplaceAll(optIpPortalAddr, "[", "")
+	optIpPortalAddr = strings.ReplaceAll(optIpPortalAddr, "]", "")
+
 	for _, e := range diskEntries {
 		name := e.Name()
 		suffix := "-lun-0"
 		if !strings.HasSuffix(name, suffix) {
 			continue
 		}
+
 		pathPrefix := "ip-" + optIpPortalAddr
 		if !strings.HasPrefix(name, pathPrefix) {
 			continue
