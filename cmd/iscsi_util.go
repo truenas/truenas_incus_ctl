@@ -506,7 +506,7 @@ func GetIscsiTargetsFromSession(api core.Session, maybeHashedToVolumeMap map[str
 		if lastSpacePos == firstSpacePos {
 			lastSpacePos = len(l)
 		}
-		ipPortalAddr := l[addrStart:firstCommaPos]
+		ipPortalAddr := l[addrStart : addrStart+firstCommaPos]
 		fullName := l[addrStart+firstSpacePos+1 : lastSpacePos]
 		firstColon := strings.Index(fullName, ":")
 		if firstColon == -1 {
