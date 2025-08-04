@@ -35,8 +35,9 @@ import (
 0.7.0 Add service commands, iscsi test, --daemon-socket to override path to the daemon's socket, add --portal and --initiator flags
 0.7.1 Sends a sendtargets command before a plain discover. This seems to be required before verifying a portal, adds delete and deactivate support waiting for deactivation.
 0.7.2 Deactivate synchronizes devices, and then optionally waits for deactivation t complete. Delete always waits. The daemon supports retry after POST failure and uses additional connections for concurrent commands
+0.7.3 IPv6 fixes
 */
-const VERSION = "0.7.2"
+const VERSION = "0.7.3"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
