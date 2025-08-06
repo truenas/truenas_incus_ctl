@@ -162,7 +162,14 @@ func MaybeLookupIpPortFromPortal(api core.Session, defaultPort int, spec string)
 		port = defaultPort
 	}
 
-	return fmt.Sprintf("%v:%v", ip, port), nil
+	// Prepare to output ip:port, but we need to wrap IPv6 in []
+	ipStr := fmt.Sprintf("%v", ip)
+	if strings.Contains(ipStr, ":") {
+		// we're about to add a port, we need to wrap the IP.
+		ipStr = fmt.Sprintf("[%s]", stripIpV6Brackets(ipStr))
+	}
+
+	return fmt.Sprintf("%s:%v", ipStr, port), nil
 }
 
 func LookupInitiatorByFilter(api core.Session, queryFilter []interface{}) (int, error) {
