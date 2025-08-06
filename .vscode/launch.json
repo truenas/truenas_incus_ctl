@@ -180,7 +180,7 @@
           "asRoot": true,
 
           "program": "${workspaceFolder}",
-          "args": ["--debug","--allow-insecure","--host","[fd9d:e7c2:3f61:3260::32]","--api-key","${env:TN_APIKEY}","--daemon-socket","${userHome}/tncdaemon2.sock","share","iscsi","activate","-t","incus","dozer/se-incus/tnPoolNOW/containers/d12-xfs"],
+          "args": ["--debug","--allow-insecure","--host","${env:TN_HOST}","--api-key","${env:TN_APIKEY}","--daemon-socket","${userHome}/tncdaemon2.sock","share","iscsi","activate","-t","incus","dozer/se-incus/tnPoolNOW/containers/d12-xfs"],
           "console": "integratedTerminal",
         },
         {
@@ -192,7 +192,7 @@
           "asRoot": true,
 
           "program": "${workspaceFolder}",
-          "args": ["--debug","--allow-insecure","--host","[fd9d:e7c2:3f61:3260::32]","--api-key","${env:TN_APIKEY}","--daemon-socket","${userHome}/tncdaemon2.sock","share","iscsi","deactivate","-t","incus","dozer/se-incus/tnPoolNOW/containers/d12-xfs"],
+          "args": ["--debug","--allow-insecure","--host","${env:TN_HOST}","--api-key","${env:TN_APIKEY}","--daemon-socket","${userHome}/tncdaemon2.sock","share","iscsi","deactivate","-t","incus","dozer/se-incus/tnPoolNOW/containers/d12-xfs"],
           "console": "integratedTerminal",
         },
          {
@@ -204,7 +204,7 @@
           "asRoot": true,
 
           "program": "${workspaceFolder}",
-          "args": ["--debug","--allow-insecure","--host","[fd9d:e7c2:3f61:3260::32]","--api-key","${env:TN_APIKEY}","--daemon-socket","${userHome}/tncdaemon2.sock","share","iscsi","locate","-t","incus","dozer/se-incus/tnPoolNOW/containers/d12-xfs"],
+          "args": ["--debug","--allow-insecure","--host","${env:TN_HOST}","--api-key","${env:TN_APIKEY}","--daemon-socket","${userHome}/tncdaemon2.sock","share","iscsi","locate","-t","incus","dozer/se-incus/tnPoolNOW/containers/d12-xfs"],
           "console": "integratedTerminal",
         },
          {
@@ -216,7 +216,7 @@
           "asRoot": true,
 
           "program": "${workspaceFolder}",
-          "args": ["--debug","--allow-insecure","--host","[fd9d:e7c2:3f61:3260::32]","--api-key","${env:TN_APIKEY}","--daemon-socket","${userHome}/tncdaemon2.sock","share","iscsi","create","-t","incus","dozer/zvols-for-testing/zvol1"],
+          "args": ["--debug","--allow-insecure","--host","${env:TN_HOST}","--api-key","${env:TN_APIKEY}","--daemon-socket","${userHome}/tncdaemon2.sock","share","iscsi","create","-t","incus","dozer/zvols-for-testing/zvol1"],
           "console": "integratedTerminal",
         },
         {
@@ -228,7 +228,19 @@
           "asRoot": true,
 
           "program": "${workspaceFolder}",
-          "args": ["--debug","--allow-insecure","--host","[fd9d:e7c2:3f61:3260::32]","--api-key","${env:TN_APIKEY}","--daemon-socket","${userHome}/tncdaemon2.sock","share","iscsi","delete","-t","incus","dozer/zvols-for-testing/zvol1"],
+          "args": ["--debug","--allow-insecure","--host","${env:TN_HOST}","--api-key","${env:TN_APIKEY}","--daemon-socket","${userHome}/tncdaemon2.sock","share","iscsi","delete","-t","incus","dozer/zvols-for-testing/zvol1"],
+          "console": "integratedTerminal",
+        },
+        {
+          // service iscsi setup --test
+          "name": "setup --test iscsi share",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug", 
+          "asRoot": true,
+
+          "program": "${workspaceFolder}",
+          "args": ["--debug","--allow-insecure","--host","${env:TN_HOST}","--api-key","${env:TN_APIKEY}","--daemon-socket","${userHome}/tncdaemon2.sock","share","iscsi","setup","--test"],
           "console": "integratedTerminal",
         },
     ]
