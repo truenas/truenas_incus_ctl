@@ -126,6 +126,28 @@ Long-running TrueNAS operations return job IDs. The system tracks these jobs thr
 
 ## Development Notes
 
+### Red/Green Bug Fixing Process
+
+**When asked to fix a bug, always offer to use the red/green approach:**
+
+1. **🔴 Red Phase - Confirm Bug**: Reproduce the issue in current codebase
+2. **🔴 Red Phase - Implement Test**: Write test that exposes the bug (if practical)
+3. **🟢 Green Phase - Fix Bug**: Implement fix and verify test passes
+4. **✅ Validate**: Run full test suite and document the fix
+
+Template response for bug reports:
+```
+I'll use the red/green approach to fix this bug:
+
+🔴 Red Phase: First, let me reproduce the bug and confirm the issue
+🔴 Red Phase: Then implement a test that exposes the problem (if practical)  
+🟢 Green Phase: Finally, fix the bug and verify the test passes
+
+Would you like me to proceed with red/green testing for this bug?
+```
+
+See `TESTING.md` for detailed guidelines and examples.
+
 ### Adding New Commands
 1. Follow the `WrapCommandFunc()` pattern for session management
 2. Use `GetCobraFlags()` for consistent flag processing
