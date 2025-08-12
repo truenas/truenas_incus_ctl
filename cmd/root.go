@@ -216,19 +216,19 @@ func getHomeDirWithFallback() (string, error) {
 	if p, err := os.UserHomeDir(); err == nil {
 		return p, nil
 	}
-	
+
 	// Fallback strategies for container environments like Incus
-	
+
 	// Try $HOME environment variable directly
 	if home := os.Getenv("HOME"); home != "" {
 		return home, nil
 	}
-	
+
 	// Try current working directory as last resort
 	if cwd, err := os.Getwd(); err == nil {
 		return cwd, nil
 	}
-	
+
 	// If all else fails, use /tmp
 	return "/tmp", nil
 }
