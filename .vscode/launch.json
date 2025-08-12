@@ -243,5 +243,17 @@
           "args": ["--debug","--allow-insecure","--host","${env:TN_HOST}","--api-key","${env:TN_APIKEY}","--daemon-socket","${userHome}/tncdaemon2.sock","share","iscsi","setup","--test"],
           "console": "integratedTerminal",
         },
+        {
+          // share iscsi locate --create --parsable dozer/zvols-for-testing/zvol1 --debug
+          "name": "share iscsi locate --create --parsable dozer/zvols-for-testing/zvol1 --debug",
+          "type": "go",
+          "request": "launch",
+          "mode": "debug", 
+          "asRoot": true,
+
+          "program": "${workspaceFolder}",
+          "args": ["--debug","--allow-insecure","--host","${env:TN_HOST}","--api-key","${env:TN_APIKEY}","--daemon-socket","${userHome}/tncdaemon2.sock","share","iscsi","locate","--create","--parsable","dozer/zvols-for-testing/zvol1"],
+          "console": "integratedTerminal",
+        },
     ]
 }

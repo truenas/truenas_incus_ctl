@@ -605,7 +605,10 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	if shouldActivate {
 		var remainingTargets []typeIscsiLoginSpec
 		if shouldCreate {
-			remainingTargets, _ = GetIscsiTargetsFromDiscovery(api, missingShares, ipPortalAddr)
+			remainingTargets, err = GetIscsiTargetsFromDiscovery(api, missingShares, ipPortalAddr)
+			if err != nil {
+				return err
+			}
 		} else {
 			remainingTargets = make([]typeIscsiLoginSpec, 0)
 		}

@@ -621,7 +621,7 @@ begin:
 			if msg != "" {
 				err = errors.New(err.Error() + "\n" + msg)
 			} else {
-				err = errors.New(err.Error() + "\nThe iscsitarget service is running. It may need to be restarted with:\nservice restart iscsitarget")
+				err = errors.New(err.Error() + "\nThe remote iscsitarget service is running. It may need to be restarted with:\nservice restart iscsitarget")
 			}
 		}
 	}
