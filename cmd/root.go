@@ -95,12 +95,12 @@ func InitializeApiClient() core.Session {
 		}
 	}
 	if USE_DAEMON {
-		p, err := os.UserHomeDir()
-		if err != nil {
-			log.Fatal(err)
-		}
 		socketPath := g_daemonSocketOverride
 		if socketPath == "" {
+			p, err := getHomeDirWithFallback()
+			if err != nil {
+				log.Fatal(err)
+			}
 			socketPath = path.Join(p, "tncdaemon.sock")
 		}
 		api = &core.ClientSession{
@@ -211,8 +211,30 @@ func findCredsFromConfig(fileName, name, existingHost, existingApiKey string) (s
 	return u, apiKey, config, nil
 }
 
+func getHomeDirWithFallback() (string, error) {
+	// Try os.UserHomeDir() first
+	if p, err := os.UserHomeDir(); err == nil {
+		return p, nil
+	}
+	
+	// Fallback strategies for container environments like Incus
+	
+	// Try $HOME environment variable directly
+	if home := os.Getenv("HOME"); home != "" {
+		return home, nil
+	}
+	
+	// Try current working directory as last resort
+	if cwd, err := os.Getwd(); err == nil {
+		return cwd, nil
+	}
+	
+	// If all else fails, use /tmp
+	return "/tmp", nil
+}
+
 func getDefaultConfigPath() string {
-	p, err := os.UserHomeDir()
+	p, err := getHomeDirWithFallback()
 	if err != nil {
 		log.Fatal(err)
 	}
