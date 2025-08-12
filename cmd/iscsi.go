@@ -583,6 +583,15 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 				return err
 			}
 		}
+
+		// update shares after creation...
+		shares, _, err = getIscsiSharesFromSessionAndDiscovery(options, api, args, ipPortalAddr)
+		if err != nil {
+			return err
+		}
+		if shares == nil {
+			return fmt.Errorf("successfully created target on remote host, but was unable to discover any targets. This may indicate an iSCSI specific communication issue")
+		}
 	}
 
 	toDeactivateIqnTargets := make([]string, 0)
