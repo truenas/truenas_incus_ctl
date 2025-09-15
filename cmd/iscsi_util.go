@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path"
@@ -59,7 +60,13 @@ func LookupPortalIdOrCreate(api core.Session, defaultPort int, spec string) (int
 		return asInt, nil
 	}
 
-	ipPortStr := core.IpPortToJsonString(spec, stripIpV6Brackets(api.GetHostName()), defaultPort)
+	hostName, _, err := net.SplitHostPort(api.GetHostName())
+	if err != nil {
+		// assume no port present
+		hostName = stripIpV6Brackets(api.GetHostName())
+	}
+
+	ipPortStr := core.IpPortToJsonString(spec, hostName, defaultPort)
 	var ipPortObj interface{}
 	if err := json.Unmarshal([]byte(ipPortStr), &ipPortObj); err != nil {
 		return -1, err
@@ -77,6 +84,7 @@ func LookupPortalIdOrCreate(api core.Session, defaultPort int, spec string) (int
 				ipPortObj = ipPortArray
 			}
 		}
+
 		paramsCreate := []interface{}{map[string]interface{}{"listen": ipPortObj}}
 		DebugJson(paramsCreate)
 
