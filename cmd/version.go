@@ -36,8 +36,9 @@ import (
 0.7.1 Sends a sendtargets command before a plain discover. This seems to be required before verifying a portal, adds delete and deactivate support waiting for deactivation.
 0.7.2 Deactivate synchronizes devices, and then optionally waits for deactivation t complete. Delete always waits. The daemon supports retry after POST failure and uses additional connections for concurrent commands
 0.7.3 IPv6 fixes
+0.7.4 Add :port support to --host
 */
-const VERSION = "0.7.3"
+const VERSION = "0.7.4"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
