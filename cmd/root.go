@@ -44,7 +44,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&g_daemonSocketOverride, "daemon-socket", "", "Override the default daemon socket path (~/tncdaemon.sock)")
 	rootCmd.PersistentFlags().StringVarP(&g_configFileName, "config-file", "F", "", "Override config filename (~/.truenas_incus_ctl/config.json)")
 	rootCmd.PersistentFlags().StringVarP(&g_configName, "config", "C", "", "Name of config to look up in config.json, defaults to first entry")
-	rootCmd.PersistentFlags().StringVarP(&g_hostName, "host", "H", "", "Server hostname or URL")
+	rootCmd.PersistentFlags().StringVarP(&g_hostName, "host", "H", "", "Server hostname or ip with optional port or URL")
 	rootCmd.PersistentFlags().StringVarP(&g_apiKey, "api-key", "K", "", "API key")
 
 	daemonCmd.Flags().StringP("timeout", "t", "", "Exit the daemon if no communication occurs after this duration")
