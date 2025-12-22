@@ -52,6 +52,11 @@ var iscsiListCmd = &cobra.Command{
 	Short: "List description",
 }
 
+var iscsiRefreshCmd = &cobra.Command{
+	Use:   "refresh",
+	Short: "Refresh the iSCSI bus to pickup any device changes",
+}
+
 var iscsiLocateCmd = &cobra.Command{
 	Use:   "locate <dataset>...",
 	Short: "Locate the iscsi targets that map to the given datasets",
@@ -76,6 +81,7 @@ func init() {
 	iscsiTestCmd.RunE = WrapCommandFunc(testIscsi)
 	iscsiSetupCmd.RunE = WrapCommandFunc(setupIscsi)
 	iscsiListCmd.RunE = WrapCommandFunc(listIscsi)
+	iscsiRefreshCmd.RunE = WrapCommandFunc(refreshIscsi)
 	iscsiLocateCmd.RunE = WrapCommandFunc(locateIscsi)
 	iscsiDeactivateCmd.RunE = WrapCommandFunc(deactivateIscsi)
 	iscsiDeleteCmd.RunE = WrapCommandFunc(deleteIscsi)
@@ -108,6 +114,7 @@ func init() {
 	iscsiCmd.AddCommand(iscsiTestCmd)
 	iscsiCmd.AddCommand(iscsiSetupCmd)
 	iscsiCmd.AddCommand(iscsiListCmd)
+	iscsiCmd.AddCommand(iscsiRefreshCmd)
 	iscsiCmd.AddCommand(iscsiLocateCmd)
 	iscsiCmd.AddCommand(iscsiDeactivateCmd)
 	iscsiCmd.AddCommand(iscsiDeleteCmd)
@@ -274,7 +281,7 @@ func createIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		isReadOnly := core.IsStringTrue(options.allFlags, "readonly")
 
 		paramsCreate := make([]interface{}, len(extentsCreate))
-		for i, _ := range extentsCreate {
+		for i := range extentsCreate {
 			snapOffset := strings.Index(extentsCreate[i], "@")
 			paramsCreate[i] = []interface{}{
 				map[string]interface{}{
@@ -487,6 +494,30 @@ func listIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	return nil
 }
 
+func refreshIscsi(cmd *cobra.Command, api core.Session, args []string) error {
+	cmd.SilenceUsage = true
+
+	thisUser, err := user.Current()
+	if err == nil {
+		if thisUser.Username != "root" {
+			return fmt.Errorf("This command must be run as root.")
+		}
+	}
+
+	if err := CheckIscsiAdminToolExists(); err != nil {
+		return err
+	}
+
+	if err := MaybeLaunchIscsiDaemon(); err != nil {
+		return err
+	}
+
+	// this will rescan the activated targets, and should pick up any size changes
+	_, err = RunIscsiAdminTool(api, []string{"-m", "node", "-R"})
+
+	return err
+}
+
 func getIscsiSharesFromSessionAndDiscovery(options FlagMap, api core.Session, args []string, portalAddr string) (map[string]bool, map[string]string, error) {
 	prefixName := GetIscsiTargetPrefixOrExit(options.allFlags)
 
@@ -612,7 +643,7 @@ func locateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 		} else {
 			remainingTargets = make([]typeIscsiLoginSpec, 0)
 		}
-		for share, _ := range shares {
+		for share := range shares {
 			parts := strings.Split(share, ":")
 			iqn := parts[0]
 			var target string
@@ -688,7 +719,7 @@ func activateIscsi(cmd *cobra.Command, api core.Session, args []string) error {
 	isMinimal := core.IsStringTrue(options.allFlags, "parsable")
 
 	targets := make([]typeIscsiLoginSpec, 0)
-	for share, _ := range shares {
+	for share := range shares {
 		parts := strings.Split(share, ":")
 		iqn := parts[0]
 		var target string
@@ -795,7 +826,7 @@ func doIscsiActivate(api core.Session, targets []typeIscsiLoginSpec, ipAddr stri
 	}
 
 	if !isMinimal {
-		for iqnTargetName, _ := range outerMap {
+		for iqnTargetName := range outerMap {
 			fmt.Println("timed-out\t" + iqnTargetName)
 		}
 	}

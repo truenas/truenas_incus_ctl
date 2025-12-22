@@ -37,8 +37,9 @@ import (
 0.7.2 Deactivate synchronizes devices, and then optionally waits for deactivation t complete. Delete always waits. The daemon supports retry after POST failure and uses additional connections for concurrent commands
 0.7.3 IPv6 fixes
 0.7.4 Add :port support to --host
+0.7.5 Add `share iscsi refresh` to refresh the iscsi bus
 */
-const VERSION = "0.7.4"
+const VERSION = "0.7.5"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
