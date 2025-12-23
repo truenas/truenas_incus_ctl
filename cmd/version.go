@@ -38,8 +38,9 @@ import (
 0.7.3 IPv6 fixes
 0.7.4 Add :port support to --host
 0.7.5 Add `share iscsi refresh` to refresh the iscsi bus
+0.7.6 Fix macos/windows compilation issues
 */
-const VERSION = "0.7.5"
+const VERSION = "0.7.6"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
