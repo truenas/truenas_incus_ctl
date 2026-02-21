@@ -371,7 +371,7 @@ func DeactivateIscsiTargetList(api core.Session, ipPortalAddr string, toDeactiva
 	})
 
 	if len(toSyncList) > 0 {
-		_, _ = core.RunCommand("sync", append([]string{"-f"}, toSyncList...)...)
+		_, _, _ = core.RunCommand("sync", append([]string{"-f"}, toSyncList...)...)
 	}
 
 	for _, t := range toDeactivate {
@@ -614,7 +614,7 @@ func MaybeLaunchIscsiDaemon() error {
 func RunIscsiAdminTool(api core.Session, args []string) (string, error) {
 	retriesLeft := 10
 begin:
-	out, err := core.RunCommand("iscsiadm", args...)
+	out, err, status := core.RunCommand("iscsiadm", args...)
 	// "Could not stat" seems to happen when iscsiadm decides to delete a node... and another instance deletes the node, a retry should resolve.
 	if err != nil && (strings.HasPrefix(err.Error(), "iscsiadm: Could not scan /sys/class/iscsi_transport") || strings.HasPrefix(err.Error(), "iscsiadm: Could not stat")) {
 		time.Sleep(time.Duration(500) * time.Millisecond)
@@ -623,7 +623,9 @@ begin:
 			goto begin
 		}
 	}
-	if err != nil {
+	if err != nil && status == 0 {
+		err = nil
+	} else if err != nil {
 		msg, apiErr := CheckRemoteIscsiServiceIsRunning(api)
 		if apiErr == nil {
 			if msg != "" {
