@@ -39,8 +39,9 @@ import (
 0.7.4 Add :port support to --host
 0.7.5 Add `share iscsi refresh` to refresh the iscsi bus
 0.7.6 Fix macos/windows compilation issues
+0.7.7 Accept integer volblocksize, ignore stderr from iscsiadm if return code is 0
 */
-const VERSION = "0.7.6"
+const VERSION = "0.7.7"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
