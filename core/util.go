@@ -224,18 +224,22 @@ outer_loop:
 	return whole * multiplier + int64(fracMult), nil
 }
 
-func RunCommandRaw(prog string, args ...string) (string, string, error) {
+func RunCommandRaw(prog string, args ...string) (string, string, error, int) {
 	var outBuf bytes.Buffer
 	var errBuf bytes.Buffer
 	cmd := exec.Command(prog, args...)
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
 	err := cmd.Run()
-	return outBuf.String(), errBuf.String(), err
+	status := 0
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		status = exitErr.ExitCode()
+	}
+	return outBuf.String(), errBuf.String(), err, status
 }
 
-func RunCommand(prog string, args ...string) (string, error) {
-	out, warn, err := RunCommandRaw(prog, args...)
+func RunCommand(prog string, args ...string) (string, error, int) {
+	out, warn, err, status := RunCommandRaw(prog, args...)
 	var errMsg strings.Builder
 	isError := false
 	if warn != "" {
@@ -250,9 +254,9 @@ func RunCommand(prog string, args ...string) (string, error) {
 		isError = true
 	}
 	if isError {
-		return "", errors.New(errMsg.String())
+		return "", errors.New(errMsg.String()), status
 	}
-	return out, nil
+	return out, nil, status
 }
 
 func FlushString(str string) {

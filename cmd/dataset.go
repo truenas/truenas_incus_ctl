@@ -78,15 +78,15 @@ var g_compressionEnum = [...]string{
 }
 
 var g_volblocksizes = []string{
-    "512B", "512",
-    "1K", "1024",
-    "2K", "2048",
-    "4K", "4096",
-    "8K", "8192",
-    "16K", "16384",
-    "32K", "32768",
-    "64K", "65536",
-    "128K", "131072",
+	"512B", "512",
+	"1K", "1024",
+	"2K", "2048",
+	"4K", "4096",
+	"8K", "8192",
+	"16K", "16384",
+	"32K", "32768",
+	"64K", "65536",
+	"128K", "131072",
 }
 
 var g_datasetCreateUpdateEnums map[string][]string
@@ -251,7 +251,7 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 			}
 			outMap[propName] = size
 		case "volblocksize":
-		    value, err := ParseStringAndValidate(propName, valueStr, g_datasetCreateUpdateEnums)
+			value, err := ParseStringAndValidate(propName, valueStr, g_datasetCreateUpdateEnums)
 			if err != nil {
 				return err
 			}
@@ -261,9 +261,9 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 			}
 			var sizeStr string
 			if size >= 1024 {
-			    sizeStr = fmt.Sprintf("%dK", size >> 10);
+				sizeStr = fmt.Sprintf("%dK", size >> 10);
 			} else {
-			    sizeStr = fmt.Sprint(size)
+				sizeStr = fmt.Sprint(size)
 			}
 			outMap[propName] = sizeStr
 		case "user_props":
