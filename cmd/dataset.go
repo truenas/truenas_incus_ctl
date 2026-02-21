@@ -77,6 +77,18 @@ var g_compressionEnum = [...]string{
 	"zstd-fast-100", "zstd-fast-500", "zstd-fast-1000",
 }
 
+var g_volblocksizes = []string{
+    "512B", "512",
+    "1K", "1024",
+    "2K", "2048",
+    "4K", "4096",
+    "8K", "8192",
+    "16K", "16384",
+    "32K", "32768",
+    "64K", "65536",
+    "128K", "131072",
+}
+
 var g_datasetCreateUpdateEnums map[string][]string
 var g_datasetListEnums map[string][]string
 
@@ -140,7 +152,7 @@ func init() {
 		cmd.Flags().Bool("allow-shrinking", false, "By default, shrinking a volume to a smaller size is not permitted. This flag disables this check.")
 		cmd.Flags().StringP("volsize", "V", "0", "Creates a volume of the given size instead of a filesystem, should be a multiple of the block size.")
 		cmd.Flags().StringP("volblocksize", "b", "512", "Volume block size "+
-			AddFlagsEnum(&g_datasetCreateUpdateEnums, "volblocksize", []string{"512", "1K", "2K", "4K", "8K", "16K", "32K", "64K", "128K"}))
+			AddFlagsEnum(&g_datasetCreateUpdateEnums, "volblocksize", g_volblocksizes))
 		cmd.Flags().BoolP("sparse", "s", false, "Creates a sparse volume with no reservation")
 		cmd.Flags().Bool("force-size", false, "")
 		cmd.Flags().String("snapdev", "hidden", "Controls whether the volume snapshot devices are hidden or visible "+
@@ -238,6 +250,22 @@ func createOrUpdateDataset(cmd *cobra.Command, api core.Session, args []string) 
 				return errors.New("Failed to parse " + propName + ": negative numbers are not permitted")
 			}
 			outMap[propName] = size
+		case "volblocksize":
+		    value, err := ParseStringAndValidate(propName, valueStr, g_datasetCreateUpdateEnums)
+			if err != nil {
+				return err
+			}
+			size, err := core.ParseSizeString(fmt.Sprint(value))
+			if err != nil {
+				return errors.New("Failed to parse " + propName + ": " + err.Error())
+			}
+			var sizeStr string
+			if size >= 1024 {
+			    sizeStr = fmt.Sprintf("%dK", size >> 10);
+			} else {
+			    sizeStr = fmt.Sprint(size)
+			}
+			outMap[propName] = sizeStr
 		case "user_props":
 			userPropsStr = valueStr
 		case "option":
